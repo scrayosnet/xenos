@@ -18,7 +18,10 @@ Mojang already offers an API to query the profile data of Minecraft accounts, bu
 the performance is overall *okay*, it's by no means optimal and can therefore only be used as a fallback. Xenos aims for
 performance and reliability and can be used as the primary source of truth for profile information.
 
-It is built with scaling and high availability in mind and can be set up fairly easy.
+It is built with scaling and high availability in mind and can be set up fairly easy. Compared to existing solutions
+like [MineTools][minetools-docs], Xenos introduces little to no additional latency and primarily uses [gRPC][grpc-docs]
+to communicate with the services. It is meant to completely replace any kind of internal caching and always use the API
+instead for inter process communication.
 
 ## Major Features
 
@@ -56,6 +59,8 @@ on what that means.
 [kubernetes]: https://kubernetes.io/
 
 [name-source]: https://en.wikipedia.org/wiki/Xenos_(Greek)
+
+[minetools-docs]: https://api.minetools.eu/
 
 [grpc-docs]: https://grpc.io/
 
