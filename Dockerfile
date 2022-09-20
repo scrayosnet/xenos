@@ -19,12 +19,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o xenos xen
 
 FROM scratch
 
+# copy the raw binary into the new container
+COPY --from=builder "/workspace/xenos" "/xenos"
+
 # copy the users and groups for the nobody user and group
 COPY --from=builder "/etc/passwd" "/etc/passwd"
 COPY --from=builder "/etc/group" "/etc/group"
-
-# copy the raw binary into the new container
-COPY --from=builder "/workspace/xenos" "/xenos"
 
 # we run with minimum permissions as the nobody user
 USER nobody:nobody

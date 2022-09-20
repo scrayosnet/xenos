@@ -1,6 +1,9 @@
+# always download all dependencies as the first step
 before:
   hooks:
   - 'go mod download -x'
+
+# build the binaries with CGO disabled for all platforms
 builds:
 - env:
   - 'CGO_ENABLED=0'
@@ -8,9 +11,23 @@ builds:
   - 'linux'
   - 'windows'
   - 'darwin'
+
+# define the docker image templates to which releases will be pushed
+dockers:
+- image_templates:
+  - 'gcr.io/scrayosnet/xenos:{{ .Tag }}'
+  - 'gcr.io/scrayosnet/xenos:v{{ .Major }}.{{ .Minor }}'
+  - 'gcr.io/scrayosnet/xenos:v{{ .Major }}'
+  - 'gcr.io/scrayosnet/xenos:latest'
+
+# upload all binaries directly and do not wrap the
 archives:
 - format: 'binary'
+
+# define the constant name for the checksums files
 checksum:
   name_template: 'checksums.txt'
+
+# sort the changelog entries from the oldest do the most recent commit
 changelog:
   sort: 'asc'
