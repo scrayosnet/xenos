@@ -1,0 +1,12 @@
+.github
+.editorconfig
+.gitignore
+.git
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+Dockerfile
+.idea
+Makefile
+README.md
+SECURITY.md

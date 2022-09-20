@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package scrayosnet.xenos;
+
+// ProfileService is the service responsible for profile information lookup.
+service ProfileService {
+    // Get the Minecraft UUID for a specific, case-insensitive username.
+    rpc GetUuid(UuidRequest) returns (UuidResponse);
+
+    // Get the Minecraft UUIDs for specific, case-insensitive usernames.
+    rpc GetUuids(UuidsRequest) returns (UuidsResponse);
+
+    // Get the Minecraft profile for a specific UUID.
+    rpc GetProfile(ProfileRequest) returns (ProfileResponse);
+}
+
+// UuidRequest is the request of the UUID of an individual Minecraft player.
+message UuidRequest {
+    // The case-insensitive username of the Minecraft player, whose UUID is requested.
+    string name = 1;
+}
+
+// UuidResponse is the response to the request of the UUID of an individual Minecraft player.
+message UuidResponse {
+    // The username of the Minecraft player with corrected capitalization.
+    string name = 1;
+    // The UUID of the Minecraft player in its textual form with dashes.
+    string uuid = 2;
+    // Whether the Minecraft player has not migrated to a Mojang account yet. This is only set if true.
+    bool legacy = 3;
+    // Whether the Minecraft player has not paid for the game yet. This is only set if true.
+    bool demo = 4;
+}
+
+// UuidsRequest is the batch request of UUIDs of individual Minecraft players.
+message UuidsRequest {
+    // The individual requests for the UUIDs. Can be any number of requests.
+    repeated UuidRequest requests = 1;
+}
+
+// UuidsResponse is the response to the batch request of UUIDs of individual Minecraft players.
+message UuidsResponse {
+    // The individual responses for the UUIDs. A response is given for any request.
+    repeated UuidResponse responses = 1;
+}
+
+// ProfileRequest is the request of the profile of an individual Minecraft player.
+message ProfileRequest {
+    // The UUID of the Minecraft player, whose profile is requested, in textual form with dashes.
+    string uuid = 1;
+    // Whether the properties of the requested profile should be signed.
+    string signed = 2;
+}
+
+// ProfileResponse is the response to the request of the profile of an individual Minecraft player.
+message ProfileResponse {
+    // The UUID of the Minecraft player in its textual form with dashes.
+    string uuid = 1;
+    // The username of the Minecraft player.
+    string name = 2;
+    // The properties of the profile of the Minecraft player. Can be any number of properties.
+    repeated ProfileProperty properties = 3;
+}
+
+// ProfileProperty is an individual property of a profile of a Minecraft player.
+message ProfileProperty {
+    // The unique name of the individual property of the profile.
+    string name = 1;
+    // The value of the individual property of the profile.
+    string value = 2;
+    // The signature of the individual property value of the profile.
+    string signature = 3;
+}

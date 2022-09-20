@@ -3,6 +3,7 @@
 ![A visual badge for the latest release](https://img.shields.io/github/v/release/scrayosnet/xenos "Latest Release")
 ![A visual badge for the version](https://img.shields.io/github/go-mod/go-version/scrayosnet/xenos "Go Version")
 ![A visual badge for the code quality](https://img.shields.io/scrutinizer/quality/g/scrayosnet/xenos "Code Quality")
+![A visual badge for the coverage](https://img.shields.io/scrutinizer/coverage/g/scrayosnet/xenos "Coverage")
 ![A visual badge for the license](https://img.shields.io/github/license/scrayosnet/xenos "License")
 
 Xenos is a Minecraft profile data proxy that can be used as an ultra-fast replacement for the

@@ -43,6 +43,33 @@ ij_editorconfig_spaces_around_assignment_operators = true
 # since there are some very long keys, this is detrimental to the readability
 ij_editorconfig_align_group_field_declarations = false
 
+[{*.yml,*.yaml}]
+# yaml structures can get nested very easily, so we reduce the indent to compensate for that
+indent_size = 2
+tab_width = 2
+
+# some keys can get very long, so we don't want to align all of them together
+ij_yaml_align_values_properties = do_not_align
+
+# the indents for empty lines serve absolutely no value, so we remove them
+ij_yaml_block_mapping_on_new_line = false
+ij_yaml_keep_indents_on_empty_lines = false
+
+# sequence values are already kind of indented because of the hyphen, so we don't indent additionally
+ij_yaml_autoinsert_sequence_marker = true
+ij_yaml_indent_sequence_value = false
+
+# yaml files are used as configuration so line breaks are crucial for the readability
+ij_yaml_keep_line_breaks = true
+ij_yaml_sequence_on_new_line = false
+
+# we don't need spaces before colons
+ij_yaml_space_before_colon = false
+
+# we don't need any spaces within brackets or braces as this is the compressed representation
+ij_yaml_spaces_within_braces = false
+ij_yaml_spaces_within_brackets = false
+
 [*.md]
 # we want spaces after syntactical elements so we enforce them
 ij_markdown_force_one_space_after_blockquote_symbol = true
