@@ -69,6 +69,8 @@ on what that means.
 
 [security-policy]: SECURITY.md
 
+[code-of-conduct]: CODE_OF_CONDUCT.md
+
 [contributing-guide]: CONTRIBUTING.md
 
 [mit-license-doc]: https://choosealicense.com/licenses/mit/
