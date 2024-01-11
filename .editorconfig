@@ -8,13 +8,12 @@ charset = utf-8
 # we solely use spaces for our formatting, so the indent needs to be fixed as well
 indent_size = 4
 tab_width = 4
-ij_continuation_indent_size = 8
+ij_continuation_indent_size = 4
 indent_style = space
 ij_smart_tabs = false
 
-# provide the visual guide and hard wrap, so we don't write overly long lines (but don't wrap automatically
-ij_visual_guides = 100
-max_line_length = 120
+# provide the visual guide and hard wrap, so we don't write overly long lines (but don't wrap automatically)
+max_line_length = 100
 ij_wrap_on_typing = false
 
 # the final newline helps with old/unix tools so that they can properly print files
@@ -91,7 +90,3 @@ ij_markdown_max_lines_around_block_elements = 1
 # headers have exactly one newline around them to increase the readability
 ij_markdown_min_lines_around_header = 1
 ij_markdown_max_lines_around_header = 1
-
-[{Makefile,go.mod,go.sum,*.go,.gitmodules}]
-# gofmt uses tabs so we are required to use them
-indent_style = tab

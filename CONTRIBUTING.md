@@ -23,8 +23,7 @@ In order to contribute to this project, please note:
 
 Please note the following rules for formatting your code:
 
-* Format all Go code with [gofmt][gofmt-docs]. You may also use [goimports][goimports-docs] which
-  fixes import statements and formats code in the same style of `gofmt`.
+* Format all Rust code with [rustfmt][rustfmt-docs]. You may also use [clippy][clippy-docs] which performs linting.
 * Remove trailing whitespaces in all files.
 * Ensure any new or modified files have a [trailing newline][trailing-newline-stackoverflow].
 
@@ -45,9 +44,9 @@ output of the Workflows that were executed on your Pull Request to check whether
 
 [logging-levels]: https://medium.com/@tom.hombergs/tip-use-logging-levels-consistently-913b7b8e9782
 
-[gofmt-docs]: https://golang.org/cmd/gofmt/
+[rustfmt-docs]: https://github.com/rust-lang/rustfmt
 
-[goimports-docs]: https://pkg.go.dev/golang.org/x/tools/cmd/goimports
+[clippy-docs]: https://github.com/rust-lang/rust-clippy
 
 [trailing-newline-stackoverflow]: https://stackoverflow.com/questions/5813311/no-newline-at-end-of-file
 

@@ -1,13 +1,12 @@
 ![The official Logo of Xenos](.github/images/logo.png "Xenos")
 
 ![A visual badge for the latest release](https://img.shields.io/github/v/release/scrayosnet/xenos "Latest Release")
-![A visual badge for the version](https://img.shields.io/github/go-mod/go-version/scrayosnet/xenos "Go Version")
 ![A visual badge for the code quality](https://img.shields.io/scrutinizer/quality/g/scrayosnet/xenos "Code Quality")
 ![A visual badge for the coverage](https://img.shields.io/scrutinizer/coverage/g/scrayosnet/xenos "Coverage")
 ![A visual badge for the license](https://img.shields.io/github/license/scrayosnet/xenos "License")
 
 Xenos is a Minecraft profile data proxy that can be used as an ultra-fast replacement for the
-official [Mojang API][mojang-api-docs] on [Kubernetes][kubernetes].
+official [Mojang API][mojang-api-docs] on [cloudflare-workers][cloudflare-workers] or [Kubernetes][kubernetes].
 
 *The name "Xenos" is derived from the Greek word xénos which means something like "stranger" or "guest
 friend" ([source][name-source]). That alludes to the process of profile resolution by which strangers become known
@@ -20,13 +19,13 @@ the performance is overall *okay*, it's by no means optimal and can therefore on
 performance and reliability and can be used as the primary source of truth for profile information.
 
 It is built with scaling and high availability in mind and can be set up fairly easy. Compared to existing solutions
-like [MineTools][minetools-docs], Xenos introduces little to no additional latency and primarily uses [gRPC][grpc-docs]
-to communicate with the services. It is meant to completely replace any kind of internal caching and always use the API
-instead for inter process communication.
+like [MineTools][minetools-docs], Xenos introduces little to no additional latency and primarily uses cached and
+latency-optimized responses to communicate with the services. It is meant to completely replace any kind of internal
+caching and always use the API instead for inter process communication.
 
 ## Major Features
 
-* Perform [gRPC][grpc-docs] or [HTTP REST][rest-docs] lookups for profile information.
+* Perform [HTTP REST][rest-docs] lookups for profile information.
 * Do not worry about rate limits or caching at all! [^1]
 * Get best-in-class caching inbuilt and always request Xenos with very low latency.
 * Set Xenos up with replication, to get high availability.
@@ -74,6 +73,8 @@ on what that means.
 [contributing-guide]: CONTRIBUTING.md
 
 [mit-license-doc]: https://choosealicense.com/licenses/mit/
+
+[cloudflare-workers]: https://developers.cloudflare.com/workers/
 
 [^1]: Provided you're attaching enough different IP addresses to Xenos to sustain lookup bursts. Xenos will distribute
 its requests with Round-Robin until it runs out of tickets. The API is currently limited to 600 requests per 10 minutes.

@@ -1,0 +1,41 @@
+[package]
+name = "xenos"
+description = "Minecraft Profile Information Proxy"
+version = "0.1.0"
+authors = ["Joshua Dean Küpper <admin@joshua-kuepper.de>"]
+license = "MIT"
+repository = "https://github.com/scrayosnet/xenos/"
+readme = "README.md"
+documentation = "https://github.com/scrayosnet/xenos/"
+homepage = "https://xenos.scrayos.net/"
+keywords = ["minecraft", "gamedev", "profile", "query", "cloudflare-workers"]
+edition = "2021"
+
+# https://github.com/rustwasm/wasm-pack/issues/1247
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
+
+[dependencies.worker]
+version = "0.0.18"
+
+[dependencies.reqwest]
+version = "0.11.23"
+features = ["json"]
+
+[dependencies.uuid]
+version = "1.6.1"
+features = ["macro-diagnostics", "js", "serde"]
+
+[dependencies.serde]
+version = "1.0.195"
+
+[dependencies.serde_json]
+version = "1.0.111"
