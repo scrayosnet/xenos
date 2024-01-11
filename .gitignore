@@ -102,3 +102,13 @@ Cargo.lock
 
 # Compiled resources
 build/
+
+### PNPM template
+
+# Node modules
+node_modules/
+
+### Wrangler template
+
+# Wrangler Temp
+.wrangler/
