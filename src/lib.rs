@@ -18,6 +18,11 @@
 //!
 //! See the [official API](https://wiki.vg/Mojang_API) for reference.
 
+use std::collections::BTreeMap;
+use std::io::Write;
+use base64::prelude::*;
+use image::{ColorType, EncodableLayout, GenericImageView, ImageEncoder};
+use image::codecs::png::{PngEncoder};
 use uuid::{Uuid};
 use serde::{Deserialize, Serialize};
 use worker::*;
@@ -64,7 +69,31 @@ pub struct ProfileProperty {
     /// The base64 encoded value of the profile property.
     value: String,
     /// The base64 encoded signature of the profile property.
-    signature: String,
+    /// Only provided if `?unsigned=false` is appended to url
+    signature: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TexturesProperty {
+    timestamp: u64,
+    profile_id: Uuid,
+    profile_name: String,
+    signature_required: Option<bool>,
+    textures: BTreeMap<String, Texture>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Texture {
+    url: String,
+    metadata: Option<TextureMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TextureMetadata {
+    model: String,
 }
 
 /// Retrieves the Minecraft profile for a specific unique identifier.
@@ -77,27 +106,18 @@ pub struct ProfileProperty {
 ///
 /// - pending (profile does not exist, api rate limit, other http error)
 pub async fn get_profile(user_id: Uuid) -> Result<Profile> {
-    // convert the supplied user id to its simple form for the mojang URL
-    let mut encode_buffer = Uuid::encode_buffer();
-    let user_simple_id = user_id.simple().encode_lower(&mut encode_buffer);
+    let url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", user_id.simple());
+    reqwest::get(url).await
+        .map_err(|err| Error::RustError(format!("{:?}", err)))?
+        .json().await
+        .map_err(|err| Error::RustError(format!("{:?}", err)))
+}
 
-    // request the profile of the user from the mojang API
-    let res = reqwest::get(format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", user_simple_id))
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-
-    let prof = serde_json::from_str(&res)
-        .map_err(|e| worker::Error::Json);
-
-    //let profile = res.json::<HashMap<String, String>>().await.unwrap();
-    //Response::from_html(profile.get("properties").unwrap())
-    match prof {
-        Ok(prof) => prof,
-        Err(e) => panic!("No")
-    }
+pub async fn get_image(url: String) -> Result<bytes::Bytes> {
+    reqwest::get(url).await
+        .map_err(|err| Error::RustError(format!("{:?}", err)))?
+        .bytes().await
+        .map_err(|err| Error::RustError(format!("{:?}", err)))
 }
 
 /// Retrieves a deserialized unique identifier from a supplied route context.
@@ -109,19 +129,18 @@ pub async fn get_profile(user_id: Uuid) -> Result<Profile> {
 /// # Errors
 ///
 /// - pending (no value present, cannot be parsed)
-pub fn get_uuid(ctx: RouteContext<()>) -> Uuid {
-    // retrieve the raw value from the param
-    let uuid_text_raw = ctx.param("uuid");
-    let uuid_text = match uuid_text_raw {
-        Some(inner) => inner,
-        None => panic!("No uuid!"),
-    };
+pub fn get_uuid(ctx: RouteContext<()>) -> Result<Uuid> {
+    let str = ctx.param("uuid")
+        .ok_or(Error::BindingError("missing uuid".to_string()))?;
+    Uuid::try_parse(str)
+        .map_err(|err| Error::BindingError(format!("{:?}", err)))
+}
 
-    let parse_result = Uuid::parse_str(uuid_text);
-    return match parse_result {
-        Ok(uuid) => uuid,
-        Err(error) => panic!("No uuid could be parsed")
-    };
+pub fn parse_texture_prop(b64: String) -> Result<TexturesProperty> {
+    let json = BASE64_STANDARD.decode(b64)
+        .map_err(|err| Error::RustError(format!("{:?}", err)))?;
+    serde_json::from_slice::<TexturesProperty>(&json)
+        .map_err(|err| Error::RustError(format!("{:?}", err)))
 }
 
 /// Distributes the incoming requests from Cloudflare.
@@ -141,23 +160,89 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 }
 
 pub async fn handle_uuids(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
+    // TODO implement me
     Response::empty()
 }
 
 pub async fn handle_profile(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     // retrieve the unique id from the request params
-    let user_id: Uuid = get_uuid(ctx);
+    let user_id: Uuid = get_uuid(ctx)?;
 
     // retrieve the profile if not cached
-    let profile: Profile = get_profile(user_id).await;
+    let profile: Profile = get_profile(user_id).await?;
 
     Response::from_json(&profile)
 }
 
-pub async fn handle_skin(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
-    Response::empty()
+pub async fn handle_skin(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    // retrieve the unique id from the request params
+    let user_id: Uuid = get_uuid(ctx)?;
+
+    // retrieve the profile if not cached
+    let profile: Profile = get_profile(user_id).await?;
+
+    // parse profile texture property
+    let prop = profile.properties
+        .iter()
+        .find(|prop| prop.name == "textures".to_string())
+        .ok_or(Error::RustError("No textures provided".to_string()))?;
+    let textures = parse_texture_prop(prop.value.clone())?;
+
+    // TODO handle no custom skin
+    let skin_url = textures.textures.get("SKIN")
+        .ok_or(Error::RustError("No skin provided".to_string()))?
+        .url.clone();
+    let skin_bytes = get_image(skin_url).await?;
+
+    Response::from_bytes(skin_bytes.to_vec())
+        // append filename header
+        .map(|mut res| {
+            res.headers_mut().append(
+                "Content-Disposition",
+                &*format!("attachment; filename=\"skin_{}.png\"", user_id.simple())
+            ).unwrap();
+            res
+        })
 }
 
-pub async fn handle_head(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
-    Response::empty()
+pub async fn handle_head(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    // retrieve the unique id from the request params
+    let user_id: Uuid = get_uuid(ctx)?;
+
+    // retrieve the profile if not cached
+    let profile: Profile = get_profile(user_id).await?;
+
+    // parse profile texture property
+    let prop = profile.properties
+        .iter()
+        .find(|prop| prop.name == "textures".to_string())
+        .ok_or(Error::RustError("No textures provided".to_string()))?;
+    let textures = parse_texture_prop(prop.value.clone())?;
+
+    // TODO handle no custom skin
+    let skin_url = textures.textures.get("SKIN")
+        .ok_or(Error::RustError("No skin provided".to_string()))?
+        .url.clone();
+    let skin_bytes = get_image(skin_url).await?;
+
+    let skin_img = image::load_from_memory(&skin_bytes)
+        .map_err(|err| Error::RustError(format!("{:?}", err)))?;
+    let head_img = skin_img
+        .view(8, 8, 8, 8)
+        .to_image();
+
+    let mut head_bytes: Vec<u8> = Vec::new();
+    PngEncoder::new(head_bytes.by_ref())
+        .write_image(head_img.as_bytes(), 8, 8, ColorType::Rgba8)
+        .map_err(|err| Error::RustError(format!("{:?}", err)))?;
+
+    Response::from_bytes(head_bytes)
+        // append filename header
+        .map(|mut res| {
+            res.headers_mut().append(
+                "Content-Disposition",
+                &*format!("attachment; filename=\"head_{}.png\"", user_id.simple())
+            ).unwrap();
+            res
+        })
 }
