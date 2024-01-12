@@ -41,7 +41,7 @@ use worker::*;
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
     /// The unique identifier of the Minecraft user profile.
-    id: Uuid,
+    id: Option<Uuid>,
     /// The current visual name of the Minecraft user profile.
     name: String,
     /// The currently assigned properties of the Minecraft user profile.
