@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 use base64::prelude::*;
-use image::{ColorType, EncodableLayout, GenericImageView, ImageEncoder};
+use image::{ColorType, EncodableLayout, GenericImageView, ImageEncoder, imageops};
 use image::codecs::png::{PngEncoder};
 use uuid::{Uuid};
 use serde::{Deserialize, Serialize};
@@ -227,9 +227,13 @@ pub async fn handle_head(_req: Request, ctx: RouteContext<()>) -> Result<Respons
 
     let skin_img = image::load_from_memory(&skin_bytes)
         .map_err(|err| Error::RustError(format!("{:?}", err)))?;
-    let head_img = skin_img
+    let mut head_img = skin_img
         .view(8, 8, 8, 8)
         .to_image();
+    let overlay_head_img = skin_img
+        .view(40, 8, 8, 8)
+        .to_image();
+    imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
 
     let mut head_bytes: Vec<u8> = Vec::new();
     PngEncoder::new(head_bytes.by_ref())
