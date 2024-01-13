@@ -109,12 +109,16 @@ pub async fn get_profile(user_id: Uuid) -> Result<Profile> {
     let url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", user_id.simple());
     reqwest::get(url).await
         .map_err(|err| Error::RustError(format!("{:?}", err)))?
+        .error_for_status()
+        .map_err(|err| Error::RustError(format!("{:?}", err)))?
         .json().await
         .map_err(|err| Error::RustError(format!("{:?}", err)))
 }
 
 pub async fn get_image(url: String) -> Result<bytes::Bytes> {
     reqwest::get(url).await
+        .map_err(|err| Error::RustError(format!("{:?}", err)))?
+        .error_for_status()
         .map_err(|err| Error::RustError(format!("{:?}", err)))?
         .bytes().await
         .map_err(|err| Error::RustError(format!("{:?}", err)))
