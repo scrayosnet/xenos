@@ -2,8 +2,11 @@ use std::collections::{BTreeMap, HashMap};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use crate::ApiError;
+use crate::ApiError::{MojangError, MojangNotFound};
 use crate::retry::{Retry};
 
 
@@ -75,6 +78,19 @@ pub struct TextureMetadata {
     pub model: String,
 }
 
+trait ErrorForNoContent {
+    fn error_for_no_content(self) -> Result<reqwest::Response, ApiError>;
+}
+
+impl ErrorForNoContent for reqwest::Response {
+    fn error_for_no_content(self) -> Result<reqwest::Response, ApiError> {
+        match self.status() {
+            StatusCode::NO_CONTENT => Err(MojangNotFound()),
+            _ => Ok(self)
+        }
+    }
+}
+
 pub struct MojangApi {
     client: reqwest::Client,
     max_tries: u8,
@@ -105,7 +121,7 @@ impl MojangApi {
     /// # Errors
     ///
     /// - pending (profile does not exist, api rate limit, other http error)
-    pub async fn get_profile(&mut self, user_id: &Uuid) -> reqwest::Result<Profile> {
+    pub async fn get_profile(&mut self, user_id: &Uuid) -> Result<Profile, ApiError> {
         // try get from cache
         let now = worker::Date::now().as_millis();
         if let Some((time, profile)) = self.cache_profiles.get(user_id) {
@@ -117,14 +133,18 @@ impl MojangApi {
         let url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", user_id.simple());
         let profile: Profile = self.client
             .get(url)
-            .send_retry(self.max_tries).await?
-            .error_for_status()?
-            .json().await?;
+            .send_retry(self.max_tries).await
+            .map_err(|err| MojangError(err))?
+            .error_for_status()
+            .map_err(|err| MojangError(err))?
+            .error_for_no_content()?
+            .json().await
+            .map_err(|err| MojangError(err))?;
         self.cache_profiles.insert(user_id.clone(), (now, profile.clone()));
         Ok(profile)
     }
 
-    pub async fn get_image_bytes(&mut self, url: String) -> reqwest::Result<Bytes> {
+    pub async fn get_image_bytes(&mut self, url: String) -> Result<Bytes, ApiError> {
         // try get from cache
         let now = worker::Date::now().as_millis();
         if let Some((time, bytes)) = self.cache_images.get(&url) {
@@ -135,32 +155,32 @@ impl MojangApi {
         // retrieve new
         let bytes = self.client
             .get(url.clone())
-            .send_retry(self.max_tries).await?
-            .error_for_status()?
-            .bytes().await?;
+            .send_retry(self.max_tries).await
+            .map_err(|err| MojangError(err))?
+            .error_for_status()
+            .map_err(|err| MojangError(err))?
+            .error_for_no_content()?
+            .bytes().await
+            .map_err(|err| MojangError(err))?;
         self.cache_images.insert(url, (now, bytes.clone()));
         Ok(bytes)
     }
 }
 
 impl Profile {
-    pub fn get_textures(&self) -> Option<TexturesProperty> {
-        self.properties
+    pub fn get_textures(&self) -> Result<TexturesProperty, ApiError> {
+        let prop = self.properties
             .iter()
             .find(|prop| prop.name == "textures".to_string())
-            .map(|prop| {
-                Profile::parse_texture_prop(prop.value.clone())
-            })
-            .flatten()
+            .ok_or(ApiError::InvalidProfileTextures("missing".to_string()))?;
+        Profile::parse_texture_prop(prop.value.clone())
     }
 
-    fn parse_texture_prop(b64: String) -> Option<TexturesProperty> {
-        // ignores decoding errors
-        BASE64_STANDARD
-            .decode(b64)
-            .map(|json| serde_json::from_slice::<TexturesProperty>(&json).ok())
-            .ok()
-            .flatten()
+    fn parse_texture_prop(b64: String) -> Result<TexturesProperty, ApiError> {
+        let json = BASE64_STANDARD.decode(b64)
+            .map_err(|_err| ApiError::InvalidProfileTextures("base64 decode failed".to_string()))?;
+        serde_json::from_slice::<TexturesProperty>(&json)
+            .map_err(|_err| ApiError::InvalidProfileTextures("json decode failed".to_string()))
     }
 }
 
@@ -171,4 +191,3 @@ impl TexturesProperty {
             .map(|texture| texture.url.clone())
     }
 }
-

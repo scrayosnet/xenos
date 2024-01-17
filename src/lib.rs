@@ -26,35 +26,48 @@ use std::sync::{OnceLock, RwLock};
 use image::{ColorType, GenericImageView, imageops, ImageOutputFormat};
 use reqwest::StatusCode;
 use uuid::{Uuid};
-use worker::Error::{Json};
 use worker::*;
 use crate::api::{MojangApi, Profile};
+use crate::ApiError::{InvalidProfileTextures, InvalidUuid};
 
-
-trait IntoWorkerError {
-    fn into_worker_err(self) -> worker::Error;
+#[derive(thiserror::Error, Debug)]
+pub enum ApiError {
+    #[error("mojang: too many requests")]
+    MojangTooManyRequests(),
+    #[error("mojang: profile not found")]
+    MojangNotFound(),
+    #[error("mojang: request failed")]
+    MojangError(#[from] reqwest::Error),
+    #[error("invalid profile textures: {0}")]
+    InvalidProfileTextures(String),
+    #[error("invalid uuid: {0}")]
+    InvalidUuid(String),
 }
 
-impl IntoWorkerError for reqwest::Error {
-    fn into_worker_err(self) -> worker::Error {
-        match self.status() {
-            Some(StatusCode::NOT_FOUND) => {
-                Json(("".to_string(), StatusCode::NOT_FOUND.as_u16()))
-            }
-            Some(StatusCode::TOO_MANY_REQUESTS) => {
-                Json(("".to_string(), StatusCode::TOO_MANY_REQUESTS.as_u16()))
-            }
-            _ => {
-                // self.to_string()
-                Json(("{\"msg\": \"test\"}".to_string(), StatusCode::IM_A_TEAPOT.as_u16()))
-            }
+impl ApiError {
+    pub fn into_response(self) -> worker::Result<worker::Response> {
+        match self {
+            ApiError::MojangTooManyRequests() => Response::error(
+                "too many requests",
+                StatusCode::TOO_MANY_REQUESTS.as_u16(),
+            ),
+            ApiError::MojangNotFound() => Response::error(
+                "resource not found",
+                StatusCode::NOT_FOUND.as_u16(),
+            ),
+            ApiError::MojangError(inner) => Response::error(
+                inner.to_string(),
+                StatusCode::NOT_FOUND.as_u16(),
+            ),
+            ApiError::InvalidUuid(str) => Response::error(
+                format!("invalid uuid: {}", str.to_string()),
+                StatusCode::BAD_REQUEST.as_u16(),
+            ),
+            ApiError::InvalidProfileTextures(str) => Response::error(
+                format!("invalid profile textures: {}", str.to_string()),
+                StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            ),
         }
-    }
-}
-
-impl IntoWorkerError for uuid::Error {
-    fn into_worker_err(self) -> worker::Error {
-        worker::Error::BindingError(format!("{:?}", self))
     }
 }
 
@@ -67,11 +80,11 @@ impl IntoWorkerError for uuid::Error {
 /// # Errors
 ///
 /// - pending (no value present, cannot be parsed)
-pub fn get_uuid(ctx: RouteContext<()>) -> worker::Result<Uuid> {
+pub fn get_uuid(ctx: RouteContext<()>) -> std::result::Result<Uuid, ApiError> {
     let str = ctx.param("uuid")
-        .ok_or(worker::Error::BindingError("missing uuid".to_string()))?;
+        .ok_or(InvalidUuid("missing".to_string()))?;
     Uuid::try_parse(str)
-        .map_err(|err| err.into_worker_err())
+        .map_err(|_err| InvalidUuid(str.to_string()))
 }
 
 /// Distributes the incoming requests from Cloudflare.
@@ -97,32 +110,28 @@ fn mojang_api() -> &'static RwLock<MojangApi> {
     API.get_or_init(|| RwLock::new(MojangApi::default()))
 }
 
-pub async fn get_profile(user_id: &Uuid) -> worker::Result<Profile> {
+pub async fn get_profile(user_id: &Uuid) -> std::result::Result<Profile, ApiError> {
     mojang_api()
         .write().unwrap()
         .get_profile(user_id).await
-        .map_err(|err| err.into_worker_err())
 }
 
-pub async fn get_skin(user_id: &Uuid) -> worker::Result<Vec<u8>> {
+pub async fn get_skin(user_id: &Uuid) -> std::result::Result<Vec<u8>, ApiError> {
     let skin_url = get_profile(user_id).await?
-        .get_textures()
-        .ok_or(Json(("".to_string(), StatusCode::NOT_FOUND.as_u16())))?
+        .get_textures()?
         .get_skin_url()
-        .ok_or(Json(("".to_string(), StatusCode::NOT_FOUND.as_u16())))?;
-
-    mojang_api()
+        .ok_or(InvalidProfileTextures("missing skin".to_string()))?;
+    let bytes = mojang_api()
         .write().unwrap()
-        .get_image_bytes(skin_url).await
-        .map(|bytes| bytes.to_vec())
-        .map_err(|err| err.into_worker_err())
+        .get_image_bytes(skin_url).await?;
+    Ok(bytes.to_vec())
 }
 
-pub async fn get_head(user_id: &Uuid) -> worker::Result<Vec<u8>> {
+pub async fn get_head(user_id: &Uuid) -> std::result::Result<Vec<u8>, ApiError> {
     let skin_bytes = get_skin(user_id).await?;
 
     let skin_img = image::load_from_memory_with_format(&skin_bytes, image::ImageFormat::Png)
-        .map_err(|err| Json((err.to_string(), StatusCode::INTERNAL_SERVER_ERROR.as_u16())))?;
+        .map_err(|_err| InvalidProfileTextures("failed to read image bytes".to_string()))?;
 
     let mut head_img = skin_img
         .view(8, 8, 8, 8)
@@ -135,31 +144,50 @@ pub async fn get_head(user_id: &Uuid) -> worker::Result<Vec<u8>> {
     let mut head_bytes: Vec<u8> = Vec::new();
     let mut cur = Cursor::new(&mut head_bytes);
     image::write_buffer_with_format(&mut cur, &head_img, 8, 8, ColorType::Rgba8, ImageOutputFormat::Png)
-        .map_err(|err| Json((err.to_string(), StatusCode::INTERNAL_SERVER_ERROR.as_u16())))?;
+        .map_err(|_err| InvalidProfileTextures("failed to write image bytes".to_string()))?;
     Ok(head_bytes)
 }
 
 pub async fn handle_uuids(_req: Request, _ctx: RouteContext<()>) -> worker::Result<Response> {
-    // TODO implement me
+    // TODO implement me!
     Response::empty()
 }
 
 pub async fn handle_profile(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id: Uuid = get_uuid(ctx)?;
-    if let Ok(profile) = get_profile(&user_id).await {
-        return Response::from_json(&profile)
+    let user_id = match get_uuid(ctx) {
+        Ok(uuid) => uuid,
+        Err(err) => {
+            return err.into_response()
+        }
+    };
+    match get_profile(&user_id).await {
+        Ok(profile) => Response::from_json(&profile),
+        Err(err) => err.into_response(),
     }
-    Response::from_bytes(Vec::from("test"))
 }
 
 pub async fn handle_skin(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id: Uuid = get_uuid(ctx)?;
-    let skin_bytes = get_skin(&user_id).await?;
-    Response::from_bytes(skin_bytes)
+    let user_id = match get_uuid(ctx) {
+        Ok(uuid) => uuid,
+        Err(err) => {
+            return err.into_response()
+        }
+    };
+    match get_skin(&user_id).await {
+        Ok(skin_bytes) => Response::from_bytes(skin_bytes),
+        Err(err) => err.into_response(),
+    }
 }
 
 pub async fn handle_head(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id: Uuid = get_uuid(ctx)?;
-    let head_bytes = get_head(&user_id).await?;
-    Response::from_bytes(head_bytes)
+    let user_id = match get_uuid(ctx) {
+        Ok(uuid) => uuid,
+        Err(err) => {
+            return err.into_response()
+        }
+    };
+    match get_head(&user_id).await {
+        Ok(head_bytes) => Response::from_bytes(head_bytes),
+        Err(err) => err.into_response(),
+    }
 }
