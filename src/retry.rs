@@ -1,4 +1,5 @@
 use std::time::Duration;
+use async_std::task;
 use reqwest::{Result, Response};
 
 pub(crate) trait Retry {
@@ -18,7 +19,7 @@ impl Retry for reqwest::RequestBuilder {
                 return response
             }
             // sleep for 100ms (per iteration) before trying again
-            tokio::time::sleep(Duration::from_millis(tries as u64 * 100)).await
+            task::sleep(Duration::from_millis(tries as u64 * 100)).await;
         }
     }
 }
