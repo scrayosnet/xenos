@@ -22,13 +22,14 @@ mod api;
 mod retry;
 mod cache;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Cursor;
 use std::sync::{OnceLock};
 use image::{ColorType, GenericImageView, imageops, ImageOutputFormat};
 use reqwest::StatusCode;
 use uuid::{Uuid};
 use worker::*;
+use regex::Regex;
 use crate::api::{MojangApi, Profile, UsernameResolved};
 use crate::cache::*;
 
@@ -94,6 +95,12 @@ fn mojang_api() -> &'static MojangApi {
     API.get_or_init(|| MojangApi::default())
 }
 
+// static mojang username regex
+fn username_regex() -> &'static Regex {
+    static USERNAME_REGEX: OnceLock<Regex> =  OnceLock::new();
+    USERNAME_REGEX.get_or_init(|| Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap())
+}
+
 /// Distributes the incoming requests from Cloudflare.
 ///
 /// The requests are assigned to the individual endpoints and all requests, that cannot be matched
@@ -126,35 +133,47 @@ pub fn get_uuid(ctx: &RouteContext<()>) -> std::result::Result<Uuid, XenosError>
         .map_err(|_err| XenosError::InvalidUuid(str.to_string()))
 }
 
-pub async fn get_usernames(usernames: &Vec<String>, ctx: &RouteContext<()>) -> std::result::Result<Vec<UsernameResolved>, XenosError> {
+pub async fn get_uuids(usernames: HashSet<String>, ctx: &RouteContext<()>) -> std::result::Result<Vec<UsernameResolved>, XenosError> {
     let mut result = vec![];
     let mut non_cached = vec![];
-    // try to get from cache
     for username in usernames {
-        let cached = ctx.get_user_id(username).await?;
+        // filter invalid usernames
+        if !username_regex().is_match(username.as_str()) {
+            result.push(UsernameResolved {
+                id: Uuid::nil(),
+                name: username.to_lowercase(), // stores lower case name
+            });
+            continue;
+        }
+        // try to get from cache
+        let cached = ctx.get_user_id(&username).await?;
         if let Some(res) = cached {
-            result.push(res)
+            result.push(res);
         } else {
-            non_cached.push(username.to_lowercase())
+            non_cached.push(username);
         }
     }
     console_log!("Got {} user_ids from cache", result.len());
+
     if non_cached.is_empty() {
         return Ok(result)
     }
 
-    // otherwise get missing from mongo and add to cache
-    let resolved = mojang_api().get_usernames(&non_cached).await?;
-    let mut resolved_map: BTreeMap<_, _> = resolved.into_iter()
+    // otherwise get missing from mojang and add to cache
+    console_log!("Getting {} user_ids from mojang: {:?}", non_cached.len(), &non_cached);
+    let resolved_map: BTreeMap<_, _> = mojang_api()
+        .get_usernames(&non_cached).await?
+        .into_iter()
         .map(|data| (data.name.to_lowercase(), data))
         .collect();
     for username in non_cached {
-        let res = resolved_map
-            .remove(&username)
-            .unwrap_or_else(|| UsernameResolved {
+        let res = match resolved_map.get(&username.to_lowercase()) {
+            None => UsernameResolved {
                 id: Uuid::nil(),
-                name: username, // stores lower case name
-            });
+                name: username.clone(),
+            },
+            Some(res) => res.clone()
+        };
         ctx.put_user_id(res.clone()).await?;
         result.push(res);
     }
@@ -167,7 +186,7 @@ pub async fn get_profile(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result:
     if let Some(profile) = cached {
         return Ok(profile)
     }
-    // otherwise get from mongo and add to cache
+    // otherwise get from mojang and add to cache
     let profile = mojang_api()
         .get_profile(user_id).await?;
     ctx.put_profile(profile.clone()).await?;
@@ -180,7 +199,7 @@ pub async fn get_skin(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Re
     if let Some(bytes) = cached {
         return Ok(bytes)
     }
-    // otherwise get from mongo and add to cache
+    // otherwise get from mojang and add to cache
     let skin_url = get_profile(user_id, ctx).await?
         .get_textures()?
         .get_skin_url()
@@ -199,7 +218,7 @@ pub async fn get_head(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Re
         return Ok(bytes)
     }
 
-    // otherwise get from mongo and add to cache
+    // otherwise get from mojang and add to cache
     let skin_bytes = get_skin(user_id, ctx).await?;
 
     let skin_img = image::load_from_memory_with_format(&skin_bytes, image::ImageFormat::Png)
@@ -228,7 +247,10 @@ pub async fn handle_uuids(mut req: Request, ctx: RouteContext<()>) -> worker::Re
             return Response::error("", StatusCode::BAD_REQUEST.as_u16())
         }
     };
-    match get_usernames(&usernames, &ctx).await {
+    let usernames_unique: HashSet<String> = usernames.iter()
+        .map(|str| str.to_lowercase())
+        .collect();
+    match get_uuids(usernames_unique, &ctx).await {
         Ok(resolved) => Response::from_json(&resolved),
         Err(err) => err.into_response()
     }
