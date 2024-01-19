@@ -2,5 +2,9 @@ name = "xenos"
 main = "build/worker/shim.mjs"
 compatibility_date = "2024-01-09"
 
+kv_namespaces = [
+    { binding = "xenos", id = "8fb4d950db534bb7a56cac7d3dfd73d9" }
+]
+
 [build]
 command = "cargo install -q worker-build && worker-build --release"

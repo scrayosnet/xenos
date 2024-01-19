@@ -20,18 +20,23 @@
 
 mod api;
 mod retry;
+mod cache;
 
 use std::io::Cursor;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{OnceLock};
 use image::{ColorType, GenericImageView, imageops, ImageOutputFormat};
 use reqwest::StatusCode;
 use uuid::{Uuid};
 use worker::*;
 use crate::api::{MojangApi, Profile};
-use crate::ApiError::{InvalidProfileTextures, InvalidUuid};
+use crate::cache::*;
 
 #[derive(thiserror::Error, Debug)]
-pub enum ApiError {
+pub enum XenosError {
+    // binding errors
+    #[error("invalid uuid: {0}")]
+    InvalidUuid(String),
+    // mojang related errors
     #[error("mojang: too many requests")]
     MojangTooManyRequests(),
     #[error("mojang: profile not found")]
@@ -39,36 +44,69 @@ pub enum ApiError {
     #[error("mojang: request failed")]
     MojangError(#[from] reqwest::Error),
     #[error("invalid profile textures: {0}")]
-    InvalidProfileTextures(String),
-    #[error("invalid uuid: {0}")]
-    InvalidUuid(String),
+    MojangInvalidProfileTextures(String),
+    // cache errors
+    #[error("cache retrieve error")]
+    CacheRetrieve(#[from] worker::Error),
+    #[error("cache error")]
+    Cache(#[from] worker::kv::KvError),
 }
 
-impl ApiError {
+impl XenosError {
     pub fn into_response(self) -> worker::Result<worker::Response> {
         match self {
-            ApiError::MojangTooManyRequests() => Response::error(
+            XenosError::MojangTooManyRequests() => Response::error(
                 "too many requests",
                 StatusCode::TOO_MANY_REQUESTS.as_u16(),
             ),
-            ApiError::MojangNotFound() => Response::error(
+            XenosError::MojangNotFound() => Response::error(
                 "resource not found",
                 StatusCode::NOT_FOUND.as_u16(),
             ),
-            ApiError::MojangError(inner) => Response::error(
+            XenosError::MojangError(inner) => Response::error(
                 inner.to_string(),
                 StatusCode::NOT_FOUND.as_u16(),
             ),
-            ApiError::InvalidUuid(str) => Response::error(
+            XenosError::InvalidUuid(str) => Response::error(
                 format!("invalid uuid: {}", str.to_string()),
                 StatusCode::BAD_REQUEST.as_u16(),
             ),
-            ApiError::InvalidProfileTextures(str) => Response::error(
+            XenosError::MojangInvalidProfileTextures(str) => Response::error(
                 format!("invalid profile textures: {}", str.to_string()),
+                StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            ),
+            XenosError::CacheRetrieve(err) => Response::error(
+                err.to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            ),
+            XenosError::Cache(_) => Response::error(
+                "cache error",
                 StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             ),
         }
     }
+}
+
+// static mojang api
+fn mojang_api() -> &'static MojangApi {
+    static API: OnceLock<MojangApi> = OnceLock::new();
+    API.get_or_init(|| MojangApi::default())
+}
+
+/// Distributes the incoming requests from Cloudflare.
+///
+/// The requests are assigned to the individual endpoints and all requests, that cannot be matched
+/// for any of the specified routes, are rejected. All sub handlers are async and handle their
+/// responses with their supplied contexts.
+#[event(fetch)]
+async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    // distribute the requests to the individual routes
+    Router::new()
+        .post_async("/uuids", handle_uuids)
+        .get_async("/profile/:uuid", handle_profile)
+        .get_async("/skin/:uuid", handle_skin)
+        .get_async("/head/:uuid", handle_head)
+        .run(req, env).await
 }
 
 /// Retrieves a deserialized unique identifier from a supplied route context.
@@ -80,58 +118,56 @@ impl ApiError {
 /// # Errors
 ///
 /// - pending (no value present, cannot be parsed)
-pub fn get_uuid(ctx: RouteContext<()>) -> std::result::Result<Uuid, ApiError> {
+pub fn get_uuid(ctx: &RouteContext<()>) -> std::result::Result<Uuid, XenosError> {
     let str = ctx.param("uuid")
-        .ok_or(InvalidUuid("missing".to_string()))?;
+        .ok_or(XenosError::InvalidUuid("missing".to_string()))?;
     Uuid::try_parse(str)
-        .map_err(|_err| InvalidUuid(str.to_string()))
+        .map_err(|_err| XenosError::InvalidUuid(str.to_string()))
 }
 
-/// Distributes the incoming requests from Cloudflare.
-///
-/// The requests are assigned to the individual endpoints and all requests, that cannot be matched
-/// for any of the specified routes, are rejected. All sub handlers are async and handle their
-/// responses with their supplied contexts.
-#[event(fetch)]
-async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-
-    // distribute the requests to the individual routes
-    Router::new()
-        .post_async("/uuids", handle_uuids)
-        .get_async("/profile/:uuid", handle_profile)
-        .get_async("/skin/:uuid", handle_skin)
-        .get_async("/head/:uuid", handle_head)
-        .run(req, env).await
+pub async fn get_profile(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Result<Profile, XenosError> {
+    // try to get from cache
+    let cached = ctx.get_profile(user_id).await?;
+    if let Some(profile) = cached {
+        return Ok(profile)
+    }
+    // otherwise get from mongo and add to cache
+    let profile = mojang_api()
+        .get_profile(user_id).await?;
+    ctx.put_profile(profile.clone()).await?;
+    Ok(profile)
 }
 
-// static mojang api TODO is this a good idea?
-fn mojang_api() -> &'static RwLock<MojangApi> {
-    static API: OnceLock<RwLock<MojangApi>> = OnceLock::new();
-    API.get_or_init(|| RwLock::new(MojangApi::default()))
-}
-
-pub async fn get_profile(user_id: &Uuid) -> std::result::Result<Profile, ApiError> {
-    mojang_api()
-        .write().unwrap()
-        .get_profile(user_id).await
-}
-
-pub async fn get_skin(user_id: &Uuid) -> std::result::Result<Vec<u8>, ApiError> {
-    let skin_url = get_profile(user_id).await?
+pub async fn get_skin(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Result<Vec<u8>, XenosError> {
+    // try to get from cache
+    let cached = ctx.get_skin(user_id).await?;
+    if let Some(bytes) = cached {
+        return Ok(bytes)
+    }
+    // otherwise get from mongo and add to cache
+    let skin_url = get_profile(user_id, ctx).await?
         .get_textures()?
         .get_skin_url()
-        .ok_or(InvalidProfileTextures("missing skin".to_string()))?;
+        .ok_or(XenosError::MojangInvalidProfileTextures("missing skin".to_string()))?;
     let bytes = mojang_api()
-        .write().unwrap()
-        .get_image_bytes(skin_url).await?;
-    Ok(bytes.to_vec())
+        .get_image_bytes(skin_url).await?
+        .to_vec();
+    ctx.put_skin(user_id, bytes.clone()).await?;
+    Ok(bytes)
 }
 
-pub async fn get_head(user_id: &Uuid) -> std::result::Result<Vec<u8>, ApiError> {
-    let skin_bytes = get_skin(user_id).await?;
+pub async fn get_head(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Result<Vec<u8>, XenosError> {
+    // try to get from cache
+    let cached = ctx.get_head(user_id).await?;
+    if let Some(bytes) = cached {
+        return Ok(bytes)
+    }
+
+    // otherwise get from mongo and add to cache
+    let skin_bytes = get_skin(user_id, ctx).await?;
 
     let skin_img = image::load_from_memory_with_format(&skin_bytes, image::ImageFormat::Png)
-        .map_err(|_err| InvalidProfileTextures("failed to read image bytes".to_string()))?;
+        .map_err(|_err| XenosError::MojangInvalidProfileTextures("failed to read image bytes".to_string()))?;
 
     let mut head_img = skin_img
         .view(8, 8, 8, 8)
@@ -144,49 +180,49 @@ pub async fn get_head(user_id: &Uuid) -> std::result::Result<Vec<u8>, ApiError> 
     let mut head_bytes: Vec<u8> = Vec::new();
     let mut cur = Cursor::new(&mut head_bytes);
     image::write_buffer_with_format(&mut cur, &head_img, 8, 8, ColorType::Rgba8, ImageOutputFormat::Png)
-        .map_err(|_err| InvalidProfileTextures("failed to write image bytes".to_string()))?;
+        .map_err(|_err| XenosError::MojangInvalidProfileTextures("failed to write image bytes".to_string()))?;
+    ctx.put_head(user_id, head_bytes.clone()).await?;
     Ok(head_bytes)
 }
 
 pub async fn handle_uuids(_req: Request, _ctx: RouteContext<()>) -> worker::Result<Response> {
-    // TODO implement me!
-    Response::empty()
+    Response::empty() // TODO
 }
 
 pub async fn handle_profile(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id = match get_uuid(ctx) {
+    let user_id = match get_uuid(&ctx) {
         Ok(uuid) => uuid,
         Err(err) => {
             return err.into_response()
         }
     };
-    match get_profile(&user_id).await {
+    match get_profile(&user_id, &ctx).await {
         Ok(profile) => Response::from_json(&profile),
         Err(err) => err.into_response(),
     }
 }
 
 pub async fn handle_skin(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id = match get_uuid(ctx) {
+    let user_id = match get_uuid(&ctx) {
         Ok(uuid) => uuid,
         Err(err) => {
             return err.into_response()
         }
     };
-    match get_skin(&user_id).await {
+    match get_skin(&user_id, &ctx).await {
         Ok(skin_bytes) => Response::from_bytes(skin_bytes),
         Err(err) => err.into_response(),
     }
 }
 
 pub async fn handle_head(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id = match get_uuid(ctx) {
+    let user_id = match get_uuid(&ctx) {
         Ok(uuid) => uuid,
         Err(err) => {
             return err.into_response()
         }
     };
-    match get_head(&user_id).await {
+    match get_head(&user_id, &ctx).await {
         Ok(head_bytes) => Response::from_bytes(head_bytes),
         Err(err) => err.into_response(),
     }
