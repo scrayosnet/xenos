@@ -78,6 +78,13 @@ pub struct TextureMetadata {
     pub model: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsernameResolved {
+    pub id: Uuid,
+    pub name: String,
+}
+
 trait ErrorForNoContent {
     fn error_for_no_content(self) -> Result<reqwest::Response, XenosError>;
 }
@@ -108,6 +115,20 @@ impl Default for MojangApi {
 }
 
 impl MojangApi {
+
+    pub async fn get_usernames(&self, usernames: &Vec<String>) -> Result<Vec<UsernameResolved>, XenosError> {
+        self.client
+            .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
+            .json(usernames)
+            .send_retry(self.max_tries).await
+            .map_err(|err| MojangError(err))?
+            .error_for_status()
+            .map_err(|err| MojangError(err))?
+            .error_for_no_content()?
+            .json().await
+            .map_err(|err| MojangError(err))
+    }
+
     /// Retrieves the Minecraft profile for a specific unique identifier.
     ///
     /// Tries to retrieve the Minecraft profile from the official API and serialize the response,

@@ -22,13 +22,14 @@ mod api;
 mod retry;
 mod cache;
 
+use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::sync::{OnceLock};
 use image::{ColorType, GenericImageView, imageops, ImageOutputFormat};
 use reqwest::StatusCode;
 use uuid::{Uuid};
 use worker::*;
-use crate::api::{MojangApi, Profile};
+use crate::api::{MojangApi, Profile, UsernameResolved};
 use crate::cache::*;
 
 #[derive(thiserror::Error, Debug)]
@@ -125,6 +126,41 @@ pub fn get_uuid(ctx: &RouteContext<()>) -> std::result::Result<Uuid, XenosError>
         .map_err(|_err| XenosError::InvalidUuid(str.to_string()))
 }
 
+pub async fn get_usernames(usernames: &Vec<String>, ctx: &RouteContext<()>) -> std::result::Result<Vec<UsernameResolved>, XenosError> {
+    let mut result = vec![];
+    let mut non_cached = vec![];
+    // try to get from cache
+    for username in usernames {
+        let cached = ctx.get_user_id(username).await?;
+        if let Some(res) = cached {
+            result.push(res)
+        } else {
+            non_cached.push(username.to_lowercase())
+        }
+    }
+    console_log!("Got {} user_ids from cache", result.len());
+    if non_cached.is_empty() {
+        return Ok(result)
+    }
+
+    // otherwise get missing from mongo and add to cache
+    let resolved = mojang_api().get_usernames(&non_cached).await?;
+    let mut resolved_map: BTreeMap<_, _> = resolved.into_iter()
+        .map(|data| (data.name.to_lowercase(), data))
+        .collect();
+    for username in non_cached {
+        let res = resolved_map
+            .remove(&username)
+            .unwrap_or_else(|| UsernameResolved {
+                id: Uuid::nil(),
+                name: username, // stores lower case name
+            });
+        ctx.put_user_id(res.clone()).await?;
+        result.push(res);
+    }
+    Ok(result)
+}
+
 pub async fn get_profile(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Result<Profile, XenosError> {
     // try to get from cache
     let cached = ctx.get_profile(user_id).await?;
@@ -185,8 +221,17 @@ pub async fn get_head(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Re
     Ok(head_bytes)
 }
 
-pub async fn handle_uuids(_req: Request, _ctx: RouteContext<()>) -> worker::Result<Response> {
-    Response::empty() // TODO
+pub async fn handle_uuids(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
+    let usernames: Vec<String> = match req.json().await {
+        Ok(usernames) => usernames,
+        Err(_) => {
+            return Response::error("", StatusCode::BAD_REQUEST.as_u16())
+        }
+    };
+    match get_usernames(&usernames, &ctx).await {
+        Ok(resolved) => Response::from_json(&resolved),
+        Err(err) => err.into_response()
+    }
 }
 
 pub async fn handle_profile(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {

@@ -2,7 +2,7 @@ use serde::de::DeserializeOwned;
 use serde::{Serialize};
 use uuid::Uuid;
 use worker::{console_debug, RouteContext};
-use crate::api::Profile;
+use crate::api::{Profile, UsernameResolved};
 use crate::XenosError;
 
 pub trait XenosCache {
@@ -11,6 +11,9 @@ pub trait XenosCache {
     async fn put<T: Serialize>(&self, prefix: &str, key: &str, val: T, ttl: u64) -> Result<(), XenosError>;
     async fn get_bytes(&self, prefix: &str, key: &str) -> Result<Option<Vec<u8>>, XenosError>;
     async fn put_bytes(&self, prefix: &str, key: &str, val: &[u8], ttl: u64) -> Result<(), XenosError>;
+    // usernames cache
+    async fn get_user_id(&self, username: &String) -> Result<Option<UsernameResolved>, XenosError>;
+    async fn put_user_id(&self, username: UsernameResolved) -> Result<(), XenosError>;
     // profile cache
     async fn get_profile(&self, user_id: &Uuid) -> Result<Option<Profile>, XenosError>;
     async fn put_profile(&self, profile: Profile) -> Result<(), XenosError>;
@@ -71,12 +74,25 @@ impl XenosCache for RouteContext<()> {
         )
     }
 
+    async fn get_user_id(&self, username: &String) -> Result<Option<UsernameResolved>, XenosError> {
+        self.get("username", username.to_lowercase().as_str()).await
+    }
+
+    async fn put_user_id(&self, username: UsernameResolved) -> Result<(), XenosError> {
+        // cache unknown usernames for longer
+        let mut ttl = 60;
+        if username.id.is_nil() {
+            ttl = 600;
+        }
+        self.put("username", username.name.to_lowercase().as_str(), username, ttl).await
+    }
+
     async fn get_profile(&self, user_id: &Uuid) -> Result<Option<Profile>, XenosError> {
         self.get("profile", user_id.simple().to_string().as_str()).await
     }
 
     async fn put_profile(&self, profile: Profile) -> Result<(), XenosError> {
-        self.put("profile", profile.id.simple().to_string().as_str(), profile, 30).await
+        self.put("profile", profile.id.simple().to_string().as_str(), profile, 60).await
     }
 
     async fn get_skin(&self, user_id: &Uuid) -> Result<Option<Vec<u8>>, XenosError> {
@@ -84,7 +100,7 @@ impl XenosCache for RouteContext<()> {
     }
 
     async fn put_skin(&self, user_id: &Uuid, skin: Vec<u8>) -> Result<(), XenosError> {
-        self.put_bytes("skin", user_id.simple().to_string().as_str(), skin.as_slice(), 30).await
+        self.put_bytes("skin", user_id.simple().to_string().as_str(), skin.as_slice(), 60).await
     }
 
     async fn get_head(&self, user_id: &Uuid) -> Result<Option<Vec<u8>>, XenosError> {
@@ -92,6 +108,6 @@ impl XenosCache for RouteContext<()> {
     }
 
     async fn put_head(&self, user_id: &Uuid, head: Vec<u8>) -> Result<(), XenosError> {
-        self.put_bytes("head", user_id.simple().to_string().as_str(), head.as_slice(), 30).await
+        self.put_bytes("head", user_id.simple().to_string().as_str(), head.as_slice(), 60).await
     }
 }
