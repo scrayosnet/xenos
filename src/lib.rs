@@ -72,7 +72,7 @@ impl IntoResponse for XenosError {
             ),
             XenosError::MojangError(inner) => Response::error(
                 inner.to_string(),
-                StatusCode::NOT_FOUND.as_u16(),
+                inner.status().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR).as_u16(),
             ),
             XenosError::InvalidUuid(str) => Response::error(
                 format!("invalid uuid: {}", str.to_string()),
@@ -265,14 +265,14 @@ pub async fn handle_profile(_req: Request, ctx: RouteContext<()>) -> worker::Res
     let user_id = match get_uuid(&ctx) {
         Ok(uuid) => uuid,
         Err(err) => {
-            console_log!("user id parse failed: {:?}", err);
+            console_debug!("user id parse failed: {:?}", err);
             return err.into_response()
         }
     };
     match get_profile(&user_id, &ctx).await {
         Ok(profile) => Response::from_json(&profile),
         Err(err) => {
-            console_log!("get profile failed: {:?}", err);
+            console_debug!("get profile failed: {:?}", err);
             err.into_response()
         },
     }

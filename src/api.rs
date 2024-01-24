@@ -5,6 +5,7 @@ use bytes::Bytes;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use worker::{console_debug, console_log};
 use crate::XenosError;
 use crate::XenosError::*;
 use crate::retry::{Retry};
@@ -140,9 +141,11 @@ impl MojangApi {
     /// - pending (profile does not exist, api rate limit, other http error)
     pub async fn get_profile(&self, user_id: &Uuid) -> Result<Profile, XenosError> {
         let url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", user_id.simple());
-        self.client
+        let response = self.client
             .get(url)
-            .send_retry(self.max_tries).await
+            .send_retry(self.max_tries).await;
+        console_debug!("mojang response {:?}", response);
+        response
             .map_err(|err| MojangError(err))?
             .error_for_status()
             .map_err(|err| MojangError(err))?
