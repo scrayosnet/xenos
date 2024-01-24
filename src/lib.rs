@@ -30,8 +30,13 @@ use reqwest::StatusCode;
 use uuid::{Uuid};
 use worker::*;
 use regex::Regex;
+use worker::kv::KvError;
 use crate::api::{MojangApi, Profile, UsernameResolved};
 use crate::cache::*;
+
+trait IntoResponse {
+    fn into_response(self) -> worker::Result<worker::Response>;
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum XenosError {
@@ -54,8 +59,8 @@ pub enum XenosError {
     Cache(#[from] worker::kv::KvError),
 }
 
-impl XenosError {
-    pub fn into_response(self) -> worker::Result<worker::Response> {
+impl IntoResponse for XenosError {
+    fn into_response(self) -> worker::Result<worker::Response> {
         match self {
             XenosError::MojangTooManyRequests() => Response::error(
                 "too many requests",
@@ -260,12 +265,16 @@ pub async fn handle_profile(_req: Request, ctx: RouteContext<()>) -> worker::Res
     let user_id = match get_uuid(&ctx) {
         Ok(uuid) => uuid,
         Err(err) => {
+            console_log!("user id parse failed: {:?}", err);
             return err.into_response()
         }
     };
     match get_profile(&user_id, &ctx).await {
         Ok(profile) => Response::from_json(&profile),
-        Err(err) => err.into_response(),
+        Err(err) => {
+            console_log!("get profile failed: {:?}", err);
+            err.into_response()
+        },
     }
 }
 
