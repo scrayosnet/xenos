@@ -145,13 +145,16 @@ impl MojangApi {
             .get(url)
             .send_retry(self.max_tries).await;
         console_debug!("mojang response {:?}", response);
-        response
-            .map_err(|err| MojangError(err))?
-            .error_for_status()
-            .map_err(|err| MojangError(err))?
-            .error_for_no_content()?
-            .json().await
-            .map_err(|err| MojangError(err))
+        let resp = response
+            .map_err(|err| MojangError(err))?;
+        console_debug!("mojang response body {:?}", resp.text().await);
+        Err(InvalidUuid("debugging going on".to_string()))
+        //resp
+        //    .error_for_status()
+        //    .map_err(|err| MojangError(err))?
+        //    .error_for_no_content()?
+        //    .json().await
+        //    .map_err(|err| MojangError(err))
     }
 
     pub async fn get_image_bytes(&self, url: String) -> Result<Bytes, XenosError> {
