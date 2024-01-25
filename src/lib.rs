@@ -19,91 +19,25 @@
 //! See the [official API](https://wiki.vg/Mojang_API) for reference.
 
 mod api;
-mod retry;
 mod cache;
+mod error;
+mod retry;
 
-use std::collections::{BTreeMap, HashSet};
-use std::io::Cursor;
-use std::sync::{OnceLock};
-use image::{ColorType, GenericImageView, imageops, ImageOutputFormat};
-use reqwest::StatusCode;
-use uuid::{Uuid};
-use worker::*;
-use regex::Regex;
-use worker::kv::KvError;
 use crate::api::{MojangApi, Profile, UsernameResolved};
 use crate::cache::*;
+use crate::error::*;
+use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
+use lazy_static::lazy_static;
+use regex::Regex;
+use reqwest::StatusCode;
+use std::collections::{BTreeMap, HashMap};
+use std::io::Cursor;
+use uuid::Uuid;
+use worker::*;
 
-trait IntoResponse {
-    fn into_response(self) -> worker::Result<worker::Response>;
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum XenosError {
-    // binding errors
-    #[error("invalid uuid: {0}")]
-    InvalidUuid(String),
-    // mojang related errors
-    #[error("mojang: too many requests")]
-    MojangTooManyRequests(),
-    #[error("mojang: profile not found")]
-    MojangNotFound(),
-    #[error("mojang: request failed")]
-    MojangError(#[from] reqwest::Error),
-    #[error("invalid profile textures: {0}")]
-    MojangInvalidProfileTextures(String),
-    // cache errors
-    #[error("cache retrieve error")]
-    CacheRetrieve(#[from] worker::Error),
-    #[error("cache error")]
-    Cache(#[from] worker::kv::KvError),
-}
-
-impl IntoResponse for XenosError {
-    fn into_response(self) -> worker::Result<worker::Response> {
-        match self {
-            XenosError::MojangTooManyRequests() => Response::error(
-                "too many requests",
-                StatusCode::TOO_MANY_REQUESTS.as_u16(),
-            ),
-            XenosError::MojangNotFound() => Response::error(
-                "resource not found",
-                StatusCode::NOT_FOUND.as_u16(),
-            ),
-            XenosError::MojangError(inner) => Response::error(
-                inner.to_string(),
-                inner.status().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR).as_u16(),
-            ),
-            XenosError::InvalidUuid(str) => Response::error(
-                format!("invalid uuid: {}", str.to_string()),
-                StatusCode::BAD_REQUEST.as_u16(),
-            ),
-            XenosError::MojangInvalidProfileTextures(str) => Response::error(
-                format!("invalid profile textures: {}", str.to_string()),
-                StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-            ),
-            XenosError::CacheRetrieve(err) => Response::error(
-                err.to_string(),
-                StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-            ),
-            XenosError::Cache(_) => Response::error(
-                "cache error",
-                StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-            ),
-        }
-    }
-}
-
-// static mojang api
-fn mojang_api() -> &'static MojangApi {
-    static API: OnceLock<MojangApi> = OnceLock::new();
-    API.get_or_init(|| MojangApi::default())
-}
-
-// static mojang username regex
-fn username_regex() -> &'static Regex {
-    static USERNAME_REGEX: OnceLock<Regex> =  OnceLock::new();
-    USERNAME_REGEX.get_or_init(|| Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap())
+lazy_static! {
+    static ref MOJANG_API: MojangApi = MojangApi::default();
+    static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
 }
 
 /// Distributes the incoming requests from Cloudflare.
@@ -119,7 +53,60 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/profile/:uuid", handle_profile)
         .get_async("/skin/:uuid", handle_skin)
         .get_async("/head/:uuid", handle_head)
-        .run(req, env).await
+        .run(req, env)
+        .await
+}
+
+pub async fn handle_uuids(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let mut usernames: Vec<String> = match req.json().await {
+        Ok(usernames) => usernames,
+        Err(err) => return Response::error(err.to_string(), StatusCode::BAD_REQUEST.as_u16()),
+    };
+    usernames.sort();
+    usernames.dedup();
+    match get_uuids(&usernames, &ctx).await {
+        Ok(resolved) => Response::from_json(&resolved),
+        Err(err) => err.into_response(),
+    }
+}
+
+pub async fn handle_profile(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match get_uuid(&ctx) {
+        Ok(uuid) => uuid,
+        Err(err) => {
+            console_debug!("user id parse failed: {:?}", err);
+            return err.into_response();
+        }
+    };
+    match get_profile(&user_id, &ctx).await {
+        Ok(profile) => Response::from_json(&profile),
+        Err(err) => {
+            console_debug!("get profile failed: {:?}", err);
+            err.into_response()
+        }
+    }
+}
+
+pub async fn handle_skin(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match get_uuid(&ctx) {
+        Ok(uuid) => uuid,
+        Err(err) => return err.into_response(),
+    };
+    match get_skin(&user_id, &ctx).await {
+        Ok(skin_bytes) => Response::from_bytes(skin_bytes),
+        Err(err) => err.into_response(),
+    }
+}
+
+pub async fn handle_head(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match get_uuid(&ctx) {
+        Ok(uuid) => uuid,
+        Err(err) => return err.into_response(),
+    };
+    match get_head(&user_id, &ctx).await {
+        Ok(head_bytes) => Response::from_bytes(head_bytes),
+        Err(err) => err.into_response(),
+    }
 }
 
 /// Retrieves a deserialized unique identifier from a supplied route context.
@@ -132,174 +119,135 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 ///
 /// - pending (no value present, cannot be parsed)
 pub fn get_uuid(ctx: &RouteContext<()>) -> std::result::Result<Uuid, XenosError> {
-    let str = ctx.param("uuid")
+    let str = ctx
+        .param("uuid")
         .ok_or(XenosError::InvalidUuid("missing".to_string()))?;
-    Uuid::try_parse(str)
-        .map_err(|_err| XenosError::InvalidUuid(str.to_string()))
+    Uuid::try_parse(str).map_err(|_err| XenosError::InvalidUuid(str.to_string()))
 }
 
-pub async fn get_uuids(usernames: HashSet<String>, ctx: &RouteContext<()>) -> std::result::Result<Vec<UsernameResolved>, XenosError> {
-    let mut result = vec![];
-    let mut non_cached = vec![];
-    for username in usernames {
-        // filter invalid usernames
-        if !username_regex().is_match(username.as_str()) {
-            result.push(UsernameResolved {
-                id: Uuid::nil(),
-                name: username.to_lowercase(), // stores lower case name
-            });
+pub async fn get_uuids(
+    usernames: &[String],
+    ctx: &RouteContext<()>,
+) -> std::result::Result<Vec<UsernameResolved>, XenosError> {
+    // initialize with id not found
+    let mut uuids: HashMap<String, UsernameResolved> =
+        HashMap::from_iter(usernames.iter().map(|username| {
+            (
+                username.to_lowercase(),
+                UsernameResolved {
+                    name: username.to_lowercase(),
+                    id: Uuid::nil(),
+                },
+            )
+        }));
+
+    let mut cache_misses = vec![];
+    for (username, uuid) in uuids.iter_mut() {
+        // 1. filter invalid (regex)
+        if !USERNAME_REGEX.is_match(username.as_str()) {
             continue;
         }
-        // try to get from cache
-        let cached = ctx.get_user_id(&username).await?;
-        if let Some(res) = cached {
-            result.push(res);
+        // 2. get from cache
+        if let Some(res) = ctx.get_user_id(username).await? {
+            *uuid = res;
         } else {
-            non_cached.push(username);
+            cache_misses.push(username.clone())
         }
     }
-    console_log!("Got {} user_ids from cache", result.len());
 
-    if non_cached.is_empty() {
-        return Ok(result)
-    }
-
-    // otherwise get missing from mojang and add to cache
-    console_log!("Getting {} user_ids from mojang: {:?}", non_cached.len(), &non_cached);
-    let resolved_map: BTreeMap<_, _> = mojang_api()
-        .get_usernames(&non_cached).await?
-        .into_iter()
-        .map(|data| (data.name.to_lowercase(), data))
-        .collect();
-    for username in non_cached {
-        let res = match resolved_map.get(&username.to_lowercase()) {
-            None => UsernameResolved {
+    // 3. all others get from mojang in one request
+    if !cache_misses.is_empty() {
+        let found: BTreeMap<_, _> = MOJANG_API
+            .get_usernames(&cache_misses)
+            .await?
+            .into_iter()
+            .map(|data| (data.name.to_lowercase(), data))
+            .collect();
+        for username in cache_misses {
+            let res = found.get(&username).cloned().unwrap_or(UsernameResolved {
+                name: username.to_lowercase(),
                 id: Uuid::nil(),
-                name: username.clone(),
-            },
-            Some(res) => res.clone()
-        };
-        ctx.put_user_id(res.clone()).await?;
-        result.push(res);
+            });
+            uuids.insert(res.name.to_lowercase(), res.clone());
+            ctx.put_user_id(res).await?;
+        }
     }
-    Ok(result)
+
+    Ok(uuids.into_values().collect())
 }
 
-pub async fn get_profile(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Result<Profile, XenosError> {
+pub async fn get_profile(
+    user_id: &Uuid,
+    ctx: &RouteContext<()>,
+) -> std::result::Result<Profile, XenosError> {
     // try to get from cache
     let cached = ctx.get_profile(user_id).await?;
     if let Some(profile) = cached {
-        return Ok(profile)
+        return Ok(profile);
     }
     // otherwise get from mojang and add to cache
-    let profile = mojang_api()
-        .get_profile(user_id).await?;
+    let profile = MOJANG_API.get_profile(user_id).await?;
     ctx.put_profile(profile.clone()).await?;
     Ok(profile)
 }
 
-pub async fn get_skin(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Result<Vec<u8>, XenosError> {
+pub async fn get_skin(
+    user_id: &Uuid,
+    ctx: &RouteContext<()>,
+) -> std::result::Result<Vec<u8>, XenosError> {
     // try to get from cache
     let cached = ctx.get_skin(user_id).await?;
     if let Some(bytes) = cached {
-        return Ok(bytes)
+        return Ok(bytes);
     }
     // otherwise get from mojang and add to cache
-    let skin_url = get_profile(user_id, ctx).await?
+    let skin_url = get_profile(user_id, ctx)
+        .await?
         .get_textures()?
         .get_skin_url()
-        .ok_or(XenosError::MojangInvalidProfileTextures("missing skin".to_string()))?;
-    let bytes = mojang_api()
-        .get_image_bytes(skin_url).await?
-        .to_vec();
+        .ok_or(XenosError::MojangInvalidProfileTextures(
+            "missing skin".to_string(),
+        ))?;
+    let bytes = MOJANG_API.get_image_bytes(skin_url).await?.to_vec();
     ctx.put_skin(user_id, bytes.clone()).await?;
     Ok(bytes)
 }
 
-pub async fn get_head(user_id: &Uuid, ctx: &RouteContext<()>) -> std::result::Result<Vec<u8>, XenosError> {
+pub async fn get_head(
+    user_id: &Uuid,
+    ctx: &RouteContext<()>,
+) -> std::result::Result<Vec<u8>, XenosError> {
     // try to get from cache
     let cached = ctx.get_head(user_id).await?;
     if let Some(bytes) = cached {
-        return Ok(bytes)
+        return Ok(bytes);
     }
 
     // otherwise get from mojang and add to cache
     let skin_bytes = get_skin(user_id, ctx).await?;
 
     let skin_img = image::load_from_memory_with_format(&skin_bytes, image::ImageFormat::Png)
-        .map_err(|_err| XenosError::MojangInvalidProfileTextures("failed to read image bytes".to_string()))?;
+        .map_err(|_err| {
+            XenosError::MojangInvalidProfileTextures("failed to read image bytes".to_string())
+        })?;
 
-    let mut head_img = skin_img
-        .view(8, 8, 8, 8)
-        .to_image();
-    let overlay_head_img = skin_img
-        .view(40, 8, 8, 8)
-        .to_image();
+    let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
+    let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
     imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
 
     let mut head_bytes: Vec<u8> = Vec::new();
     let mut cur = Cursor::new(&mut head_bytes);
-    image::write_buffer_with_format(&mut cur, &head_img, 8, 8, ColorType::Rgba8, ImageOutputFormat::Png)
-        .map_err(|_err| XenosError::MojangInvalidProfileTextures("failed to write image bytes".to_string()))?;
+    image::write_buffer_with_format(
+        &mut cur,
+        &head_img,
+        8,
+        8,
+        ColorType::Rgba8,
+        ImageOutputFormat::Png,
+    )
+    .map_err(|_err| {
+        XenosError::MojangInvalidProfileTextures("failed to write image bytes".to_string())
+    })?;
     ctx.put_head(user_id, head_bytes.clone()).await?;
     Ok(head_bytes)
-}
-
-pub async fn handle_uuids(mut req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let usernames: Vec<String> = match req.json().await {
-        Ok(usernames) => usernames,
-        Err(_) => {
-            return Response::error("", StatusCode::BAD_REQUEST.as_u16())
-        }
-    };
-    let usernames_unique: HashSet<String> = usernames.iter()
-        .map(|str| str.to_lowercase())
-        .collect();
-    match get_uuids(usernames_unique, &ctx).await {
-        Ok(resolved) => Response::from_json(&resolved),
-        Err(err) => err.into_response()
-    }
-}
-
-pub async fn handle_profile(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id = match get_uuid(&ctx) {
-        Ok(uuid) => uuid,
-        Err(err) => {
-            console_debug!("user id parse failed: {:?}", err);
-            return err.into_response()
-        }
-    };
-    match get_profile(&user_id, &ctx).await {
-        Ok(profile) => Response::from_json(&profile),
-        Err(err) => {
-            console_debug!("get profile failed: {:?}", err);
-            err.into_response()
-        },
-    }
-}
-
-pub async fn handle_skin(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id = match get_uuid(&ctx) {
-        Ok(uuid) => uuid,
-        Err(err) => {
-            return err.into_response()
-        }
-    };
-    match get_skin(&user_id, &ctx).await {
-        Ok(skin_bytes) => Response::from_bytes(skin_bytes),
-        Err(err) => err.into_response(),
-    }
-}
-
-pub async fn handle_head(_req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let user_id = match get_uuid(&ctx) {
-        Ok(uuid) => uuid,
-        Err(err) => {
-            return err.into_response()
-        }
-    };
-    match get_head(&user_id, &ctx).await {
-        Ok(head_bytes) => Response::from_bytes(head_bytes),
-        Err(err) => err.into_response(),
-    }
 }

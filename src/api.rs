@@ -1,15 +1,14 @@
-use std::collections::{BTreeMap};
-use base64::Engine;
+use crate::error::XenosError;
+use crate::error::XenosError::*;
+use crate::retry::Retry;
 use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use bytes::Bytes;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
-use worker::{console_debug, console_log};
-use crate::XenosError;
-use crate::XenosError::*;
-use crate::retry::{Retry};
-
+use worker::console_debug;
 
 /// Represents a single Minecraft user profile with all current properties.
 ///
@@ -94,7 +93,7 @@ impl ErrorForNoContent for reqwest::Response {
     fn error_for_no_content(self) -> Result<reqwest::Response, XenosError> {
         match self.status() {
             StatusCode::NO_CONTENT => Err(MojangNotFound()),
-            _ => Ok(self)
+            _ => Ok(self),
         }
     }
 }
@@ -107,27 +106,29 @@ pub struct MojangApi {
 impl Default for MojangApi {
     fn default() -> Self {
         MojangApi {
-            client: reqwest::Client::builder()
-                .build()
-                .unwrap(),
+            client: reqwest::Client::builder().build().unwrap(),
             max_tries: 10,
         }
     }
 }
 
 impl MojangApi {
-
-    pub async fn get_usernames(&self, usernames: &Vec<String>) -> Result<Vec<UsernameResolved>, XenosError> {
+    pub async fn get_usernames(
+        &self,
+        usernames: &[String],
+    ) -> Result<Vec<UsernameResolved>, XenosError> {
         self.client
             .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
             .json(usernames)
-            .send_retry(self.max_tries).await
-            .map_err(|err| MojangError(err))?
+            .send_retry(self.max_tries)
+            .await
+            .map_err(MojangError)?
             .error_for_status()
-            .map_err(|err| MojangError(err))?
+            .map_err(MojangError)?
             .error_for_no_content()?
-            .json().await
-            .map_err(|err| MojangError(err))
+            .json()
+            .await
+            .map_err(MojangError)
     }
 
     /// Retrieves the Minecraft profile for a specific unique identifier.
@@ -140,57 +141,62 @@ impl MojangApi {
     ///
     /// - pending (profile does not exist, api rate limit, other http error)
     pub async fn get_profile(&self, user_id: &Uuid) -> Result<Profile, XenosError> {
-        let url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", user_id.simple());
-        let response = self.client
-            .get(url)
-            .send_retry(self.max_tries).await;
+        let url = format!(
+            "https://sessionserver.mojang.com/session/minecraft/profile/{}",
+            user_id.simple()
+        );
+        let response = self.client.get(url).send_retry(self.max_tries).await;
         console_debug!("mojang response {:?}", response);
-        let resp = response
-            .map_err(|err| MojangError(err))?;
-        console_debug!("mojang response body {:?}", resp.text().await);
-        Err(InvalidUuid("debugging going on".to_string()))
-        //resp
-        //    .error_for_status()
-        //    .map_err(|err| MojangError(err))?
-        //    .error_for_no_content()?
-        //    .json().await
-        //    .map_err(|err| MojangError(err))
+        let resp = response.map_err(MojangError)?;
+        //console_debug!("mojang response body {:?}", resp.text().await);
+        //Err(InvalidUuid("debugging going on".to_string()))
+        resp.error_for_status()
+            .map_err(MojangError)?
+            .error_for_no_content()?
+            .json()
+            .await
+            .map_err(MojangError)
     }
 
     pub async fn get_image_bytes(&self, url: String) -> Result<Bytes, XenosError> {
         self.client
             .get(url.clone())
-            .send_retry(self.max_tries).await
-            .map_err(|err| MojangError(err))?
+            .send_retry(self.max_tries)
+            .await
+            .map_err(MojangError)?
             .error_for_status()
-            .map_err(|err| MojangError(err))?
+            .map_err(MojangError)?
             .error_for_no_content()?
-            .bytes().await
-            .map_err(|err| MojangError(err))
+            .bytes()
+            .await
+            .map_err(MojangError)
     }
 }
 
 impl Profile {
     pub fn get_textures(&self) -> Result<TexturesProperty, XenosError> {
-        let prop = self.properties
+        let prop = self
+            .properties
             .iter()
             .find(|prop| prop.name == "textures".to_string())
-            .ok_or(XenosError::MojangInvalidProfileTextures("missing".to_string()))?;
+            .ok_or(XenosError::MojangInvalidProfileTextures(
+                "missing".to_string(),
+            ))?;
         Profile::parse_texture_prop(prop.value.clone())
     }
 
     fn parse_texture_prop(b64: String) -> Result<TexturesProperty, XenosError> {
-        let json = BASE64_STANDARD.decode(b64)
-            .map_err(|_err| XenosError::MojangInvalidProfileTextures("base64 decode failed".to_string()))?;
-        serde_json::from_slice::<TexturesProperty>(&json)
-            .map_err(|_err| XenosError::MojangInvalidProfileTextures("json decode failed".to_string()))
+        let json = BASE64_STANDARD.decode(b64).map_err(|_err| {
+            XenosError::MojangInvalidProfileTextures("base64 decode failed".to_string())
+        })?;
+        serde_json::from_slice::<TexturesProperty>(&json).map_err(|_err| {
+            XenosError::MojangInvalidProfileTextures("json decode failed".to_string())
+        })
     }
 }
 
 impl TexturesProperty {
     pub fn get_skin_url(&self) -> Option<String> {
-        self.textures
-            .get("SKIN")
-            .map(|texture| texture.url.clone())
+        self.textures.get("SKIN").map(|texture| texture.url.clone())
     }
 }

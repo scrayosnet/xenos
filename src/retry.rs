@@ -1,6 +1,6 @@
-use std::time::Duration;
 use async_std::task;
-use reqwest::{Result, Response};
+use reqwest::{Response, Result};
+use std::time::Duration;
 
 pub(crate) trait Retry {
     async fn send_retry(self, retries: u8) -> Result<Response>;
@@ -11,12 +11,9 @@ impl Retry for reqwest::RequestBuilder {
         let mut tries = 0;
         loop {
             tries += 1;
-            let response = self
-                .try_clone()
-                .unwrap()
-                .send().await;
+            let response = self.try_clone().unwrap().send().await;
             if response.is_ok() || tries >= max_tries {
-                return response
+                return response;
             }
             // sleep for 100ms (per iteration) before trying again
             task::sleep(Duration::from_millis(tries as u64 * 100)).await;
