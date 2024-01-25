@@ -42,11 +42,11 @@ impl IntoResponse for XenosError {
                     .as_u16(),
             ),
             XenosError::InvalidUuid(str) => worker::Response::error(
-                format!("invalid uuid: {}", str.to_string()),
+                format!("invalid uuid: {}", str),
                 StatusCode::BAD_REQUEST.as_u16(),
             ),
             XenosError::MojangInvalidProfileTextures(str) => worker::Response::error(
-                format!("invalid profile textures: {}", str.to_string()),
+                format!("invalid profile textures: {}", str),
                 StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             ),
             XenosError::CacheRetrieve(err) => {

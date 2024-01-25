@@ -7,7 +7,7 @@ use worker::{console_debug, RouteContext};
 
 pub trait XenosCache {
     // usernames cache
-    async fn get_user_id(&self, username: &String) -> Result<Option<UsernameResolved>, XenosError>;
+    async fn get_user_id(&self, username: &str) -> Result<Option<UsernameResolved>, XenosError>;
     async fn put_user_id(&self, username: UsernameResolved) -> Result<(), XenosError>;
     // profile cache
     async fn get_profile(&self, user_id: &Uuid) -> Result<Option<Profile>, XenosError>;
@@ -25,13 +25,12 @@ async fn get<T: DeserializeOwned>(
     key: &str,
 ) -> Result<Option<T>, XenosError> {
     console_debug!("Getting cache for '{}_{}'", prefix, key);
-    Ok(ctx
-        .kv("xenos")
-        .map_err(|err| XenosError::CacheRetrieve(err))?
-        .get(&*format!("{}_{}", prefix, key))
+    ctx.kv("xenos")
+        .map_err(XenosError::CacheRetrieve)?
+        .get(&format!("{}_{}", prefix, key))
         .json()
         .await
-        .map_err(|err| XenosError::Cache(err))?)
+        .map_err(XenosError::Cache)
 }
 
 async fn put<T: Serialize>(
@@ -42,15 +41,14 @@ async fn put<T: Serialize>(
     ttl: u64,
 ) -> Result<(), XenosError> {
     console_debug!("Putting cache for '{}_{}'", prefix, key);
-    Ok(ctx
-        .kv("xenos")
-        .map_err(|err| XenosError::CacheRetrieve(err))?
-        .put(&*format!("{}_{}", prefix, key), val)
-        .map_err(|err| XenosError::Cache(err))?
+    ctx.kv("xenos")
+        .map_err(XenosError::CacheRetrieve)?
+        .put(&format!("{}_{}", prefix, key), val)
+        .map_err(XenosError::Cache)?
         .expiration_ttl(ttl)
         .execute()
         .await
-        .map_err(|err| XenosError::Cache(err))?)
+        .map_err(XenosError::Cache)
 }
 
 async fn get_bytes(
@@ -59,13 +57,12 @@ async fn get_bytes(
     key: &str,
 ) -> Result<Option<Vec<u8>>, XenosError> {
     console_debug!("Getting cache for '{}_{}'", prefix, key);
-    Ok(ctx
-        .kv("xenos")
-        .map_err(|err| XenosError::CacheRetrieve(err))?
-        .get(&*format!("{}_{}", prefix, key))
+    ctx.kv("xenos")
+        .map_err(XenosError::CacheRetrieve)?
+        .get(&format!("{}_{}", prefix, key))
         .bytes()
         .await
-        .map_err(|err| XenosError::Cache(err))?)
+        .map_err(XenosError::Cache)
 }
 
 async fn put_bytes(
@@ -76,19 +73,18 @@ async fn put_bytes(
     ttl: u64,
 ) -> Result<(), XenosError> {
     console_debug!("Putting cache for '{}_{}'", prefix, key);
-    Ok(ctx
-        .kv("xenos")
-        .map_err(|err| XenosError::CacheRetrieve(err))?
-        .put_bytes(&*format!("{}_{}", prefix, key), val)
-        .map_err(|err| XenosError::Cache(err))?
+    ctx.kv("xenos")
+        .map_err(XenosError::CacheRetrieve)?
+        .put_bytes(&format!("{}_{}", prefix, key), val)
+        .map_err(XenosError::Cache)?
         .expiration_ttl(ttl)
         .execute()
         .await
-        .map_err(|err| XenosError::Cache(err))?)
+        .map_err(XenosError::Cache)
 }
 
 impl XenosCache for RouteContext<()> {
-    async fn get_user_id(&self, username: &String) -> Result<Option<UsernameResolved>, XenosError> {
+    async fn get_user_id(&self, username: &str) -> Result<Option<UsernameResolved>, XenosError> {
         get(self, "username", username.to_lowercase().as_str()).await
     }
 

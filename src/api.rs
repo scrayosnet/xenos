@@ -178,7 +178,7 @@ impl Profile {
         let prop = self
             .properties
             .iter()
-            .find(|prop| prop.name == "textures".to_string())
+            .find(|prop| prop.name == *"textures")
             .ok_or(XenosError::MojangInvalidProfileTextures(
                 "missing".to_string(),
             ))?;
