@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package grpc.service;
+
+message UuidRequest {
+  repeated string usernames = 1;
+}
+
+message UuidResolved {
+  uint64 timestamp = 1; // in seconds
+  string username = 2;
+  string uuid = 3;
+}
+
+message UuidResponse {
+  repeated UuidResolved resolved = 1;
+}
+
+message ProfileRequest {
+  string uuid = 1;
+}
+
+message ProfileProperty {
+  string name = 1;
+  string value = 2;
+  optional string signature = 3;
+}
+
+message ProfileResponse {
+  uint64 timestamp = 1; // in seconds
+  string uuid = 2;
+  string name = 3;
+  repeated ProfileProperty properties = 4;
+  repeated string profile_actions = 5;
+}
+
+message SkinRequest {
+  string uuid = 1;
+}
+
+message SkinResponse {
+  uint64 timestamp = 1; // in seconds
+  bytes data = 2;
+}
+
+message HeadRequest {
+  string uuid = 1;
+}
+
+message HeadResponse {
+  uint64 timestamp = 1; // in seconds
+  bytes data = 2;
+}
+
+service Xenos {
+  rpc Uuids(UuidRequest) returns (UuidResponse) {}
+  rpc Profile(ProfileRequest) returns (ProfileResponse) {}
+  rpc Skin(SkinRequest) returns (SkinResponse) {}
+  rpc Head(HeadRequest) returns (HeadResponse) {}
+}

@@ -2,40 +2,38 @@
 name = "xenos"
 description = "Minecraft Profile Information Proxy"
 version = "0.1.0"
-authors = ["Joshua Dean Küpper <admin@joshua-kuepper.de>"]
+authors = [
+    "Joshua Dean Küpper <admin@joshua-kuepper.de>",
+    "Paul Wagner <contact@paulwagner.dev>"
+]
 license = "MIT"
 repository = "https://github.com/scrayosnet/xenos/"
 readme = "README.md"
 documentation = "https://github.com/scrayosnet/xenos/"
 homepage = "https://xenos.scrayos.net/"
-keywords = ["minecraft", "gamedev", "profile", "query", "cloudflare-workers"]
+keywords = ["minecraft", "gamedev", "profile", "query", "grpc"]
 edition = "2021"
 
-# https://github.com/rustwasm/wasm-pack/issues/1247
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+[dependencies]
+prost = "0.12"
+prost-types = { version = "0.12.3" }
+redis = { version = "0.24", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"] }
+tokio = { version = "1.35", features = ["full"] }
+tonic = "0.10"
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "1.7", features = ["v4", "serde"] }
+thiserror = "1.0"
+regex = "1.10"
+base64 = "0.21"
+image = "0.24"
+lazy_static = "1.4"
+serde_json = "1.0"
+bytes = "1.5.0"
+tower = "0.4.13"
+hyper = "1.1"
+futures = "0.3.30"
+async-trait = "0.1.77"
 
-[lib]
-crate-type = ["cdylib"]
-
-[profile.release]
-lto = true
-strip = true
-codegen-units = 1
-
-[dependencies.worker]
-version = "0.0.18"
-
-[dependencies.reqwest]
-version = "0.11.23"
-features = ["json"]
-
-[dependencies.uuid]
-version = "1.6.1"
-features = ["macro-diagnostics", "js", "serde"]
-
-[dependencies.serde]
-version = "1.0.195"
-
-[dependencies.serde_json]
-version = "1.0.111"
+[build-dependencies]
+tonic-build = { version = "0.10", features = ["prost"] }

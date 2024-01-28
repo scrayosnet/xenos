@@ -6,7 +6,7 @@
 ![A visual badge for the license](https://img.shields.io/github/license/scrayosnet/xenos "License")
 
 Xenos is a Minecraft profile data proxy that can be used as an ultra-fast replacement for the
-official [Mojang API][mojang-api-docs] on [cloudflare-workers][cloudflare-workers] or [Kubernetes][kubernetes].
+official [Mojang API][mojang-api-docs] on [Kubernetes][kubernetes].
 
 *The name "Xenos" is derived from the Greek word xénos which means something like "stranger" or "guest
 friend" ([source][name-source]). That alludes to the process of profile resolution by which strangers become known
@@ -73,8 +73,6 @@ on what that means.
 [contributing-guide]: CONTRIBUTING.md
 
 [mit-license-doc]: https://choosealicense.com/licenses/mit/
-
-[cloudflare-workers]: https://developers.cloudflare.com/workers/
 
 [^1]: Provided you're attaching enough different IP addresses to Xenos to sustain lookup bursts. Xenos will distribute
 its requests with Round-Robin until it runs out of tickets. The API is currently limited to 600 requests per 10 minutes.
