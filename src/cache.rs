@@ -163,7 +163,7 @@ pub struct RedisCache {
 }
 
 pub fn build_key(ns: &str, sub: &str) -> String {
-    format!("jc.haimdall.{ns}.{sub}")
+    format!("xenos.{ns}.{sub}")
 }
 
 #[async_trait]
