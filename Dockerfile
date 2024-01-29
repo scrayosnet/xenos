@@ -1,17 +1,34 @@
-FROM rust:alpine3.19 as builder
+FROM rust:alpine@sha256:9af4ed962405e24b37240ce34a2272e40cff99b4f5150cc6a53b03f95d40e6e0 AS builder
 
-WORKDIR /usr/src/haimdall
+# specify our build directory
+WORKDIR /usr/src/xenos
 
+# copy the source files into the engine
 COPY . .
 
-RUN cargo install --path .
+# install dev dependencies and perform build process
+RUN set -eux \
+ && apk add --no-cache musl-dev protoc protobuf-dev libressl-dev \
+ && cargo install --path .
 
-FROM debian:bullseye-slim
 
-RUN apt-get update && apt-get install -y extra-runtime-dependencies && rm -rf /var/lib/apt/lists/*
+FROM scratch
 
-COPY --from=builder /usr/local/cargo/bin/haimdall /usr/local/bin/haimdall
-
+# declare our ports that we allow for interacting with xenos
 EXPOSE 50051
 
-CMD ["haimdall"]
+# copy the raw binary into the new container
+COPY --from=builder "/usr/local/cargo/bin/xenos" "/xenos"
+
+# copy the users and groups for the nobody user and group
+COPY --from=builder "/etc/passwd" "/etc/passwd"
+COPY --from=builder "/etc/group" "/etc/group"
+
+# copy the certificate storage for Mojang API authentication
+COPY --from=builder "/etc/ssl/certs/ca-certificates.crt" "/etc/ssl/certs/"
+
+# we run with minimum permissions as the nobody user
+USER nobody:nobody
+
+# just execute the raw binary without any wrapper
+ENTRYPOINT ["/xenos"]

@@ -1,4 +1,5 @@
-.github
-.gitignore
-*.md
-LICENSE
+*
+!build.rs
+!Cargo.toml
+!src
+!proto
