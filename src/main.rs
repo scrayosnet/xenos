@@ -1,6 +1,7 @@
 use std::env;
 use tokio::sync::Mutex;
 use tonic::transport::Server;
+use tonic_health::server::health_reporter;
 use xenos::cache::RedisCache;
 use xenos::mojang::Mojang;
 use xenos::service::pb::xenos_server::XenosServer;
@@ -24,8 +25,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = XenosService { cache, mojang };
     let svc = XenosServer::new(service);
 
-    let addr = addr_str.parse().unwrap();
+    // build grpc health reporter
+    let (mut health_reporter, health_service) = health_reporter();
+    health_reporter
+        .set_serving::<XenosServer<XenosService>>()
+        .await;
+
+    let addr = addr_str.parse().expect("redis address invalid format");
     println!("XenosServer listening on {}", addr);
-    Server::builder().add_service(svc).serve(addr).await?;
+    Server::builder()
+        .add_service(health_service)
+        .add_service(svc)
+        .serve(addr)
+        .await?;
     Ok(())
 }
