@@ -1,19 +1,26 @@
 syntax = "proto3";
 
-package grpc.service;
+package scrayosnet.xenos;
+
+service Xenos {
+    rpc Uuids(UuidRequest) returns (UuidResponse);
+    rpc Profile(ProfileRequest) returns (ProfileResponse);
+    rpc Skin(SkinRequest) returns (SkinResponse);
+    rpc Head(HeadRequest) returns (HeadResponse);
+}
 
 message UuidRequest {
   repeated string usernames = 1;
 }
 
-message UuidResolved {
+message UuidResult {
   uint64 timestamp = 1; // in seconds
   string username = 2;
   string uuid = 3;
 }
 
 message UuidResponse {
-  repeated UuidResolved resolved = 1;
+  repeated UuidResult resolved = 1;
 }
 
 message ProfileRequest {
@@ -50,11 +57,4 @@ message HeadRequest {
 message HeadResponse {
   uint64 timestamp = 1; // in seconds
   bytes data = 2;
-}
-
-service Xenos {
-  rpc Uuids(UuidRequest) returns (UuidResponse) {}
-  rpc Profile(ProfileRequest) returns (ProfileResponse) {}
-  rpc Skin(SkinRequest) returns (SkinResponse) {}
-  rpc Head(HeadRequest) returns (HeadResponse) {}
 }

@@ -1,5 +1,5 @@
 pub mod pb {
-    tonic::include_proto!("grpc.service");
+    tonic::include_proto!("scrayosnet.xenos");
 }
 
 use crate::cache;
@@ -15,7 +15,7 @@ use crate::util::{get_epoch_seconds, has_elapsed};
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use pb::xenos_server::Xenos;
-use pb::{UuidRequest, UuidResolved, UuidResponse};
+use pb::{UuidRequest, UuidResult, UuidResponse};
 use regex::Regex;
 use reqwest::StatusCode;
 use std::collections::HashMap;
@@ -265,7 +265,7 @@ impl Xenos for XenosService {
 
         let resolved = uuids
             .into_iter()
-            .map(|entry| UuidResolved {
+            .map(|entry| UuidResult {
                 timestamp: entry.timestamp,
                 username: entry.username,
                 uuid: entry.uuid.simple().to_string(),

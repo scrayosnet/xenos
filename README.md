@@ -1,8 +1,9 @@
 ![The official Logo of Xenos](.github/images/logo.png "Xenos")
 
 ![A visual badge for the latest release](https://img.shields.io/github/v/release/scrayosnet/xenos "Latest Release")
-![A visual badge for the code quality](https://img.shields.io/scrutinizer/quality/g/scrayosnet/xenos "Code Quality")
-![A visual badge for the coverage](https://img.shields.io/scrutinizer/coverage/g/scrayosnet/xenos "Coverage")
+![A visual badge for the workflow status](https://img.shields.io/github/actions/workflow/status/scrayosnet/xenos/docker.yaml "Workflow Status")
+![A visual badge for the dependency status](https://img.shields.io/librariesio/github/scrayosnet/xenos "Dependencies")
+![A visual badge for the Docker image size](https://img.shields.io/docker/image-size/scrayosug/xenos "Image Size")
 ![A visual badge for the license](https://img.shields.io/github/license/scrayosnet/xenos "License")
 
 Xenos is a Minecraft profile data proxy that can be used as an ultra-fast replacement for the
@@ -23,12 +24,22 @@ like [MineTools][minetools-docs], Xenos introduces little to no additional laten
 latency-optimized responses to communicate with the services. It is meant to completely replace any kind of internal
 caching and always use the API instead for inter process communication.
 
+The differences between Xenos and serverless solutions like [Crafthead][crafthead-docs] are, that Xenos is deployed on
+your own infrastructure to minimize latency, Xenos uses your own IPs regarding the rate-limit and you'll have more
+over what requests are performed, that Xenos is based on gRPC to cut down API response times even further and that
+Xenos will always try to return a value, even if only outdated data is available.
+
+Therefore, Xenos is a reliable service, offering high-availability for Mojang API calls. It offers all the standard
+Mojang APIs and will even be able to proxy authentication requests in the future.
+
 ## Major Features
 
-* Perform [HTTP REST][rest-docs] lookups for profile information.
+* Perform [gRPC][grpc-docs] and [HTTP REST][rest-docs] lookups for profile information.
 * Do not worry about rate limits or caching at all! [^1]
 * Get best-in-class caching inbuilt and always request Xenos with very low latency.
 * Set Xenos up with replication, to get high availability.
+* Supply data in any representation without converting it first (dashed vs non-dashed UUIDs).
+* Fall back to retrieving cached data, if the Mojang API is currently not available.
 * Store resolved information to allow for grace periods for the resolution between name changes!
 
 ## Getting started
@@ -61,6 +72,8 @@ on what that means.
 [name-source]: https://en.wikipedia.org/wiki/Xenos_(Greek)
 
 [minetools-docs]: https://api.minetools.eu/
+
+[crafthead-docs]: https://crafthead.net/
 
 [grpc-docs]: https://grpc.io/
 
