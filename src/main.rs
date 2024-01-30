@@ -10,7 +10,7 @@ use xenos::service::XenosService;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read configuration from environment
-    let addr_str = env::var("SERVER_ADDR").unwrap_or("0.0.0.0:50052".to_string());
+    let addr_str = env::var("SERVER_ADDR").unwrap_or("0.0.0.0:50051".to_string());
     let redis_str = env::var("REDIS_ADDR").expect("redis address required");
 
     // build redis client and cache
