@@ -5,7 +5,7 @@ please allow us some time to implement the necessary changes.
 
 ## Reporting a Vulnerability
 
-Please report (suspected) security vulnerabilities to **[security@scrayos-net](mailto:security@scrayos.net)** and do not
+Please report (suspected) security vulnerabilities to **[security@scrayos.net](mailto:security@scrayos.net)** and do not
 use the regular GitHub issues. You will receive a response from us within 48 hours. If the issue is confirmed, we will
 release a patch as soon as possible, depending on the complexity and severity. If you do not hear from us, please follow
 up to confirm, we received your original message.
