@@ -9,7 +9,7 @@ COPY . .
 # install dev dependencies and perform build process
 RUN set -eux \
  && apk add --no-cache musl-dev protoc protobuf-dev libressl-dev \
- && cargo install --path .
+ && cargo build --release
 
 
 FROM scratch
@@ -18,14 +18,11 @@ FROM scratch
 EXPOSE 50051
 
 # copy the raw binary into the new container
-COPY --from=builder "/usr/local/cargo/bin/xenos" "/xenos"
+COPY --from=builder "/usr/src/xenos/target/release/xenos" "/xenos"
 
 # copy the users and groups for the nobody user and group
 COPY --from=builder "/etc/passwd" "/etc/passwd"
 COPY --from=builder "/etc/group" "/etc/group"
-
-# copy the certificate storage for Mojang API authentication
-COPY --from=builder "/etc/ssl/certs/ca-certificates.crt" "/etc/ssl/certs/"
 
 # we run with minimum permissions as the nobody user
 USER nobody:nobody
