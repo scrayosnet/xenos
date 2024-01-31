@@ -4,7 +4,7 @@ use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use xenos::cache::RedisCache;
 use xenos::mojang::Mojang;
-use xenos::service::pb::xenos_server::XenosServer;
+use xenos::service::pb::profile_server::ProfileServer;
 use xenos::service::XenosService;
 
 #[tokio::main]
@@ -23,19 +23,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // build grpc service
     let service = XenosService { cache, mojang };
-    let svc = XenosServer::new(service);
+    let profile_service = ProfileServer::new(service);
 
     // build grpc health reporter
     let (mut health_reporter, health_service) = health_reporter();
     health_reporter
-        .set_serving::<XenosServer<XenosService>>()
+        .set_serving::<ProfileServer<XenosService>>()
         .await;
 
     let addr = addr_str.parse().expect("listen address invalid format");
     println!("Xenos listening on {}", addr);
     Server::builder()
         .add_service(health_service)
-        .add_service(svc)
+        .add_service(profile_service)
         .serve(addr)
         .await?;
     Ok(())

@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package scrayosnet.xenos;
+
+// Profile is the service responsible for profile information lookup. It also contains information about the player skin
+// and other properties of the profile.
+service Profile {
+    // Get the Minecraft UUIDs for specific usernames.
+    rpc GetUuids(UuidRequest) returns (UuidResponse);
+
+    // Get the Minecraft Profile for a specific UUID.
+    rpc GetProfile(ProfileRequest) returns (ProfileResponse);
+
+    // Get the Minecraft Skin for a specific UUID.
+    rpc GetSkin(SkinRequest) returns (SkinResponse);
+
+    // Get the Minecraft Head for a specific UUID.
+    rpc GetHead(HeadRequest) returns (HeadResponse);
+}
+
+// UuidRequest is a request of the Minecraft UUIDs of specific, case-insensitive usernames.
+message UuidRequest {
+    // The individual, case-insensitive usernames whose UUIDs should be queried.
+    repeated string usernames = 1;
+}
+
+// UuidResult is an individual result of the Minecraft UUID resolution.
+message UuidResult {
+    // The unix timestamp (in seconds) at which the returned data was last updated.
+    uint64 timestamp = 1;
+    // The username with correct capitalization.
+    string username = 2;
+    // The UUID in hyphenated form.
+    string uuid = 3;
+}
+
+// UuidResponse is a response with the Minecraft UUIDs of the requested usernames.
+message UuidResponse {
+    // The individual results of the requested usernames.
+    repeated UuidResult resolved = 1;
+}
+
+// ProfileRequest is a request of the Minecraft Profile of a specific UUID.
+message ProfileRequest {
+    // The UUID in simple or hyphenated form whose Minecraft Profile should be queried.
+    string uuid = 1;
+}
+
+// ProfileProperty is a single property of a Minecraft Profile, that is possibly signed.
+message ProfileProperty {
+    // The unique name of the property within the Minecraft Profile.
+    string name = 1;
+    // The value of the property that contains the real information.
+    string value = 2;
+    // The optional Yggdrasil signature to verify the authenticity and integrity.
+    optional string signature = 3;
+}
+
+// ProfileResponse is a response with the Minecraft Profile of the requested UUID.
+message ProfileResponse {
+    // The unix timestamp (in seconds) at which the returned data was last updated.
+    uint64 timestamp = 1;
+    // The UUID of the Minecraft Profile in hyphenated form.
+    string uuid = 2;
+    // The username with correct capitalization.
+    string name = 3;
+    // The individual properties of attached information for this profile.
+    repeated ProfileProperty properties = 4;
+    // The moderative actions/sanctions that have been imposed on this Minecraft Profile.
+    repeated string profile_actions = 5;
+}
+
+// SkinRequest is a request of the Skin texture of a specific UUID.
+message SkinRequest {
+    // The UUID in simple or hyphenated form whose Minecraft Skin should be queried.
+    string uuid = 1;
+}
+
+// SkinResponse is a response with the Skin texture of the requested UUID.
+message SkinResponse {
+    // The unix timestamp (in seconds) at which the returned data was last updated.
+    uint64 timestamp = 1;
+    // The binary data of the 64x64 PNG image of the player's Skin.
+    bytes data = 2;
+}
+
+// HeadRequest is a request of the Head texture of a specific UUID.
+message HeadRequest {
+    // The UUID in simple or hyphenated form whose Minecraft Head should be queried.
+    string uuid = 1;
+    // Whether the overlay layer should be added to the texture.
+    bool overlay = 2;
+}
+
+// HeadResponse is a response with the Head texture of the requested UUID.
+message HeadResponse {
+    // The unix timestamp (in seconds) at which the returned data was last updated.
+    uint64 timestamp = 1;
+    // The binary data of the 8x8 PNG image of the player's Head.
+    bytes data = 2;
+}

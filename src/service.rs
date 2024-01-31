@@ -14,7 +14,7 @@ use crate::service::pb::{
 use crate::util::{get_epoch_seconds, has_elapsed};
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
-use pb::xenos_server::Xenos;
+use pb::profile_server::Profile;
 use pb::{UuidRequest, UuidResult, UuidResponse};
 use regex::Regex;
 use reqwest::StatusCode;
@@ -38,7 +38,7 @@ pub struct XenosService {
 }
 
 impl XenosService {
-    async fn get_uuids(&self, usernames: &[String]) -> Result<Vec<UuidEntry>, XenosError> {
+    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UuidEntry>, XenosError> {
         // 1. initialize with uuid not found
         let mut uuids: HashMap<String, UuidEntry> =
             HashMap::from_iter(usernames.iter().map(|username| {
@@ -83,7 +83,7 @@ impl XenosService {
                     return match err.status() {
                         Some(StatusCode::TOO_MANY_REQUESTS) => Ok(uuids.into_values().collect()),
                         _ => Err(Reqwest(err)),
-                    }
+                    };
                 }
                 Err(err) => return Err(err),
             };
@@ -110,7 +110,7 @@ impl XenosService {
         Ok(uuids.into_values().collect())
     }
 
-    async fn get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
+    async fn fetch_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
         // return cached if not elapsed
         let cached = match self.cache.lock().await.get_profile_by_uuid(uuid).await? {
             None => None,
@@ -130,7 +130,7 @@ impl XenosService {
                     Some(StatusCode::TOO_MANY_REQUESTS) => cached.ok_or(NotRetrieved),
                     Some(StatusCode::NOT_FOUND) => Err(NotFound),
                     _ => Err(Reqwest(err)),
-                }
+                };
             }
             Err(err) => return Err(err),
         };
@@ -157,7 +157,7 @@ impl XenosService {
         Ok(entry)
     }
 
-    async fn get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
+    async fn fetch_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
         let cached = match self.cache.lock().await.get_skin_by_uuid(uuid).await? {
             None => None,
             Some(entry) => {
@@ -168,7 +168,7 @@ impl XenosService {
             }
         };
 
-        let profile = match self.get_profile(uuid).await {
+        let profile = match self.fetch_profile(uuid).await {
             Ok(profile) => profile,
             Err(NotRetrieved) => return cached.ok_or(NotRetrieved),
             Err(err) => return Err(err),
@@ -186,7 +186,7 @@ impl XenosService {
                     Some(StatusCode::TOO_MANY_REQUESTS) => cached.ok_or(NotRetrieved),
                     Some(StatusCode::NOT_FOUND) => Err(NotFound),
                     _ => Err(Reqwest(err)),
-                }
+                };
             }
             Err(err) => return Err(err),
         };
@@ -203,8 +203,8 @@ impl XenosService {
         Ok(entry)
     }
 
-    async fn get_head(&self, uuid: &Uuid) -> Result<HeadEntry, XenosError> {
-        let cached = match self.cache.lock().await.get_head_by_uuid(uuid).await? {
+    async fn fetch_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
+        let cached = match self.cache.lock().await.get_head_by_uuid(uuid, overlay).await? {
             None => None,
             Some(entry) => {
                 if !has_elapsed(&entry.timestamp, &CACHE_TIME) {
@@ -214,7 +214,7 @@ impl XenosService {
             }
         };
 
-        let skin = match self.get_skin(uuid).await {
+        let skin = match self.fetch_skin(uuid).await {
             Ok(profile) => profile,
             Err(NotRetrieved) => return cached.ok_or(NotRetrieved),
             Err(err) => return Err(err),
@@ -222,8 +222,10 @@ impl XenosService {
 
         let skin_img = image::load_from_memory_with_format(&skin.bytes, image::ImageFormat::Png)?;
         let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
-        let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
-        imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
+        if *overlay {
+            let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
+            imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
+        }
 
         let mut head_bytes: Vec<u8> = Vec::new();
         let mut cur = Cursor::new(&mut head_bytes);
@@ -244,7 +246,7 @@ impl XenosService {
         self.cache
             .lock()
             .await
-            .set_head_by_uuid(entry.clone())
+            .set_head_by_uuid(entry.clone(), overlay)
             .await?;
         Ok(entry)
     }
@@ -255,10 +257,10 @@ fn parse_uuid(str: &str) -> Result<Uuid, Status> {
 }
 
 #[tonic::async_trait]
-impl Xenos for XenosService {
-    async fn uuids(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
+impl Profile for XenosService {
+    async fn get_uuids(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
         let usernames = request.into_inner().usernames;
-        let uuids = match self.get_uuids(&usernames).await {
+        let uuids = match self.fetch_uuids(&usernames).await {
             Ok(uuids) => uuids,
             Err(err) => return Err(Status::internal(err.to_string())),
         };
@@ -268,19 +270,19 @@ impl Xenos for XenosService {
             .map(|entry| UuidResult {
                 timestamp: entry.timestamp,
                 username: entry.username,
-                uuid: entry.uuid.simple().to_string(),
+                uuid: entry.uuid.hyphenated().to_string(),
             })
             .collect();
         Ok(Response::new(UuidResponse { resolved }))
     }
 
-    async fn profile(
+    async fn get_profile(
         &self,
         request: Request<ProfileRequest>,
     ) -> Result<Response<ProfileResponse>, Status> {
         let uuid = parse_uuid(&request.into_inner().uuid)?;
         // get profile
-        let profile = match self.get_profile(&uuid).await {
+        let profile = match self.fetch_profile(&uuid).await {
             Ok(profile) => profile,
             Err(NotFound) | Err(NoContent) => return Err(Status::not_found("profile not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
@@ -289,7 +291,7 @@ impl Xenos for XenosService {
         // build response
         let response = ProfileResponse {
             timestamp: profile.timestamp,
-            uuid: profile.uuid.simple().to_string(),
+            uuid: profile.uuid.hyphenated().to_string(),
             name: profile.name,
             properties: profile
                 .properties
@@ -305,10 +307,10 @@ impl Xenos for XenosService {
         Ok(Response::new(response))
     }
 
-    async fn skin(&self, request: Request<SkinRequest>) -> Result<Response<SkinResponse>, Status> {
+    async fn get_skin(&self, request: Request<SkinRequest>) -> Result<Response<SkinResponse>, Status> {
         let uuid = parse_uuid(&request.into_inner().uuid)?;
         // get skin
-        let skin = match self.get_skin(&uuid).await {
+        let skin = match self.fetch_skin(&uuid).await {
             Ok(skin) => skin,
             Err(NotFound) | Err(NoContent) => return Err(Status::not_found("skin not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
@@ -322,10 +324,12 @@ impl Xenos for XenosService {
         Ok(Response::new(response))
     }
 
-    async fn head(&self, request: Request<HeadRequest>) -> Result<Response<HeadResponse>, Status> {
-        let uuid = parse_uuid(&request.into_inner().uuid)?;
+    async fn get_head(&self, request: Request<HeadRequest>) -> Result<Response<HeadResponse>, Status> {
+        let req = request.into_inner();
+        let uuid = parse_uuid(&req.uuid)?;
+        let overlay = &req.overlay;
         // get head
-        let head = match self.get_head(&uuid).await {
+        let head = match self.fetch_head(&uuid, &overlay).await {
             Ok(head) => head,
             Err(NotFound) | Err(NoContent) => return Err(Status::not_found("head not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
