@@ -44,6 +44,10 @@ Mojang APIs and will even be able to proxy authentication requests in the future
 
 ## Getting started
 
+> [!WARNING]
+> Xenos is under active development and may experience breaking changes until the first version is released. After that
+> version, breaking changes will be performed in adherence to [Semantic Versioning][semver-docs]
+
 Once this project is ready, information about how to run Xenos will be published here. Stay tuned!
 
 ## Reporting Security Issues
@@ -78,6 +82,8 @@ on what that means.
 [grpc-docs]: https://grpc.io/
 
 [rest-docs]: https://en.wikipedia.org/wiki/Representational_state_transfer
+
+[semver-docs]: https://semver.org/lang/de/
 
 [security-policy]: SECURITY.md
 
