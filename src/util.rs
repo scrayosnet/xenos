@@ -1,10 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::Utc;
 
 pub fn get_epoch_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
+    u64::try_from(Utc::now().timestamp_seconds()).unwrap()
 }
 
 pub fn has_elapsed(time: &u64, dur: &u64) -> bool {

@@ -1,12 +1,11 @@
+use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::error::XenosError;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use uuid::Uuid;
-use xenos::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
-use xenos::error::XenosError;
-use xenos::util::get_epoch_seconds;
 
 #[derive(Default)]
-struct MemoryCache {
+pub struct MemoryCache {
     uuids: HashMap<String, UuidEntry>,
     profiles: HashMap<Uuid, ProfileEntry>,
     skins: HashMap<Uuid, SkinEntry>,
@@ -75,12 +74,12 @@ async fn memory_cache_uuids() {
     // given
     let mut cache = MemoryCache::default();
     let entry_hydrofin = UuidEntry {
-        timestamp: get_epoch_seconds(),
+        timestamp: 100,
         username: "Hydrofin".to_string(),
         uuid: Uuid::new_v4(),
     };
     let entry_scrayos = UuidEntry {
-        timestamp: get_epoch_seconds(),
+        timestamp: 100100,
         username: "Scrayos".to_string(),
         uuid: Uuid::new_v4(),
     };
@@ -113,7 +112,7 @@ async fn memory_cache_profile() {
     // given
     let mut cache = MemoryCache::default();
     let entry = ProfileEntry {
-        timestamp: get_epoch_seconds(),
+        timestamp: 100,
         uuid: Uuid::new_v4(),
         name: "Hydrofin".to_string(),
         properties: vec![],
@@ -138,7 +137,7 @@ async fn memory_cache_skin() {
     // given
     let mut cache = MemoryCache::default();
     let entry = SkinEntry {
-        timestamp: get_epoch_seconds(),
+        timestamp: 1001001,
         uuid: Uuid::new_v4(),
         bytes: vec![0, 0, 0, 1, 0],
     };

@@ -2,7 +2,7 @@ use std::env;
 use tokio::sync::Mutex;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
-use xenos::cache::RedisCache;
+use xenos::cache::redis::RedisCache;
 use xenos::mojang::Mojang;
 use xenos::service::pb::profile_server::ProfileServer;
 use xenos::service::XenosService;
