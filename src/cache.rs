@@ -79,8 +79,8 @@ impl FromRedisValue for UuidEntry {
 
 impl ToRedisArgs for UuidEntry {
     fn write_redis_args<W>(&self, out: &mut W)
-        where
-            W: ?Sized + RedisWrite,
+    where
+        W: ?Sized + RedisWrite,
     {
         let str = serde_json::to_string(self).unwrap_or("".to_string());
         out.write_arg(str.as_ref())
@@ -96,8 +96,8 @@ impl FromRedisValue for ProfileEntry {
 
 impl ToRedisArgs for ProfileEntry {
     fn write_redis_args<W>(&self, out: &mut W)
-        where
-            W: ?Sized + RedisWrite,
+    where
+        W: ?Sized + RedisWrite,
     {
         let str = serde_json::to_string(self).unwrap_or("".to_string());
         out.write_arg(str.as_ref())
@@ -113,8 +113,8 @@ impl FromRedisValue for SkinEntry {
 
 impl ToRedisArgs for SkinEntry {
     fn write_redis_args<W>(&self, out: &mut W)
-        where
-            W: ?Sized + RedisWrite,
+    where
+        W: ?Sized + RedisWrite,
     {
         let str = serde_json::to_string(self).unwrap_or("".to_string());
         out.write_arg(str.as_ref())
@@ -130,8 +130,8 @@ impl FromRedisValue for HeadEntry {
 
 impl ToRedisArgs for HeadEntry {
     fn write_redis_args<W>(&self, out: &mut W)
-        where
-            W: ?Sized + RedisWrite,
+    where
+        W: ?Sized + RedisWrite,
     {
         let str = serde_json::to_string(self).unwrap_or("".to_string());
         out.write_arg(str.as_ref())
@@ -154,8 +154,16 @@ pub trait XenosCache: Send + Sync {
     async fn set_profile_by_uuid(&mut self, entry: ProfileEntry) -> Result<(), XenosError>;
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<SkinEntry>, XenosError>;
     async fn set_skin_by_uuid(&mut self, entry: SkinEntry) -> Result<(), XenosError>;
-    async fn get_head_by_uuid(&mut self, uuid: &Uuid, overlay: &bool) -> Result<Option<HeadEntry>, XenosError>;
-    async fn set_head_by_uuid(&mut self, entry: HeadEntry, overlay: &bool) -> Result<(), XenosError>;
+    async fn get_head_by_uuid(
+        &mut self,
+        uuid: &Uuid,
+        overlay: &bool,
+    ) -> Result<Option<HeadEntry>, XenosError>;
+    async fn set_head_by_uuid(
+        &mut self,
+        entry: HeadEntry,
+        overlay: &bool,
+    ) -> Result<(), XenosError>;
 }
 
 pub struct RedisCache {
@@ -228,7 +236,11 @@ impl XenosCache for RedisCache {
         Ok(())
     }
 
-    async fn get_head_by_uuid(&mut self, uuid: &Uuid, overlay: &bool) -> Result<Option<HeadEntry>, XenosError> {
+    async fn get_head_by_uuid(
+        &mut self,
+        uuid: &Uuid,
+        overlay: &bool,
+    ) -> Result<Option<HeadEntry>, XenosError> {
         let uuid = uuid.simple().to_string();
         let entry = self
             .redis_manager
@@ -237,13 +249,14 @@ impl XenosCache for RedisCache {
         Ok(entry)
     }
 
-    async fn set_head_by_uuid(&mut self, entry: HeadEntry, overlay: &bool) -> Result<(), XenosError> {
+    async fn set_head_by_uuid(
+        &mut self,
+        entry: HeadEntry,
+        overlay: &bool,
+    ) -> Result<(), XenosError> {
         let uuid = entry.uuid.simple().to_string();
         self.redis_manager
-            .set(
-                build_key("head", &format!("{uuid}.{overlay}")),
-                entry,
-            )
+            .set(build_key("head", &format!("{uuid}.{overlay}")), entry)
             .await?;
         Ok(())
     }

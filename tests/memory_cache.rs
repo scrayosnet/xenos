@@ -48,13 +48,21 @@ impl XenosCache for MemoryCache {
         Ok(())
     }
 
-    async fn get_head_by_uuid(&mut self, uuid: &Uuid, overlay: &bool) -> Result<Option<HeadEntry>, XenosError> {
+    async fn get_head_by_uuid(
+        &mut self,
+        uuid: &Uuid,
+        overlay: &bool,
+    ) -> Result<Option<HeadEntry>, XenosError> {
         let uuid = uuid.simple().to_string();
         let key = &format!("{uuid}.{overlay}");
         Ok(self.heads.get(key).cloned())
     }
 
-    async fn set_head_by_uuid(&mut self, entry: HeadEntry, overlay: &bool) -> Result<(), XenosError> {
+    async fn set_head_by_uuid(
+        &mut self,
+        entry: HeadEntry,
+        overlay: &bool,
+    ) -> Result<(), XenosError> {
         let uuid = entry.uuid.simple().to_string();
         let key = format!("{uuid}.{overlay}");
         self.heads.insert(key, entry);

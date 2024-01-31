@@ -15,7 +15,7 @@ use crate::util::{get_epoch_seconds, has_elapsed};
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use pb::profile_server::Profile;
-use pb::{UuidRequest, UuidResult, UuidResponse};
+use pb::{UuidRequest, UuidResponse, UuidResult};
 use regex::Regex;
 use reqwest::StatusCode;
 use std::collections::HashMap;
@@ -204,7 +204,13 @@ impl XenosService {
     }
 
     async fn fetch_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
-        let cached = match self.cache.lock().await.get_head_by_uuid(uuid, overlay).await? {
+        let cached = match self
+            .cache
+            .lock()
+            .await
+            .get_head_by_uuid(uuid, overlay)
+            .await?
+        {
             None => None,
             Some(entry) => {
                 if !has_elapsed(&entry.timestamp, &CACHE_TIME) {
@@ -307,7 +313,10 @@ impl Profile for XenosService {
         Ok(Response::new(response))
     }
 
-    async fn get_skin(&self, request: Request<SkinRequest>) -> Result<Response<SkinResponse>, Status> {
+    async fn get_skin(
+        &self,
+        request: Request<SkinRequest>,
+    ) -> Result<Response<SkinResponse>, Status> {
         let uuid = parse_uuid(&request.into_inner().uuid)?;
         // get skin
         let skin = match self.fetch_skin(&uuid).await {
@@ -324,7 +333,10 @@ impl Profile for XenosService {
         Ok(Response::new(response))
     }
 
-    async fn get_head(&self, request: Request<HeadRequest>) -> Result<Response<HeadResponse>, Status> {
+    async fn get_head(
+        &self,
+        request: Request<HeadRequest>,
+    ) -> Result<Response<HeadResponse>, Status> {
         let req = request.into_inner();
         let uuid = parse_uuid(&req.uuid)?;
         let overlay = &req.overlay;
