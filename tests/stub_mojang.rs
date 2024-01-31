@@ -17,21 +17,18 @@ impl MojangApi for StubMojang {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
         let uuids = usernames
             .iter()
-            .filter_map(|username| self.uuids.get(&username.to_lowercase())).cloned()
+            .filter_map(|username| self.uuids.get(&username.to_lowercase()))
+            .cloned()
             .collect();
         Ok(uuids)
     }
 
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
-        self.profiles
-            .get(uuid).cloned()
-            .ok_or(XenosError::NotFound)
+        self.profiles.get(uuid).cloned().ok_or(XenosError::NotFound)
     }
 
     async fn fetch_image_bytes(&self, url: String) -> Result<Bytes, XenosError> {
-        self.images
-            .get(&url).cloned()
-            .ok_or(XenosError::NotFound)
+        self.images.get(&url).cloned().ok_or(XenosError::NotFound)
     }
 }
 

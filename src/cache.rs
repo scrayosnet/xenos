@@ -154,8 +154,16 @@ pub trait XenosCache: Send + Sync {
     async fn set_profile_by_uuid(&mut self, entry: ProfileEntry) -> Result<(), XenosError>;
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<SkinEntry>, XenosError>;
     async fn set_skin_by_uuid(&mut self, entry: SkinEntry) -> Result<(), XenosError>;
-    async fn get_head_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<HeadEntry>, XenosError>;
-    async fn set_head_by_uuid(&mut self, entry: HeadEntry) -> Result<(), XenosError>;
+    async fn get_head_by_uuid(
+        &mut self,
+        uuid: &Uuid,
+        overlay: &bool,
+    ) -> Result<Option<HeadEntry>, XenosError>;
+    async fn set_head_by_uuid(
+        &mut self,
+        entry: HeadEntry,
+        overlay: &bool,
+    ) -> Result<(), XenosError>;
 }
 
 pub struct RedisCache {
@@ -228,20 +236,27 @@ impl XenosCache for RedisCache {
         Ok(())
     }
 
-    async fn get_head_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<HeadEntry>, XenosError> {
+    async fn get_head_by_uuid(
+        &mut self,
+        uuid: &Uuid,
+        overlay: &bool,
+    ) -> Result<Option<HeadEntry>, XenosError> {
+        let uuid = uuid.simple().to_string();
         let entry = self
             .redis_manager
-            .get(build_key("head", uuid.simple().to_string().as_str()))
+            .get(build_key("head", &format!("{uuid}.{overlay}")))
             .await?;
         Ok(entry)
     }
 
-    async fn set_head_by_uuid(&mut self, entry: HeadEntry) -> Result<(), XenosError> {
+    async fn set_head_by_uuid(
+        &mut self,
+        entry: HeadEntry,
+        overlay: &bool,
+    ) -> Result<(), XenosError> {
+        let uuid = entry.uuid.simple().to_string();
         self.redis_manager
-            .set(
-                build_key("head", entry.uuid.simple().to_string().as_str()),
-                entry,
-            )
+            .set(build_key("head", &format!("{uuid}.{overlay}")), entry)
             .await?;
         Ok(())
     }

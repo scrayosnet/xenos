@@ -10,7 +10,7 @@ struct MemoryCache {
     uuids: HashMap<String, UuidEntry>,
     profiles: HashMap<Uuid, ProfileEntry>,
     skins: HashMap<Uuid, SkinEntry>,
-    heads: HashMap<Uuid, HeadEntry>,
+    heads: HashMap<String, HeadEntry>,
 }
 
 #[async_trait]
@@ -48,12 +48,24 @@ impl XenosCache for MemoryCache {
         Ok(())
     }
 
-    async fn get_head_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<HeadEntry>, XenosError> {
-        Ok(self.heads.get(uuid).cloned())
+    async fn get_head_by_uuid(
+        &mut self,
+        uuid: &Uuid,
+        overlay: &bool,
+    ) -> Result<Option<HeadEntry>, XenosError> {
+        let uuid = uuid.simple().to_string();
+        let key = &format!("{uuid}.{overlay}");
+        Ok(self.heads.get(key).cloned())
     }
 
-    async fn set_head_by_uuid(&mut self, entry: HeadEntry) -> Result<(), XenosError> {
-        self.heads.insert(entry.uuid, entry);
+    async fn set_head_by_uuid(
+        &mut self,
+        entry: HeadEntry,
+        overlay: &bool,
+    ) -> Result<(), XenosError> {
+        let uuid = entry.uuid.simple().to_string();
+        let key = format!("{uuid}.{overlay}");
+        self.heads.insert(key, entry);
         Ok(())
     }
 }
