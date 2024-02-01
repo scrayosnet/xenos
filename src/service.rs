@@ -6,7 +6,7 @@ use crate::cache;
 use crate::cache::Cached::*;
 use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
-use crate::error::XenosError::{InvalidTextures, NoContent, NotFound, NotRetrieved, Reqwest};
+use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
 use crate::mojang::{MojangApi, UsernameResolved};
 use crate::service::pb::{
     HeadRequest, HeadResponse, ProfileProperty, ProfileRequest, ProfileResponse, SkinRequest,
@@ -19,7 +19,6 @@ use pb::profile_server::Profile;
 use pb::{UuidRequest, UuidResponse, UuidResult};
 use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};
 use regex::Regex;
-use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::io::Cursor;
 use tokio::sync::Mutex;
@@ -100,12 +99,7 @@ impl XenosService {
         if !cache_misses.is_empty() {
             let response = match self.mojang.fetch_uuids(&cache_misses).await {
                 Ok(r) => r,
-                Err(Reqwest(err)) => {
-                    return match err.status() {
-                        Some(StatusCode::TOO_MANY_REQUESTS) => Ok(uuids.into_values().collect()),
-                        _ => Err(Reqwest(err)),
-                    }
-                }
+                Err(NotRetrieved) => return Ok(uuids.into_values().collect()),
                 Err(err) => return Err(err),
             };
             let found: HashMap<_, _> = response
@@ -143,13 +137,7 @@ impl XenosService {
         // try to fetch
         let profile = match self.mojang.fetch_profile(uuid).await {
             Ok(r) => r,
-            Err(Reqwest(err)) => {
-                return match err.status() {
-                    Some(StatusCode::TOO_MANY_REQUESTS) => entry.ok_or(NotRetrieved),
-                    Some(StatusCode::NOT_FOUND) => Err(NotFound),
-                    _ => Err(Reqwest(err)),
-                }
-            }
+            Err(NotRetrieved) => return entry.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
         let entry = ProfileEntry {
@@ -197,13 +185,7 @@ impl XenosService {
             .url;
         let skin = match self.mojang.fetch_image_bytes(skin_url, "skin").await {
             Ok(r) => r,
-            Err(Reqwest(err)) => {
-                return match err.status() {
-                    Some(StatusCode::TOO_MANY_REQUESTS) => skin_entry.ok_or(NotRetrieved),
-                    Some(StatusCode::NOT_FOUND) => Err(NotFound),
-                    _ => Err(Reqwest(err)),
-                }
-            }
+            Err(NotRetrieved) => return skin_entry.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
         let entry = SkinEntry {
@@ -300,7 +282,7 @@ impl Profile for XenosService {
         // get profile
         let profile = match self.fetch_profile(&uuid).await {
             Ok(profile) => profile,
-            Err(NotFound) | Err(NoContent) => return Err(Status::not_found("profile not found")),
+            Err(NotFound) => return Err(Status::not_found("profile not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
             Err(err) => return Err(Status::internal(err.to_string())),
         };
@@ -331,7 +313,7 @@ impl Profile for XenosService {
         // get skin
         let skin = match self.fetch_skin(&uuid).await {
             Ok(skin) => skin,
-            Err(NotFound) | Err(NoContent) => return Err(Status::not_found("skin not found")),
+            Err(NotFound) => return Err(Status::not_found("skin not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
             Err(err) => return Err(Status::internal(err.to_string())),
         };
@@ -353,7 +335,7 @@ impl Profile for XenosService {
         // get head
         let head = match self.fetch_head(&uuid, &overlay).await {
             Ok(head) => head,
-            Err(NotFound) | Err(NoContent) => return Err(Status::not_found("head not found")),
+            Err(NotFound) => return Err(Status::not_found("head not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
             Err(err) => return Err(Status::internal(err.to_string())),
         };

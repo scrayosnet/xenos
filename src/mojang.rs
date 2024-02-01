@@ -1,5 +1,5 @@
 use crate::error::XenosError;
-use crate::error::XenosError::NoContent;
+use crate::error::XenosError::{NotFound, NotRetrieved};
 use async_trait::async_trait;
 use bytes::Bytes;
 use lazy_static::lazy_static;
@@ -119,19 +119,6 @@ pub trait MojangApi: Send + Sync {
         -> Result<Bytes, XenosError>;
 }
 
-trait ErrorForNoContent {
-    fn error_for_no_content(self) -> Result<reqwest::Response, XenosError>;
-}
-
-impl ErrorForNoContent for reqwest::Response {
-    fn error_for_no_content(self) -> Result<reqwest::Response, XenosError> {
-        match self.status() {
-            StatusCode::NO_CONTENT => Err(NoContent),
-            _ => Ok(self),
-        }
-    }
-}
-
 pub struct Mojang;
 
 #[async_trait]
@@ -152,7 +139,15 @@ impl MojangApi for Mojang {
             .inc();
         timer.observe_duration();
         // get response
-        Ok(response.error_for_status()?.json().await?)
+        match response.status() {
+            StatusCode::NOT_FOUND => Err(NotFound),
+            StatusCode::NO_CONTENT => Ok(vec![]),
+            StatusCode::TOO_MANY_REQUESTS => Err(NotRetrieved),
+            _ => {
+                let resolved = response.error_for_status()?.json().await?;
+                Ok(resolved)
+            }
+        }
     }
 
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
@@ -171,11 +166,14 @@ impl MojangApi for Mojang {
             .inc();
         timer.observe_duration();
         // get response
-        Ok(response
-            .error_for_status()?
-            .error_for_no_content()?
-            .json()
-            .await?)
+        match response.status() {
+            StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
+            StatusCode::TOO_MANY_REQUESTS => Err(NotRetrieved),
+            _ => {
+                let profile = response.error_for_status()?.json().await?;
+                Ok(profile)
+            }
+        }
     }
 
     async fn fetch_image_bytes(
@@ -194,10 +192,13 @@ impl MojangApi for Mojang {
             .inc();
         timer.observe_duration();
         // get response
-        Ok(response
-            .error_for_status()?
-            .error_for_no_content()?
-            .bytes()
-            .await?)
+        match response.status() {
+            StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
+            StatusCode::TOO_MANY_REQUESTS => Err(NotRetrieved),
+            _ => {
+                let bytes = response.error_for_status()?.bytes().await?;
+                Ok(bytes)
+            }
+        }
     }
 }
