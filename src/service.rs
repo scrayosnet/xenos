@@ -146,7 +146,7 @@ impl XenosService {
         };
         let entry = ProfileEntry {
             timestamp: get_epoch_seconds(),
-            uuid: uuid.clone(),
+            uuid: *uuid,
             name: profile.name,
             properties: profile
                 .properties
@@ -335,7 +335,7 @@ impl Profile for XenosService {
         let uuid = parse_uuid(&req.uuid)?;
         let overlay = &req.overlay;
         // get head
-        let head = match self.fetch_head(&uuid, &overlay).await {
+        let head = match self.fetch_head(&uuid, overlay).await {
             Ok(head) => head,
             Err(NotFound) => return Err(Status::not_found("head not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),

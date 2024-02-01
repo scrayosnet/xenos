@@ -182,13 +182,16 @@ impl MojangApi for Mojang {
         resource_tag: &str,
     ) -> Result<Bytes, XenosError> {
         let timer = MOJANG_REQ_HISTOGRAM
-            .with_label_values(&[&format!("bytes_{resource_tag}")])
+            .with_label_values(&[&format!("texture_{resource_tag}")])
             .start_timer();
         // make request
         let response = HTTP_CLIENT.get(url).send().await?;
         // update metrics
         MOJANG_REQ_TOTAL
-            .with_label_values(&["bytes", response.status().as_str()])
+            .with_label_values(&[
+                &format!("texture_{resource_tag}"),
+                response.status().as_str(),
+            ])
             .inc();
         timer.observe_duration();
         // get response

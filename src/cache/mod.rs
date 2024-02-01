@@ -10,6 +10,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Cached<T> {
     Hit(T),
     Expired(T),
