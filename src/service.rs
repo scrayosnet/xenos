@@ -32,15 +32,15 @@ lazy_static! {
 // TODO integrate metrics
 lazy_static! {
     pub static ref PROFILE_REQ_TOTAL: IntCounterVec = register_int_counter_vec!(
-        "profile_requests_total",
+        "xenos_profile_requests_total",
         "Total number of requests to the profile grpc service.",
-        &["request_type", "status", "cached"],
+        &["request_type", "status", "cache_result"],
     )
     .unwrap();
     pub static ref PROFILE_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "profile_request_duration_seconds",
+        "xenos_profile_request_duration_seconds",
         "The grpc profile request latencies in seconds.",
-        &["request_type", "cached"],
+        &["request_type", "cache_result"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();

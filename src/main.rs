@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read configuration from environment
     let grpc_addr_str = env::var("SERVER_ADDR").unwrap_or("0.0.0.0:50051".to_string());
     let redis_addr = env::var("REDIS_ADDR").expect("redis address required");
-    let metrics_addr = env::var("METRICS_ADDR").unwrap_or("0.0.0.0:3000".to_string());
+    let metrics_addr = env::var("METRICS_ADDR").unwrap_or("0.0.0.0:9990".to_string());
     let grpc_addr = grpc_addr_str
         .parse()
         .expect("listen address invalid format");

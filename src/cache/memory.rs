@@ -135,7 +135,7 @@ mod test {
 
         // when
         cache
-            .set_profile_by_uuid(entry.uuid.clone(), entry.clone())
+            .set_profile_by_uuid(entry.uuid, entry.clone())
             .await
             .unwrap();
         let retrieved = cache.get_profile_by_uuid(&entry.uuid).await.unwrap();
@@ -159,10 +159,7 @@ mod test {
         };
 
         // when
-        cache
-            .set_skin_by_uuid(uuid.clone(), entry.clone())
-            .await
-            .unwrap();
+        cache.set_skin_by_uuid(uuid, entry.clone()).await.unwrap();
         let retrieved = cache.get_skin_by_uuid(&uuid).await.unwrap();
 
         // then

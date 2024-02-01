@@ -15,16 +15,16 @@ lazy_static! {
 
 lazy_static! {
     static ref MOJANG_REQ_TOTAL: IntCounterVec = register_int_counter_vec!(
-        "mojang_requests_total",
+        "xenos_mojang_requests_total",
         "Total number of requests to mojang.",
         &["request_type", "status"],
     )
     .unwrap();
     static ref MOJANG_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "mojang_request_duration_seconds",
+        "xenos_mojang_request_duration_seconds",
         "The mojang request latencies in seconds.",
         &["request_type"],
-        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
+        vec![0.020, 0.030, 0.040, 0.050, 0.060, 0.070, 0.080, 0.090, 0.100, 0.150, 0.200]
     )
     .unwrap();
 }
