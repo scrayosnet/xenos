@@ -1,4 +1,4 @@
-use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::{Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -17,8 +17,8 @@ impl XenosCache for MemoryCache {
     async fn get_uuid_by_username(
         &mut self,
         username: &str,
-    ) -> Result<Option<UuidEntry>, XenosError> {
-        Ok(self.uuids.get(username).cloned())
+    ) -> Result<Cached<UuidEntry>, XenosError> {
+        Ok(self.uuids.get(username).cloned().into())
     }
 
     async fn set_uuid_by_username(&mut self, entry: UuidEntry) -> Result<(), XenosError> {
@@ -29,8 +29,8 @@ impl XenosCache for MemoryCache {
     async fn get_profile_by_uuid(
         &mut self,
         uuid: &Uuid,
-    ) -> Result<Option<ProfileEntry>, XenosError> {
-        Ok(self.profiles.get(uuid).cloned())
+    ) -> Result<Cached<ProfileEntry>, XenosError> {
+        Ok(self.profiles.get(uuid).cloned().into())
     }
 
     async fn set_profile_by_uuid(&mut self, entry: ProfileEntry) -> Result<(), XenosError> {
@@ -38,8 +38,8 @@ impl XenosCache for MemoryCache {
         Ok(())
     }
 
-    async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<SkinEntry>, XenosError> {
-        Ok(self.skins.get(uuid).cloned())
+    async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
+        Ok(self.skins.get(uuid).cloned().into())
     }
 
     async fn set_skin_by_uuid(&mut self, entry: SkinEntry) -> Result<(), XenosError> {
@@ -51,10 +51,13 @@ impl XenosCache for MemoryCache {
         &mut self,
         uuid: &Uuid,
         overlay: &bool,
-    ) -> Result<Option<HeadEntry>, XenosError> {
-        let uuid = uuid.simple().to_string();
-        let key = &format!("{uuid}.{overlay}");
-        Ok(self.heads.get(key).cloned())
+    ) -> Result<Cached<HeadEntry>, XenosError> {
+        let uuid_str = uuid.simple().to_string();
+        Ok(self
+            .heads
+            .get(&format!("{uuid_str}.{overlay}"))
+            .cloned()
+            .into())
     }
 
     async fn set_head_by_uuid(
@@ -62,9 +65,8 @@ impl XenosCache for MemoryCache {
         entry: HeadEntry,
         overlay: &bool,
     ) -> Result<(), XenosError> {
-        let uuid = entry.uuid.simple().to_string();
-        let key = format!("{uuid}.{overlay}");
-        self.heads.insert(key, entry);
+        let uuid_str = entry.uuid.simple().to_string();
+        self.heads.insert(format!("{uuid_str}.{overlay}"), entry);
         Ok(())
     }
 }

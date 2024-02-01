@@ -1,6 +1,7 @@
 pub mod memory;
 pub mod redis;
 
+use crate::cache::Cached::{Hit, Miss};
 use crate::error::XenosError;
 use crate::mojang::TexturesProperty;
 use async_trait::async_trait;
@@ -8,6 +9,21 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+pub enum Cached<T> {
+    Hit(T),
+    Expired(T),
+    Miss,
+}
+
+impl<T> From<Option<T>> for Cached<T> {
+    fn from(value: Option<T>) -> Self {
+        match value {
+            None => Miss,
+            Some(v) => Hit(v),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UuidEntry {
@@ -72,15 +88,23 @@ pub trait XenosCache: Send + Sync {
     async fn get_uuid_by_username(
         &mut self,
         username: &str,
-    ) -> Result<Option<UuidEntry>, XenosError>;
+    ) -> Result<Cached<UuidEntry>, XenosError>;
     async fn set_uuid_by_username(&mut self, entry: UuidEntry) -> Result<(), XenosError>;
     async fn get_profile_by_uuid(
         &mut self,
         uuid: &Uuid,
-    ) -> Result<Option<ProfileEntry>, XenosError>;
+    ) -> Result<Cached<ProfileEntry>, XenosError>;
     async fn set_profile_by_uuid(&mut self, entry: ProfileEntry) -> Result<(), XenosError>;
-    async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<SkinEntry>, XenosError>;
+    async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError>;
     async fn set_skin_by_uuid(&mut self, entry: SkinEntry) -> Result<(), XenosError>;
-    async fn get_head_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<HeadEntry>, XenosError>;
-    async fn set_head_by_uuid(&mut self, entry: HeadEntry) -> Result<(), XenosError>;
+    async fn get_head_by_uuid(
+        &mut self,
+        uuid: &Uuid,
+        overlay: &bool,
+    ) -> Result<Cached<HeadEntry>, XenosError>;
+    async fn set_head_by_uuid(
+        &mut self,
+        entry: HeadEntry,
+        overlay: &bool,
+    ) -> Result<(), XenosError>;
 }

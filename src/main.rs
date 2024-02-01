@@ -16,7 +16,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // build redis client and cache
     let redis_client = redis::Client::open(redis_str)?;
     let redis_manager = redis_client.get_connection_manager().await?;
-    let cache = Box::new(Mutex::new(RedisCache { redis_manager }));
+    let cache = Box::new(Mutex::new(RedisCache {
+        cache_time: 5 * 60,
+        redis_manager,
+    }));
 
     // build mojang api
     let mojang = Box::new(Mojang {});

@@ -1,5 +1,7 @@
-use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::Cached::{Expired, Hit, Miss};
+use crate::cache::{Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
+use crate::util::has_elapsed;
 use async_trait::async_trait;
 use redis::aio::ConnectionManager;
 use redis::{
@@ -8,7 +10,14 @@ use redis::{
 use uuid::Uuid;
 
 pub struct RedisCache {
+    pub cache_time: u64,
     pub redis_manager: ConnectionManager,
+}
+
+impl RedisCache {
+    fn has_expired(&self, timestamp: &u64) -> bool {
+        has_elapsed(timestamp, &self.cache_time)
+    }
 }
 
 pub fn build_key(ns: &str, sub: &str) -> String {
@@ -20,12 +29,16 @@ impl XenosCache for RedisCache {
     async fn get_uuid_by_username(
         &mut self,
         username: &str,
-    ) -> Result<Option<UuidEntry>, XenosError> {
-        let entry = self
+    ) -> Result<Cached<UuidEntry>, XenosError> {
+        let cached: Option<UuidEntry> = self
             .redis_manager
             .get(build_key("uuid", username.to_lowercase().as_str()))
             .await?;
-        Ok(entry)
+        match cached {
+            Some(entry) if self.has_expired(&entry.timestamp) => Ok(Expired(entry)),
+            Some(entry) => Ok(Hit(entry)),
+            None => Ok(Miss),
+        }
     }
 
     async fn set_uuid_by_username(&mut self, entry: UuidEntry) -> Result<(), XenosError> {
@@ -41,12 +54,16 @@ impl XenosCache for RedisCache {
     async fn get_profile_by_uuid(
         &mut self,
         uuid: &Uuid,
-    ) -> Result<Option<ProfileEntry>, XenosError> {
-        let entry = self
+    ) -> Result<Cached<ProfileEntry>, XenosError> {
+        let cached: Option<ProfileEntry> = self
             .redis_manager
             .get(build_key("profile", uuid.simple().to_string().as_str()))
             .await?;
-        Ok(entry)
+        match cached {
+            Some(entry) if self.has_expired(&entry.timestamp) => Ok(Expired(entry)),
+            Some(entry) => Ok(Hit(entry)),
+            None => Ok(Miss),
+        }
     }
 
     async fn set_profile_by_uuid(&mut self, entry: ProfileEntry) -> Result<(), XenosError> {
@@ -59,12 +76,16 @@ impl XenosCache for RedisCache {
         Ok(())
     }
 
-    async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Option<SkinEntry>, XenosError> {
-        let entry = self
+    async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
+        let cached: Option<SkinEntry> = self
             .redis_manager
             .get(build_key("skin", uuid.simple().to_string().as_str()))
             .await?;
-        Ok(entry)
+        match cached {
+            Some(entry) if self.has_expired(&entry.timestamp) => Ok(Expired(entry)),
+            Some(entry) => Ok(Hit(entry)),
+            None => Ok(Miss),
+        }
     }
 
     async fn set_skin_by_uuid(&mut self, entry: SkinEntry) -> Result<(), XenosError> {
@@ -81,13 +102,17 @@ impl XenosCache for RedisCache {
         &mut self,
         uuid: &Uuid,
         overlay: &bool,
-    ) -> Result<Option<HeadEntry>, XenosError> {
-        let uuid = uuid.simple().to_string();
-        let entry = self
+    ) -> Result<Cached<HeadEntry>, XenosError> {
+        let uuid_str = uuid.simple().to_string();
+        let cached: Option<HeadEntry> = self
             .redis_manager
-            .get(build_key("head", &format!("{uuid}.{overlay}")))
+            .get(build_key("head", &format!("{uuid_str}.{overlay}")))
             .await?;
-        Ok(entry)
+        match cached {
+            Some(entry) if self.has_expired(&entry.timestamp) => Ok(Expired(entry)),
+            Some(entry) => Ok(Hit(entry)),
+            None => Ok(Miss),
+        }
     }
 
     async fn set_head_by_uuid(
@@ -95,9 +120,9 @@ impl XenosCache for RedisCache {
         entry: HeadEntry,
         overlay: &bool,
     ) -> Result<(), XenosError> {
-        let uuid = entry.uuid.simple().to_string();
+        let uuid_str = entry.uuid.simple().to_string();
         self.redis_manager
-            .set(build_key("head", &format!("{uuid}.{overlay}")), entry)
+            .set(build_key("head", &format!("{uuid_str}.{overlay}")), entry)
             .await?;
         Ok(())
     }
