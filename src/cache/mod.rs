@@ -53,14 +53,12 @@ pub struct ProfileProperty {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SkinEntry {
     pub timestamp: u64,
-    pub uuid: Uuid,
     pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HeadEntry {
     pub timestamp: u64,
-    pub uuid: Uuid,
     pub bytes: Vec<u8>,
 }
 
@@ -89,14 +87,22 @@ pub trait XenosCache: Send + Sync {
         &mut self,
         username: &str,
     ) -> Result<Cached<UuidEntry>, XenosError>;
-    async fn set_uuid_by_username(&mut self, entry: UuidEntry) -> Result<(), XenosError>;
+    async fn set_uuid_by_username(
+        &mut self,
+        username: &str,
+        entry: UuidEntry,
+    ) -> Result<(), XenosError>;
     async fn get_profile_by_uuid(
         &mut self,
         uuid: &Uuid,
     ) -> Result<Cached<ProfileEntry>, XenosError>;
-    async fn set_profile_by_uuid(&mut self, entry: ProfileEntry) -> Result<(), XenosError>;
+    async fn set_profile_by_uuid(
+        &mut self,
+        uuid: Uuid,
+        entry: ProfileEntry,
+    ) -> Result<(), XenosError>;
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError>;
-    async fn set_skin_by_uuid(&mut self, entry: SkinEntry) -> Result<(), XenosError>;
+    async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError>;
     async fn get_head_by_uuid(
         &mut self,
         uuid: &Uuid,
@@ -104,6 +110,7 @@ pub trait XenosCache: Send + Sync {
     ) -> Result<Cached<HeadEntry>, XenosError>;
     async fn set_head_by_uuid(
         &mut self,
+        uuid: Uuid,
         entry: HeadEntry,
         overlay: &bool,
     ) -> Result<(), XenosError>;

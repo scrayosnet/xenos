@@ -41,12 +41,13 @@ impl XenosCache for RedisCache {
         }
     }
 
-    async fn set_uuid_by_username(&mut self, entry: UuidEntry) -> Result<(), XenosError> {
+    async fn set_uuid_by_username(
+        &mut self,
+        username: &str,
+        entry: UuidEntry,
+    ) -> Result<(), XenosError> {
         self.redis_manager
-            .set(
-                build_key("uuid", entry.username.to_lowercase().as_str()),
-                entry,
-            )
+            .set(build_key("uuid", username.to_lowercase().as_str()), entry)
             .await?;
         Ok(())
     }
@@ -66,10 +67,14 @@ impl XenosCache for RedisCache {
         }
     }
 
-    async fn set_profile_by_uuid(&mut self, entry: ProfileEntry) -> Result<(), XenosError> {
+    async fn set_profile_by_uuid(
+        &mut self,
+        uuid: Uuid,
+        entry: ProfileEntry,
+    ) -> Result<(), XenosError> {
         self.redis_manager
             .set(
-                build_key("profile", entry.uuid.simple().to_string().as_str()),
+                build_key("profile", uuid.simple().to_string().as_str()),
                 entry,
             )
             .await?;
@@ -88,12 +93,9 @@ impl XenosCache for RedisCache {
         }
     }
 
-    async fn set_skin_by_uuid(&mut self, entry: SkinEntry) -> Result<(), XenosError> {
+    async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
         self.redis_manager
-            .set(
-                build_key("skin", entry.uuid.simple().to_string().as_str()),
-                entry,
-            )
+            .set(build_key("skin", uuid.simple().to_string().as_str()), entry)
             .await?;
         Ok(())
     }
@@ -117,10 +119,11 @@ impl XenosCache for RedisCache {
 
     async fn set_head_by_uuid(
         &mut self,
+        uuid: Uuid,
         entry: HeadEntry,
         overlay: &bool,
     ) -> Result<(), XenosError> {
-        let uuid_str = entry.uuid.simple().to_string();
+        let uuid_str = uuid.simple().to_string();
         self.redis_manager
             .set(build_key("head", &format!("{uuid_str}.{overlay}")), entry)
             .await?;

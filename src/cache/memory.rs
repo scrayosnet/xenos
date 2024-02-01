@@ -21,8 +21,12 @@ impl XenosCache for MemoryCache {
         Ok(self.uuids.get(username).cloned().into())
     }
 
-    async fn set_uuid_by_username(&mut self, entry: UuidEntry) -> Result<(), XenosError> {
-        self.uuids.insert(entry.username.clone(), entry);
+    async fn set_uuid_by_username(
+        &mut self,
+        username: &str,
+        entry: UuidEntry,
+    ) -> Result<(), XenosError> {
+        self.uuids.insert(username.to_string(), entry);
         Ok(())
     }
 
@@ -33,8 +37,12 @@ impl XenosCache for MemoryCache {
         Ok(self.profiles.get(uuid).cloned().into())
     }
 
-    async fn set_profile_by_uuid(&mut self, entry: ProfileEntry) -> Result<(), XenosError> {
-        self.profiles.insert(entry.uuid, entry);
+    async fn set_profile_by_uuid(
+        &mut self,
+        uuid: Uuid,
+        entry: ProfileEntry,
+    ) -> Result<(), XenosError> {
+        self.profiles.insert(uuid, entry);
         Ok(())
     }
 
@@ -42,8 +50,8 @@ impl XenosCache for MemoryCache {
         Ok(self.skins.get(uuid).cloned().into())
     }
 
-    async fn set_skin_by_uuid(&mut self, entry: SkinEntry) -> Result<(), XenosError> {
-        self.skins.insert(entry.uuid, entry);
+    async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
+        self.skins.insert(uuid, entry);
         Ok(())
     }
 
@@ -62,10 +70,11 @@ impl XenosCache for MemoryCache {
 
     async fn set_head_by_uuid(
         &mut self,
+        uuid: Uuid,
         entry: HeadEntry,
         overlay: &bool,
     ) -> Result<(), XenosError> {
-        let uuid_str = entry.uuid.simple().to_string();
+        let uuid_str = uuid.simple().to_string();
         self.heads.insert(format!("{uuid_str}.{overlay}"), entry);
         Ok(())
     }
@@ -88,11 +97,11 @@ async fn memory_cache_uuids() {
 
     // when
     cache
-        .set_uuid_by_username(entry_hydrofin.clone())
+        .set_uuid_by_username(&entry_hydrofin.username, entry_hydrofin.clone())
         .await
         .unwrap();
     cache
-        .set_uuid_by_username(entry_scrayos.clone())
+        .set_uuid_by_username(&entry_scrayos.username, entry_scrayos.clone())
         .await
         .unwrap();
     let retrieved_hydrofin = cache
@@ -122,7 +131,10 @@ async fn memory_cache_profile() {
     };
 
     // when
-    cache.set_profile_by_uuid(entry.clone()).await.unwrap();
+    cache
+        .set_profile_by_uuid(entry.uuid.clone(), entry.clone())
+        .await
+        .unwrap();
     let retrieved = cache.get_profile_by_uuid(&entry.uuid).await.unwrap();
 
     // then
@@ -138,15 +150,18 @@ async fn memory_cache_profile() {
 async fn memory_cache_skin() {
     // given
     let mut cache = MemoryCache::default();
+    let uuid = Uuid::new_v4();
     let entry = SkinEntry {
         timestamp: 1001001,
-        uuid: Uuid::new_v4(),
         bytes: vec![0, 0, 0, 1, 0],
     };
 
     // when
-    cache.set_skin_by_uuid(entry.clone()).await.unwrap();
-    let retrieved = cache.get_skin_by_uuid(&entry.uuid).await.unwrap();
+    cache
+        .set_skin_by_uuid(uuid.clone(), entry.clone())
+        .await
+        .unwrap();
+    let retrieved = cache.get_skin_by_uuid(&uuid).await.unwrap();
 
     // then
     assert!(retrieved.is_some(), "expect cached to exist");

@@ -117,8 +117,12 @@ impl XenosService {
                     username: res.name,
                     uuid: res.id,
                 };
-                uuids.insert(key, entry.clone());
-                self.cache.lock().await.set_uuid_by_username(entry).await?;
+                uuids.insert(key.clone(), entry.clone());
+                self.cache
+                    .lock()
+                    .await
+                    .set_uuid_by_username(&key, entry)
+                    .await?;
             }
         }
 
@@ -142,7 +146,7 @@ impl XenosService {
         };
         let entry = ProfileEntry {
             timestamp: get_epoch_seconds(),
-            uuid: *uuid,
+            uuid: uuid.clone(),
             name: profile.name,
             properties: profile
                 .properties
@@ -158,7 +162,7 @@ impl XenosService {
         self.cache
             .lock()
             .await
-            .set_profile_by_uuid(entry.clone())
+            .set_profile_by_uuid(*uuid, entry.clone())
             .await?;
         Ok(entry)
     }
@@ -190,13 +194,12 @@ impl XenosService {
         };
         let entry = SkinEntry {
             timestamp: get_epoch_seconds(),
-            uuid: uuid.to_owned(),
             bytes: skin.to_vec(),
         };
         self.cache
             .lock()
             .await
-            .set_skin_by_uuid(entry.clone())
+            .set_skin_by_uuid(*uuid, entry.clone())
             .await?;
         Ok(entry)
     }
@@ -238,13 +241,12 @@ impl XenosService {
 
         let entry = HeadEntry {
             timestamp: get_epoch_seconds(),
-            uuid: uuid.to_owned(),
             bytes: head_bytes,
         };
         self.cache
             .lock()
             .await
-            .set_head_by_uuid(entry.clone(), overlay)
+            .set_head_by_uuid(*uuid, entry.clone(), overlay)
             .await?;
         Ok(entry)
     }
