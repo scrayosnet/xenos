@@ -17,6 +17,7 @@ use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use pb::profile_server::Profile;
 use pb::{UuidRequest, UuidResponse, UuidResult};
+use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};
 use regex::Regex;
 use reqwest::StatusCode;
 use std::collections::HashMap;
@@ -27,6 +28,23 @@ use uuid::Uuid;
 
 lazy_static! {
     static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
+}
+
+// TODO integrate metrics
+lazy_static! {
+    pub static ref PROFILE_REQ_TOTAL: IntCounterVec = register_int_counter_vec!(
+        "profile_requests_total",
+        "Total number of requests to the profile grpc service.",
+        &["request_type", "status", "cached"],
+    )
+    .unwrap();
+    pub static ref PROFILE_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "profile_request_duration_seconds",
+        "The grpc profile request latencies in seconds.",
+        &["request_type", "cached"],
+        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
+    )
+    .unwrap();
 }
 
 type GrpcResult<T> = Result<Response<T>, Status>;
@@ -177,7 +195,7 @@ impl XenosService {
             .skin
             .ok_or(InvalidTextures("skin missing".to_string()))?
             .url;
-        let skin = match self.mojang.fetch_image_bytes(skin_url).await {
+        let skin = match self.mojang.fetch_image_bytes(skin_url, "skin").await {
             Ok(r) => r,
             Err(Reqwest(err)) => {
                 return match err.status() {

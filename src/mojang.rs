@@ -3,6 +3,7 @@ use crate::error::XenosError::NoContent;
 use async_trait::async_trait;
 use bytes::Bytes;
 use lazy_static::lazy_static;
+use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -10,6 +11,22 @@ use uuid::Uuid;
 lazy_static! {
     // shared http client with connection pool, uses arc internally
     static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder().build().unwrap();
+}
+
+lazy_static! {
+    static ref MOJANG_REQ_TOTAL: IntCounterVec = register_int_counter_vec!(
+        "mojang_requests_total",
+        "Total number of requests to mojang.",
+        &["request_type", "status"],
+    )
+    .unwrap();
+    static ref MOJANG_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "mojang_request_duration_seconds",
+        "The mojang request latencies in seconds.",
+        &["request_type"],
+        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
+    )
+    .unwrap();
 }
 
 /// Represents a single Minecraft user profile with all current properties.
@@ -98,7 +115,8 @@ pub struct UsernameResolved {
 pub trait MojangApi: Send + Sync {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError>;
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError>;
-    async fn fetch_image_bytes(&self, url: String) -> Result<Bytes, XenosError>;
+    async fn fetch_image_bytes(&self, url: String, resource_tag: &str)
+        -> Result<Bytes, XenosError>;
 }
 
 trait ErrorForNoContent {
@@ -119,14 +137,22 @@ pub struct Mojang;
 #[async_trait]
 impl MojangApi for Mojang {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
-        Ok(HTTP_CLIENT
+        let timer = MOJANG_REQ_HISTOGRAM
+            .with_label_values(&["uuids"])
+            .start_timer();
+        // make request
+        let response = HTTP_CLIENT
             .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
             .json(usernames)
             .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?)
+            .await?;
+        // update metrics
+        MOJANG_REQ_TOTAL
+            .with_label_values(&["uuids", response.status().as_str()])
+            .inc();
+        timer.observe_duration();
+        // get response
+        Ok(response.error_for_status()?.json().await?)
     }
 
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
@@ -134,21 +160,41 @@ impl MojangApi for Mojang {
             "https://sessionserver.mojang.com/session/minecraft/profile/{}",
             uuid.simple()
         );
-        Ok(HTTP_CLIENT
-            .get(url)
-            .send()
-            .await?
+        let timer = MOJANG_REQ_HISTOGRAM
+            .with_label_values(&["profile"])
+            .start_timer();
+        // make request
+        let response = HTTP_CLIENT.get(url).send().await?;
+        // update metrics
+        MOJANG_REQ_TOTAL
+            .with_label_values(&["profile", response.status().as_str()])
+            .inc();
+        timer.observe_duration();
+        // get response
+        Ok(response
             .error_for_status()?
             .error_for_no_content()?
             .json()
             .await?)
     }
 
-    async fn fetch_image_bytes(&self, url: String) -> Result<Bytes, XenosError> {
-        Ok(HTTP_CLIENT
-            .get(url)
-            .send()
-            .await?
+    async fn fetch_image_bytes(
+        &self,
+        url: String,
+        resource_tag: &str,
+    ) -> Result<Bytes, XenosError> {
+        let timer = MOJANG_REQ_HISTOGRAM
+            .with_label_values(&[&format!("bytes_{resource_tag}")])
+            .start_timer();
+        // make request
+        let response = HTTP_CLIENT.get(url).send().await?;
+        // update metrics
+        MOJANG_REQ_TOTAL
+            .with_label_values(&["bytes", response.status().as_str()])
+            .inc();
+        timer.observe_duration();
+        // get response
+        Ok(response
             .error_for_status()?
             .error_for_no_content()?
             .bytes()
