@@ -27,7 +27,7 @@ impl MojangApi for StubMojang {
         self.profiles.get(uuid).cloned().ok_or(XenosError::NotFound)
     }
 
-    async fn fetch_image_bytes(&self, url: String) -> Result<Bytes, XenosError> {
+    async fn fetch_image_bytes(&self, url: String, _: &str) -> Result<Bytes, XenosError> {
         self.images.get(&url).cloned().ok_or(XenosError::NotFound)
     }
 }

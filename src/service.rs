@@ -3,31 +3,47 @@ pub mod pb {
 }
 
 use crate::cache;
+use crate::cache::Cached::*;
 use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
-use crate::error::XenosError::{InvalidTextures, NoContent, NotFound, NotRetrieved, Reqwest};
+use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
 use crate::mojang::{MojangApi, UsernameResolved};
 use crate::service::pb::{
     HeadRequest, HeadResponse, ProfileProperty, ProfileRequest, ProfileResponse, SkinRequest,
     SkinResponse,
 };
-use crate::util::{get_epoch_seconds, has_elapsed};
+use crate::util::get_epoch_seconds;
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use pb::profile_server::Profile;
 use pb::{UuidRequest, UuidResponse, UuidResult};
+use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};
 use regex::Regex;
-use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::io::Cursor;
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-const CACHE_TIME: u64 = 5 * 60;
-
 lazy_static! {
     static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
+}
+
+// TODO integrate metrics
+lazy_static! {
+    pub static ref PROFILE_REQ_TOTAL: IntCounterVec = register_int_counter_vec!(
+        "xenos_profile_requests_total",
+        "Total number of requests to the profile grpc service.",
+        &["request_type", "status", "cache_result"],
+    )
+    .unwrap();
+    pub static ref PROFILE_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "xenos_profile_request_duration_seconds",
+        "The grpc profile request latencies in seconds.",
+        &["request_type", "cache_result"],
+        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
+    )
+    .unwrap();
 }
 
 type GrpcResult<T> = Result<Response<T>, Status>;
@@ -59,32 +75,31 @@ impl XenosService {
                 continue;
             }
             // 3. get from cache; if elapsed, try to refresh
-            if let Some(cached) = self
+            let cached = self
                 .cache
                 .lock()
                 .await
                 .get_uuid_by_username(username)
-                .await?
-            {
-                let elapsed = has_elapsed(&cached.timestamp, &CACHE_TIME);
-                *uuid = cached;
-                if !elapsed {
-                    continue;
+                .await?;
+            match cached {
+                Hit(entry) => {
+                    *uuid = entry;
+                }
+                Expired(entry) => {
+                    *uuid = entry;
+                    cache_misses.push(username.clone());
+                }
+                Miss => {
+                    cache_misses.push(username.clone());
                 }
             }
-            cache_misses.push(username.clone())
         }
 
         // 4. all others get from mojang in one request
         if !cache_misses.is_empty() {
             let response = match self.mojang.fetch_uuids(&cache_misses).await {
                 Ok(r) => r,
-                Err(Reqwest(err)) => {
-                    return match err.status() {
-                        Some(StatusCode::TOO_MANY_REQUESTS) => Ok(uuids.into_values().collect()),
-                        _ => Err(Reqwest(err)),
-                    };
-                }
+                Err(NotRetrieved) => return Ok(uuids.into_values().collect()),
                 Err(err) => return Err(err),
             };
             let found: HashMap<_, _> = response
@@ -102,8 +117,12 @@ impl XenosService {
                     username: res.name,
                     uuid: res.id,
                 };
-                uuids.insert(key, entry.clone());
-                self.cache.lock().await.set_uuid_by_username(entry).await?;
+                uuids.insert(key.clone(), entry.clone());
+                self.cache
+                    .lock()
+                    .await
+                    .set_uuid_by_username(&key, entry)
+                    .await?;
             }
         }
 
@@ -112,26 +131,17 @@ impl XenosService {
 
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
         // return cached if not elapsed
-        let cached = match self.cache.lock().await.get_profile_by_uuid(uuid).await? {
-            None => None,
-            Some(entry) => {
-                if !has_elapsed(&entry.timestamp, &CACHE_TIME) {
-                    return Ok(entry);
-                }
-                Some(entry)
-            }
+        let cached = self.cache.lock().await.get_profile_by_uuid(uuid).await?;
+        let entry = match cached {
+            Hit(entry) => return Ok(entry),
+            Expired(entry) => Some(entry),
+            Miss => None,
         };
 
         // try to fetch
         let profile = match self.mojang.fetch_profile(uuid).await {
             Ok(r) => r,
-            Err(Reqwest(err)) => {
-                return match err.status() {
-                    Some(StatusCode::TOO_MANY_REQUESTS) => cached.ok_or(NotRetrieved),
-                    Some(StatusCode::NOT_FOUND) => Err(NotFound),
-                    _ => Err(Reqwest(err)),
-                };
-            }
+            Err(NotRetrieved) => return entry.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
         let entry = ProfileEntry {
@@ -152,86 +162,71 @@ impl XenosService {
         self.cache
             .lock()
             .await
-            .set_profile_by_uuid(entry.clone())
+            .set_profile_by_uuid(*uuid, entry.clone())
             .await?;
         Ok(entry)
     }
 
     async fn fetch_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
-        let cached = match self.cache.lock().await.get_skin_by_uuid(uuid).await? {
-            None => None,
-            Some(entry) => {
-                if !has_elapsed(&entry.timestamp, &CACHE_TIME) {
-                    return Ok(entry);
-                }
-                Some(entry)
-            }
+        let cached = self.cache.lock().await.get_skin_by_uuid(uuid).await?;
+        let skin_entry = match cached {
+            Hit(entry) => return Ok(entry),
+            Expired(entry) => Some(entry),
+            Miss => None,
         };
 
         let profile = match self.fetch_profile(uuid).await {
             Ok(profile) => profile,
-            Err(NotRetrieved) => return cached.ok_or(NotRetrieved),
+            Err(NotRetrieved) => return skin_entry.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
+
         let skin_url = profile
             .get_textures()?
             .textures
             .skin
             .ok_or(InvalidTextures("skin missing".to_string()))?
             .url;
-        let skin = match self.mojang.fetch_image_bytes(skin_url).await {
+        let skin = match self.mojang.fetch_image_bytes(skin_url, "skin").await {
             Ok(r) => r,
-            Err(Reqwest(err)) => {
-                return match err.status() {
-                    Some(StatusCode::TOO_MANY_REQUESTS) => cached.ok_or(NotRetrieved),
-                    Some(StatusCode::NOT_FOUND) => Err(NotFound),
-                    _ => Err(Reqwest(err)),
-                };
-            }
+            Err(NotRetrieved) => return skin_entry.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
         let entry = SkinEntry {
             timestamp: get_epoch_seconds(),
-            uuid: uuid.to_owned(),
             bytes: skin.to_vec(),
         };
         self.cache
             .lock()
             .await
-            .set_skin_by_uuid(entry.clone())
+            .set_skin_by_uuid(*uuid, entry.clone())
             .await?;
         Ok(entry)
     }
 
     async fn fetch_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
-        let cached = match self
+        let cached = self
             .cache
             .lock()
             .await
             .get_head_by_uuid(uuid, overlay)
-            .await?
-        {
-            None => None,
-            Some(entry) => {
-                if !has_elapsed(&entry.timestamp, &CACHE_TIME) {
-                    return Ok(entry);
-                }
-                Some(entry)
-            }
+            .await?;
+        let entry = match cached {
+            Hit(entry) => return Ok(entry),
+            Expired(entry) => Some(entry),
+            Miss => None,
         };
 
         let skin = match self.fetch_skin(uuid).await {
             Ok(profile) => profile,
-            Err(NotRetrieved) => return cached.ok_or(NotRetrieved),
+            Err(NotRetrieved) => return entry.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
 
         let skin_img = image::load_from_memory_with_format(&skin.bytes, image::ImageFormat::Png)?;
         let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
-        if *overlay {
-            let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
-            imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
-        }
+        let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
+        imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
 
         let mut head_bytes: Vec<u8> = Vec::new();
         let mut cur = Cursor::new(&mut head_bytes);
@@ -246,13 +241,12 @@ impl XenosService {
 
         let entry = HeadEntry {
             timestamp: get_epoch_seconds(),
-            uuid: uuid.to_owned(),
             bytes: head_bytes,
         };
         self.cache
             .lock()
             .await
-            .set_head_by_uuid(entry.clone(), overlay)
+            .set_head_by_uuid(*uuid, entry.clone(), overlay)
             .await?;
         Ok(entry)
     }
@@ -290,7 +284,7 @@ impl Profile for XenosService {
         // get profile
         let profile = match self.fetch_profile(&uuid).await {
             Ok(profile) => profile,
-            Err(NotFound) | Err(NoContent) => return Err(Status::not_found("profile not found")),
+            Err(NotFound) => return Err(Status::not_found("profile not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
             Err(err) => return Err(Status::internal(err.to_string())),
         };
@@ -321,7 +315,7 @@ impl Profile for XenosService {
         // get skin
         let skin = match self.fetch_skin(&uuid).await {
             Ok(skin) => skin,
-            Err(NotFound) | Err(NoContent) => return Err(Status::not_found("skin not found")),
+            Err(NotFound) => return Err(Status::not_found("skin not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
             Err(err) => return Err(Status::internal(err.to_string())),
         };
@@ -341,9 +335,9 @@ impl Profile for XenosService {
         let uuid = parse_uuid(&req.uuid)?;
         let overlay = &req.overlay;
         // get head
-        let head = match self.fetch_head(&uuid, &overlay).await {
+        let head = match self.fetch_head(&uuid, overlay).await {
             Ok(head) => head,
-            Err(NotFound) | Err(NoContent) => return Err(Status::not_found("head not found")),
+            Err(NotFound) => return Err(Status::not_found("head not found")),
             Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
             Err(err) => return Err(Status::internal(err.to_string())),
         };

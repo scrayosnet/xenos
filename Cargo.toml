@@ -35,6 +35,10 @@ tower = "0.4.13"
 hyper = "1.1"
 futures = "0.3.30"
 async-trait = "0.1.77"
+chrono = "0.4"
+prometheus = "0.13"
+futures-util = "0.3.30"
+actix-web = { version = "4", features = ["rustls"] }
 
 [build-dependencies]
 tonic-build = { version = "0.10", features = ["prost"] }

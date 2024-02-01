@@ -4,8 +4,6 @@ pub enum XenosError {
     Redis(#[from] redis::RedisError),
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
-    #[error("mojang responded with no content")]
-    NoContent,
     #[error(transparent)]
     Image(#[from] image::ImageError),
     #[error("invalid profile textures: {0}")]
