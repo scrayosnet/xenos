@@ -1,4 +1,5 @@
 use actix_web::{App, HttpServer};
+use futures_util::FutureExt;
 use std::env;
 use std::net::SocketAddr;
 use tokio::sync::Mutex;
@@ -31,6 +32,7 @@ async fn run_metrics(metrics_addr: String) -> Result<(), Box<dyn std::error::Err
         .bind(metrics_addr)?
         .run()
         .await?;
+    println!("Metrics server stopped");
     Ok(())
 }
 
@@ -59,11 +61,15 @@ async fn run_grpc(
         .set_serving::<ProfileServer<XenosService>>()
         .await;
 
+    // shutdown signal (future)
+    let shutdown = tokio::signal::ctrl_c().map(|_| ());
+
     println!("Grpc listening on {}", grpc_addr);
     Server::builder()
         .add_service(health_service)
         .add_service(profile_service)
-        .serve(grpc_addr)
+        .serve_with_shutdown(grpc_addr, shutdown)
         .await?;
+    println!("Grpc server stopped");
     Ok(())
 }
