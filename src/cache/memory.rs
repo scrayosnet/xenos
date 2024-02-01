@@ -80,6 +80,7 @@ impl XenosCache for MemoryCache {
     }
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
     use crate::cache::Cached::Hit;
