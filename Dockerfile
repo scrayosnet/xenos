@@ -14,8 +14,8 @@ RUN set -eux \
 
 FROM scratch
 
-# declare our ports that we allow for interacting with xenos
-EXPOSE 50051
+# declare our ports that we allow for interacting with xenos (grpc, metrics)
+EXPOSE 50051 9990
 
 # copy the raw binary into the new container
 COPY --from=builder "/usr/src/xenos/target/release/xenos" "/xenos"
