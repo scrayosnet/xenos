@@ -1,4 +1,4 @@
-name: Create and publish Docker image
+name: Docker
 
 on:
   push:
@@ -6,17 +6,22 @@ on:
     - main
     tags:
     - v*
+  pull_request:
+    branches:
+    - main
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push-image:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       actions: read
       security-events: write
-      # used to complete the identity challenge with sigstore/fulcio when running outside of PRs
       id-token: write
     steps:
 
@@ -28,50 +33,48 @@ jobs:
       uses: sigstore/cosign-installer@v3
 
     - name: Login into GitHub Container Registry
+      if: github.event_name != 'pull_request'
       uses: docker/login-action@v3
       with:
-        registry: ghcr.io
+        registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Login into Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Extract metadata (tags, labels) for Docker
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: |
-          scrayosug/xenos
-          ghcr.io/scrayosnet/xenos
-        tags: |
-          type=ref,event=branch
-          type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
     - name: Build and push Docker image
       id: build-and-push
       uses: docker/build-push-action@v5
       with:
         context: .
-        push: true
+        push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
     - name: Sign published Docker images
       if: ${{ github.event_name != 'pull_request' }}
       env:
         TAGS: ${{ steps.meta.outputs.tags }}
         DIGEST: ${{ steps.build-and-push.outputs.digest }}
-      run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+      run: |
+        images=""
+        for tag in ${TAGS}; do
+          images+="${tag}@${DIGEST} "
+        done
+        cosign sign --yes ${images}
 
     - name: Scan vulnerabilities with Docker Scout
       id: docker-scout
       uses: docker/scout-action@v1
       with:
         command: cves
+        image: ${{ steps.meta.outputs.tags }}
         sarif-file: sarif.output.json
         exit-code: true
         summary: true
