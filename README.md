@@ -1,7 +1,7 @@
 ![The official Logo of Xenos](.github/images/logo.png "Xenos")
 
 ![A visual badge for the latest release](https://img.shields.io/github/v/release/scrayosnet/xenos "Latest Release")
-![A visual badge for the workflow status](https://img.shields.io/github/actions/workflow/status/scrayosnet/xenos/docker.yaml "Workflow Status")
+![A visual badge for the workflow status](https://img.shields.io/github/actions/workflow/status/scrayosnet/xenos/docker.yml "Workflow Status")
 ![A visual badge for the dependency status](https://img.shields.io/librariesio/github/scrayosnet/xenos "Dependencies")
 ![A visual badge for the Docker image size](https://img.shields.io/docker/image-size/scrayosug/xenos "Image Size")
 ![A visual badge for the license](https://img.shields.io/github/license/scrayosnet/xenos "License")
