@@ -310,10 +310,6 @@ impl XenosService {
     }
 }
 
-fn parse_uuid(str: &str) -> Result<Uuid, Status> {
-    Uuid::try_parse(str).map_err(|_| Status::invalid_argument("invalid uuid"))
-}
-
 #[tonic::async_trait]
 impl Profile for XenosService {
     async fn get_uuids(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
@@ -343,71 +339,131 @@ impl Profile for XenosService {
                 return Err(Status::invalid_argument("invalid uuid"));
             }
         };
-        // get profile
-        let profile = match self.fetch_profile(&uuid).await {
-            Ok(profile) => profile,
+        // get profile and build response
+        match self.fetch_profile(&uuid).await {
+            Ok(profile) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["profile", "ok"])
+                    .observe(start.elapsed().as_secs() as f64);
+                PROFILE_REQ_AGE_HISTOGRAM
+                    .with_label_values(&["profile"])
+                    .observe(profile.timestamp as f64);
+                Ok(Response::new(profile.into()))
+            }
             Err(NotFound) => {
                 PROFILE_REQ_LAT_HISTOGRAM
                     .with_label_values(&["profile", "not_found"])
                     .observe(start.elapsed().as_secs() as f64);
-                return Err(Status::not_found("profile not found"));
+                Err(Status::not_found("profile not found"))
             }
             Err(NotRetrieved) => {
                 PROFILE_REQ_LAT_HISTOGRAM
                     .with_label_values(&["profile", "not_retrieved"])
                     .observe(start.elapsed().as_secs() as f64);
-                return Err(Status::unavailable("unable to retrieve"));
+                Err(Status::unavailable("unable to retrieve"))
             }
             Err(err) => {
                 PROFILE_REQ_LAT_HISTOGRAM
                     .with_label_values(&["profile", "error"])
                     .observe(start.elapsed().as_secs() as f64);
-                return Err(Status::internal(err.to_string()));
+                Err(Status::internal(err.to_string()))
             }
-        };
-        // build response
-        PROFILE_REQ_LAT_HISTOGRAM
-            .with_label_values(&["profile", "ok"])
-            .observe(start.elapsed().as_secs() as f64);
-        PROFILE_REQ_AGE_HISTOGRAM
-            .with_label_values(&["profile"])
-            .observe(profile.timestamp as f64);
-        Ok(Response::new(profile.into()))
+        }
     }
 
-    // TODO track metrics
     async fn get_skin(
         &self,
         request: Request<SkinRequest>,
     ) -> Result<Response<SkinResponse>, Status> {
-        let uuid = parse_uuid(&request.into_inner().uuid)?;
-        // get skin
-        let skin = match self.fetch_skin(&uuid).await {
-            Ok(skin) => skin,
-            Err(NotFound) => return Err(Status::not_found("skin not found")),
-            Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
-            Err(err) => return Err(Status::internal(err.to_string())),
+        let start = Instant::now();
+        // parse input
+        let uuid = match Uuid::try_parse(&request.into_inner().uuid) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["skin", "bad_request"])
+                    .observe(start.elapsed().as_secs() as f64);
+                return Err(Status::invalid_argument("invalid uuid"));
+            }
         };
-        // build response
-        Ok(Response::new(skin.into()))
+        // get skin and build response
+        match self.fetch_skin(&uuid).await {
+            Ok(skin) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["skin", "ok"])
+                    .observe(start.elapsed().as_secs() as f64);
+                PROFILE_REQ_AGE_HISTOGRAM
+                    .with_label_values(&["skin"])
+                    .observe(skin.timestamp as f64);
+                Ok(Response::new(skin.into()))
+            }
+            Err(NotFound) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["skin", "not_found"])
+                    .observe(start.elapsed().as_secs() as f64);
+                Err(Status::not_found("skin not found"))
+            }
+            Err(NotRetrieved) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["skin", "not_retrieved"])
+                    .observe(start.elapsed().as_secs() as f64);
+                Err(Status::unavailable("unable to retrieve"))
+            }
+            Err(err) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["skin", "error"])
+                    .observe(start.elapsed().as_secs() as f64);
+                Err(Status::internal(err.to_string()))
+            }
+        }
     }
 
-    // TODO track metrics
     async fn get_head(
         &self,
         request: Request<HeadRequest>,
     ) -> Result<Response<HeadResponse>, Status> {
+        let start = Instant::now();
+        // parse input
         let req = request.into_inner();
-        let uuid = parse_uuid(&req.uuid)?;
         let overlay = &req.overlay;
-        // get head
-        let head = match self.fetch_head(&uuid, overlay).await {
-            Ok(head) => head,
-            Err(NotFound) => return Err(Status::not_found("head not found")),
-            Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
-            Err(err) => return Err(Status::internal(err.to_string())),
+        let uuid = match Uuid::try_parse(&req.uuid) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["head", "bad_request"])
+                    .observe(start.elapsed().as_secs() as f64);
+                return Err(Status::invalid_argument("invalid uuid"));
+            }
         };
-        // build response
-        Ok(Response::new(head.into()))
+        // get head and build response
+        match self.fetch_head(&uuid, overlay).await {
+            Ok(head) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["head", "ok"])
+                    .observe(start.elapsed().as_secs() as f64);
+                PROFILE_REQ_AGE_HISTOGRAM
+                    .with_label_values(&["head"])
+                    .observe(head.timestamp as f64);
+                Ok(Response::new(head.into()))
+            }
+            Err(NotFound) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["head", "not_found"])
+                    .observe(start.elapsed().as_secs() as f64);
+                Err(Status::not_found("head not found"))
+            }
+            Err(NotRetrieved) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["head", "not_retrieved"])
+                    .observe(start.elapsed().as_secs() as f64);
+                Err(Status::unavailable("unable to retrieve"))
+            }
+            Err(err) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["head", "error"])
+                    .observe(start.elapsed().as_secs() as f64);
+                Err(Status::internal(err.to_string()))
+            }
+        }
     }
 }
