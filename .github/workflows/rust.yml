@@ -21,8 +21,17 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Install Protoc
+      run: apt-get install -y protobuf-compiler
+
     - name: Build with Cargo
       run: cargo build --verbose
 
     - name: Run tests with Cargo
       run: cargo test --verbose
+
+    - name: Check format
+      run: cargo fmt --check
+
+    - name: Perform linting
+      run: cargo clippy
