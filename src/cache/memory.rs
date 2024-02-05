@@ -34,9 +34,10 @@ pub struct MemoryCache {
 
 impl MemoryCache {
     pub fn with_cache_time(cache_time: u64) -> Self {
-        let mut cache = Self::default();
-        cache.cache_time = cache_time;
-        cache
+        MemoryCache {
+            cache_time,
+            ..Default::default()
+        }
     }
 
     // converts a option into a cached while also incrementing memory cache response metrics

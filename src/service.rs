@@ -112,7 +112,7 @@ pub struct XenosService {
 }
 
 impl XenosService {
-    fn build_skin_head(skin_bytes: &Vec<u8>) -> Result<Vec<u8>, XenosError> {
+    fn build_skin_head(skin_bytes: &[u8]) -> Result<Vec<u8>, XenosError> {
         let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
         let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
         let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
