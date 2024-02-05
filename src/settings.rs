@@ -1,5 +1,5 @@
 use config::{Config, ConfigError, Environment, File};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use std::env;
 use std::net::SocketAddr;
 

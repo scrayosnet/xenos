@@ -50,9 +50,9 @@ async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>>
             redis_manager,
         }))
     } else {
-        let mut cache = MemoryCache::default();
-        cache.cache_time = settings.memory_cache.cache_time;
-        Box::new(Mutex::new(cache))
+        Box::new(Mutex::new(MemoryCache::with_cache_time(
+            settings.memory_cache.cache_time,
+        )))
     };
 
     // build mojang api

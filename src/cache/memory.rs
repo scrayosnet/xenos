@@ -1,6 +1,7 @@
-use crate::cache::Cached::{Hit, Miss};
+use crate::cache::Cached::{Expired, Hit, Miss};
 use crate::cache::{Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
+use crate::util::has_elapsed;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
@@ -24,11 +25,23 @@ lazy_static! {
 
 #[derive(Default)]
 pub struct MemoryCache {
-    pub cache_time: u64, // TODO use
+    pub cache_time: u64,
     uuids: HashMap<String, UuidEntry>,
     profiles: HashMap<Uuid, ProfileEntry>,
     skins: HashMap<Uuid, SkinEntry>,
     heads: HashMap<String, HeadEntry>,
+}
+
+impl MemoryCache {
+    pub fn with_cache_time(cache_time: u64) -> Self {
+        let mut cache = Self::default();
+        cache.cache_time = cache_time;
+        cache
+    }
+
+    fn has_expired(&self, timestamp: &u64) -> bool {
+        has_elapsed(timestamp, &self.cache_time)
+    }
 }
 
 #[async_trait]
@@ -39,11 +52,17 @@ impl XenosCache for MemoryCache {
     ) -> Result<Cached<UuidEntry>, XenosError> {
         let entry = self.uuids.get(username).cloned();
         match entry {
-            Some(entry) => {
+            Some(entry) if self.has_expired(&entry.timestamp) => {
                 MEMORY_CACHE_GET_TOTAL
                     .with_label_values(&["uuid", "hit"])
                     .inc();
                 Ok(Hit(entry))
+            }
+            Some(entry) => {
+                MEMORY_CACHE_GET_TOTAL
+                    .with_label_values(&["uuid", "expired"])
+                    .inc();
+                Ok(Expired(entry))
             }
             None => {
                 MEMORY_CACHE_GET_TOTAL
@@ -70,11 +89,17 @@ impl XenosCache for MemoryCache {
     ) -> Result<Cached<ProfileEntry>, XenosError> {
         let entry = self.profiles.get(uuid).cloned();
         match entry {
-            Some(entry) => {
+            Some(entry) if self.has_expired(&entry.timestamp) => {
                 MEMORY_CACHE_GET_TOTAL
                     .with_label_values(&["profile", "hit"])
                     .inc();
                 Ok(Hit(entry))
+            }
+            Some(entry) => {
+                MEMORY_CACHE_GET_TOTAL
+                    .with_label_values(&["profile", "expired"])
+                    .inc();
+                Ok(Expired(entry))
             }
             None => {
                 MEMORY_CACHE_GET_TOTAL
@@ -98,11 +123,17 @@ impl XenosCache for MemoryCache {
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
         let entry = self.skins.get(uuid).cloned();
         match entry {
-            Some(entry) => {
+            Some(entry) if self.has_expired(&entry.timestamp) => {
                 MEMORY_CACHE_GET_TOTAL
                     .with_label_values(&["skin", "hit"])
                     .inc();
                 Ok(Hit(entry))
+            }
+            Some(entry) => {
+                MEMORY_CACHE_GET_TOTAL
+                    .with_label_values(&["skin", "expired"])
+                    .inc();
+                Ok(Expired(entry))
             }
             None => {
                 MEMORY_CACHE_GET_TOTAL
@@ -127,11 +158,17 @@ impl XenosCache for MemoryCache {
         let uuid_str = uuid.simple().to_string();
         let entry = self.heads.get(&format!("{uuid_str}.{overlay}")).cloned();
         match entry {
-            Some(entry) => {
+            Some(entry) if self.has_expired(&entry.timestamp) => {
                 MEMORY_CACHE_GET_TOTAL
                     .with_label_values(&["head", "hit"])
                     .inc();
                 Ok(Hit(entry))
+            }
+            Some(entry) => {
+                MEMORY_CACHE_GET_TOTAL
+                    .with_label_values(&["head", "expired"])
+                    .inc();
+                Ok(Expired(entry))
             }
             None => {
                 MEMORY_CACHE_GET_TOTAL
@@ -163,7 +200,7 @@ mod test {
     #[tokio::test]
     async fn memory_cache_uuids() {
         // given
-        let mut cache = MemoryCache::default();
+        let mut cache = MemoryCache::with_cache_time(3000);
         let entry_hydrofin = UuidEntry {
             timestamp: 100,
             username: "Hydrofin".to_string(),
@@ -200,7 +237,7 @@ mod test {
     #[tokio::test]
     async fn memory_cache_profile() {
         // given
-        let mut cache = MemoryCache::default();
+        let mut cache = MemoryCache::with_cache_time(3000);
         let entry = ProfileEntry {
             timestamp: 100,
             uuid: Uuid::new_v4(),
@@ -227,7 +264,7 @@ mod test {
     #[tokio::test]
     async fn memory_cache_skin() {
         // given
-        let mut cache = MemoryCache::default();
+        let mut cache = MemoryCache::with_cache_time(3000);
         let uuid = Uuid::new_v4();
         let entry = SkinEntry {
             timestamp: 1001001,
