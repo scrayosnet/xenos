@@ -37,7 +37,7 @@ pub struct UuidEntry {
     pub uuid: Uuid,
 }
 
-impl CacheEntry for ProfileEntry {
+impl CacheEntry for UuidEntry {
     fn get_timestamp(&self) -> u64 {
         self.timestamp
     }
