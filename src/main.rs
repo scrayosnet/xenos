@@ -43,6 +43,7 @@ async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>>
     // build selected cache, fallback to in-memory cache
     let cache: Box<Mutex<dyn XenosCache>> = if settings.redis_cache.enabled {
         // build redis client and cache
+        println!("Connecting to redis");
         let redis_client = redis::Client::open(settings.redis_cache.address.clone())?;
         let redis_manager = redis_client.get_connection_manager().await?;
         Box::new(Mutex::new(RedisCache {

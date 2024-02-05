@@ -1,5 +1,63 @@
 pub mod pb {
+    use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry};
+
     tonic::include_proto!("scrayosnet.xenos");
+
+    impl From<ProfileEntry> for ProfileResponse {
+        fn from(value: ProfileEntry) -> Self {
+            ProfileResponse {
+                timestamp: value.timestamp,
+                uuid: value.uuid.hyphenated().to_string(),
+                name: value.name,
+                properties: value
+                    .properties
+                    .into_iter()
+                    .map(|prop| ProfileProperty {
+                        name: prop.name,
+                        value: prop.value,
+                        signature: prop.signature,
+                    })
+                    .collect(),
+                profile_actions: value.profile_actions,
+            }
+        }
+    }
+
+    impl From<SkinEntry> for SkinResponse {
+        fn from(value: SkinEntry) -> Self {
+            SkinResponse {
+                timestamp: value.timestamp,
+                data: value.bytes,
+            }
+        }
+    }
+
+    impl From<HeadEntry> for HeadResponse {
+        fn from(value: HeadEntry) -> Self {
+            HeadResponse {
+                timestamp: value.timestamp,
+                data: value.bytes,
+            }
+        }
+    }
+
+    impl From<UuidEntry> for UuidResult {
+        fn from(value: UuidEntry) -> Self {
+            UuidResult {
+                timestamp: value.timestamp,
+                username: value.username,
+                uuid: value.uuid.hyphenated().to_string(),
+            }
+        }
+    }
+
+    impl From<Vec<UuidEntry>> for UuidResponse {
+        fn from(value: Vec<UuidEntry>) -> Self {
+            UuidResponse {
+                resolved: value.into_iter().map(|v| v.into()).collect(),
+            }
+        }
+    }
 }
 
 use crate::cache;
@@ -9,14 +67,13 @@ use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
 use crate::mojang::{MojangApi, UsernameResolved};
 use crate::service::pb::{
-    HeadRequest, HeadResponse, ProfileProperty, ProfileRequest, ProfileResponse, SkinRequest,
-    SkinResponse,
+    HeadRequest, HeadResponse, ProfileRequest, ProfileResponse, SkinRequest, SkinResponse,
 };
 use crate::util::get_epoch_seconds;
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use pb::profile_server::Profile;
-use pb::{UuidRequest, UuidResponse, UuidResult};
+use pb::{UuidRequest, UuidResponse};
 use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
@@ -260,21 +317,15 @@ fn parse_uuid(str: &str) -> Result<Uuid, Status> {
 #[tonic::async_trait]
 impl Profile for XenosService {
     async fn get_uuids(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
+        // parse request
         let usernames = request.into_inner().usernames;
+        // resolve uuids
         let uuids = match self.fetch_uuids(&usernames).await {
             Ok(uuids) => uuids,
             Err(err) => return Err(Status::internal(err.to_string())),
         };
-
-        let resolved = uuids
-            .into_iter()
-            .map(|entry| UuidResult {
-                timestamp: entry.timestamp,
-                username: entry.username,
-                uuid: entry.uuid.hyphenated().to_string(),
-            })
-            .collect();
-        Ok(Response::new(UuidResponse { resolved }))
+        // build response
+        Ok(Response::new(uuids.into()))
     }
 
     async fn get_profile(
@@ -315,28 +366,13 @@ impl Profile for XenosService {
             }
         };
         // build response
-        let response = ProfileResponse {
-            timestamp: profile.timestamp,
-            uuid: profile.uuid.hyphenated().to_string(),
-            name: profile.name,
-            properties: profile
-                .properties
-                .into_iter()
-                .map(|prop| ProfileProperty {
-                    name: prop.name,
-                    value: prop.value,
-                    signature: prop.signature,
-                })
-                .collect(),
-            profile_actions: profile.profile_actions,
-        };
         PROFILE_REQ_LAT_HISTOGRAM
             .with_label_values(&["profile", "ok"])
             .observe(start.elapsed().as_secs() as f64);
         PROFILE_REQ_AGE_HISTOGRAM
             .with_label_values(&["profile"])
             .observe(profile.timestamp as f64);
-        Ok(Response::new(response))
+        Ok(Response::new(profile.into()))
     }
 
     // TODO track metrics
@@ -353,11 +389,7 @@ impl Profile for XenosService {
             Err(err) => return Err(Status::internal(err.to_string())),
         };
         // build response
-        let response = SkinResponse {
-            timestamp: skin.timestamp,
-            data: skin.bytes,
-        };
-        Ok(Response::new(response))
+        Ok(Response::new(skin.into()))
     }
 
     // TODO track metrics
@@ -376,10 +408,6 @@ impl Profile for XenosService {
             Err(err) => return Err(Status::internal(err.to_string())),
         };
         // build response
-        let response = HeadResponse {
-            timestamp: head.timestamp,
-            data: head.bytes,
-        };
-        Ok(Response::new(response))
+        Ok(Response::new(head.into()))
     }
 }
