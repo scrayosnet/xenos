@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 pub struct RedisCache {
     pub enabled: bool,
     pub cache_time: u64,
+    pub expiration: Option<usize>,
     pub address: String,
 }
 

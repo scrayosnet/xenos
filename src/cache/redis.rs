@@ -7,7 +7,8 @@ use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};
 use redis::aio::ConnectionManager;
 use redis::{
-    from_redis_value, AsyncCommands, FromRedisValue, RedisResult, RedisWrite, ToRedisArgs, Value,
+    from_redis_value, AsyncCommands, FromRedisValue, RedisResult, RedisWrite, SetExpiry,
+    SetOptions, ToRedisArgs, Value,
 };
 use uuid::Uuid;
 
@@ -35,12 +36,21 @@ lazy_static! {
 
 pub struct RedisCache {
     pub cache_time: u64,
+    pub expiration: Option<usize>,
     pub redis_manager: ConnectionManager,
 }
 
 impl RedisCache {
     fn has_expired(&self, timestamp: &u64) -> bool {
         has_elapsed(timestamp, &self.cache_time)
+    }
+
+    fn build_set_options(&self) -> SetOptions {
+        let mut opts = SetOptions::default();
+        if let Some(expiration) = self.expiration {
+            opts = opts.with_expiration(SetExpiry::EX(expiration));
+        }
+        opts
     }
 
     // converts a option into a cached while also incrementing redis cache response metrics
@@ -96,7 +106,11 @@ impl XenosCache for RedisCache {
     ) -> Result<(), XenosError> {
         REDIS_SET_TOTAL.with_label_values(&["uuid"]).inc();
         self.redis_manager
-            .set(build_key("uuid", username.to_lowercase().as_str()), entry)
+            .set_options(
+                build_key("uuid", username.to_lowercase().as_str()),
+                entry,
+                self.build_set_options(),
+            )
             .await?;
         Ok(())
     }
@@ -123,9 +137,10 @@ impl XenosCache for RedisCache {
     ) -> Result<(), XenosError> {
         REDIS_SET_TOTAL.with_label_values(&["profile"]).inc();
         self.redis_manager
-            .set(
+            .set_options(
                 build_key("profile", uuid.simple().to_string().as_str()),
                 entry,
+                self.build_set_options(),
             )
             .await?;
         Ok(())
@@ -146,7 +161,11 @@ impl XenosCache for RedisCache {
     async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
         REDIS_SET_TOTAL.with_label_values(&["skin"]).inc();
         self.redis_manager
-            .set(build_key("skin", uuid.simple().to_string().as_str()), entry)
+            .set_options(
+                build_key("skin", uuid.simple().to_string().as_str()),
+                entry,
+                self.build_set_options(),
+            )
             .await?;
         Ok(())
     }
@@ -177,7 +196,11 @@ impl XenosCache for RedisCache {
         let uuid_str = uuid.simple().to_string();
         REDIS_SET_TOTAL.with_label_values(&["head"]).inc();
         self.redis_manager
-            .set(build_key("head", &format!("{uuid_str}.{overlay}")), entry)
+            .set_options(
+                build_key("head", &format!("{uuid_str}.{overlay}")),
+                entry,
+                self.build_set_options(),
+            )
             .await?;
         Ok(())
     }
