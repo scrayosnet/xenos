@@ -121,9 +121,11 @@ pub trait MojangApi: Send + Sync {
 
 pub struct Mojang;
 
-#[async_trait]
-impl MojangApi for Mojang {
-    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
+impl Mojang {
+    async fn fetch_uuids_chunk(
+        &self,
+        usernames: &[String],
+    ) -> Result<Vec<UsernameResolved>, XenosError> {
         let timer = MOJANG_REQ_HISTOGRAM
             .with_label_values(&["uuids"])
             .start_timer();
@@ -148,6 +150,19 @@ impl MojangApi for Mojang {
                 Ok(resolved)
             }
         }
+    }
+}
+
+#[async_trait]
+impl MojangApi for Mojang {
+    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
+        // split into requests with ten or fewer usernames
+        let mut resolved = vec![];
+        let chunks = usernames.chunks(10);
+        for chunk in chunks {
+            resolved.extend(self.fetch_uuids_chunk(chunk).await?)
+        }
+        Ok(resolved)
     }
 
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
