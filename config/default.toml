@@ -1,0 +1,13 @@
+[memory_cache]
+cache_time = 300 # 5 minutes
+
+[redis_cache]
+enabled = true
+cache_time = 300 # 5 minutes
+
+[metrics_server]
+enabled = false
+address = "0.0.0.0:9990"
+
+[grpc_server]
+address = "0.0.0.0:50051"

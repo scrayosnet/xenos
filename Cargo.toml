@@ -39,6 +39,7 @@ chrono = "0.4"
 prometheus = "0.13"
 futures-util = "0.3.30"
 actix-web = { version = "4", features = ["rustls"] }
+config = "0.14.0"
 
 [build-dependencies]
 tonic-build = { version = "0.10", features = ["prost"] }

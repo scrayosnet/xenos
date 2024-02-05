@@ -24,6 +24,7 @@ lazy_static! {
 
 #[derive(Default)]
 pub struct MemoryCache {
+    pub cache_time: u64, // TODO use
     uuids: HashMap<String, UuidEntry>,
     profiles: HashMap<Uuid, ProfileEntry>,
     skins: HashMap<Uuid, SkinEntry>,

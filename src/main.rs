@@ -1,52 +1,59 @@
 use actix_web::{App, HttpServer};
 use futures_util::FutureExt;
-use std::env;
-use std::net::SocketAddr;
 use tokio::sync::Mutex;
 use tokio::try_join;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
+use xenos::cache::memory::MemoryCache;
 use xenos::cache::redis::RedisCache;
+use xenos::cache::XenosCache;
 use xenos::metrics_server::metrics;
 use xenos::mojang::Mojang;
 use xenos::service::pb::profile_server::ProfileServer;
 use xenos::service::XenosService;
+use xenos::settings::Settings;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // read configuration from environment
-    let grpc_addr_str = env::var("SERVER_ADDR").unwrap_or("0.0.0.0:50051".to_string());
-    let redis_addr = env::var("REDIS_ADDR").expect("redis address required");
-    let metrics_addr = env::var("METRICS_ADDR").unwrap_or("0.0.0.0:9990".to_string());
-    let grpc_addr = grpc_addr_str
-        .parse()
-        .expect("listen address invalid format");
+    // read settings from config files and environment variables
+    let settings = Settings::new()?;
 
-    try_join!(run_grpc(redis_addr, grpc_addr), run_metrics(metrics_addr))?;
+    // start all (possible) services
+    // disabled services won't start themselves
+    try_join!(run_grpc(&settings), run_metrics(&settings))?;
     Ok(())
 }
 
-async fn run_metrics(metrics_addr: String) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Metrics listening on {}", metrics_addr);
+async fn run_metrics(settings: &Settings) -> Result<(), Box<dyn std::error::Error>> {
+    if !settings.metrics_server.enabled {
+        return Ok(());
+    }
+
+    // run metrics server
+    println!("Metrics listening on {}", settings.metrics_server.address);
     HttpServer::new(|| App::new().service(metrics))
-        .bind(metrics_addr)?
+        .bind(settings.metrics_server.address)?
         .run()
         .await?;
     println!("Metrics server stopped");
     Ok(())
 }
 
-async fn run_grpc(
-    redis_addr: String,
-    grpc_addr: SocketAddr,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // build redis client and cache
-    let redis_client = redis::Client::open(redis_addr)?;
-    let redis_manager = redis_client.get_connection_manager().await?;
-    let cache = Box::new(Mutex::new(RedisCache {
-        cache_time: 5 * 60,
-        redis_manager,
-    }));
+async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>> {
+    // build selected cache, fallback to in-memory cache
+    let cache: Box<Mutex<dyn XenosCache>> = if settings.redis_cache.enabled {
+        // build redis client and cache
+        let redis_client = redis::Client::open(settings.redis_cache.address.clone())?;
+        let redis_manager = redis_client.get_connection_manager().await?;
+        Box::new(Mutex::new(RedisCache {
+            cache_time: settings.redis_cache.cache_time,
+            redis_manager,
+        }))
+    } else {
+        let mut cache = MemoryCache::default();
+        cache.cache_time = settings.memory_cache.cache_time;
+        Box::new(Mutex::new(cache))
+    };
 
     // build mojang api
     let mojang = Box::new(Mojang {});
@@ -64,11 +71,11 @@ async fn run_grpc(
     // shutdown signal (future)
     let shutdown = tokio::signal::ctrl_c().map(|_| ());
 
-    println!("Grpc listening on {}", grpc_addr);
+    println!("Grpc listening on {}", settings.grpc_server.address);
     Server::builder()
         .add_service(health_service)
         .add_service(profile_service)
-        .serve_with_shutdown(grpc_addr, shutdown)
+        .serve_with_shutdown(settings.grpc_server.address, shutdown)
         .await?;
     println!("Grpc server stopped");
     Ok(())
