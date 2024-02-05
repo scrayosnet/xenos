@@ -112,6 +112,25 @@ pub struct XenosService {
 }
 
 impl XenosService {
+    fn build_skin_head(skin_bytes: &Vec<u8>) -> Result<Vec<u8>, XenosError> {
+        let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
+        let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
+        let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
+        imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
+
+        let mut head_bytes: Vec<u8> = Vec::new();
+        let mut cur = Cursor::new(&mut head_bytes);
+        image::write_buffer_with_format(
+            &mut cur,
+            &head_img,
+            8,
+            8,
+            ColorType::Rgba8,
+            ImageOutputFormat::Png,
+        )?;
+        Ok(head_bytes)
+    }
+
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UuidEntry>, XenosError> {
         // 1. initialize with uuid not found
         let mut uuids: HashMap<String, UuidEntry> =
@@ -190,7 +209,7 @@ impl XenosService {
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
         // return cached if not elapsed
         let cached = self.cache.lock().await.get_profile_by_uuid(uuid).await?;
-        let entry = match cached {
+        let fallback = match cached {
             Hit(entry) => return Ok(entry),
             Expired(entry) => Some(entry),
             Miss => None,
@@ -199,7 +218,7 @@ impl XenosService {
         // try to fetch
         let profile = match self.mojang.fetch_profile(uuid).await {
             Ok(r) => r,
-            Err(NotRetrieved) => return entry.ok_or(NotRetrieved),
+            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
         let entry = ProfileEntry {
@@ -227,7 +246,7 @@ impl XenosService {
 
     async fn fetch_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
         let cached = self.cache.lock().await.get_skin_by_uuid(uuid).await?;
-        let skin_entry = match cached {
+        let fallback = match cached {
             Hit(entry) => return Ok(entry),
             Expired(entry) => Some(entry),
             Miss => None,
@@ -235,7 +254,7 @@ impl XenosService {
 
         let profile = match self.fetch_profile(uuid).await {
             Ok(profile) => profile,
-            Err(NotRetrieved) => return skin_entry.ok_or(NotRetrieved),
+            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
 
@@ -247,7 +266,7 @@ impl XenosService {
             .url;
         let skin = match self.mojang.fetch_image_bytes(skin_url, "skin").await {
             Ok(r) => r,
-            Err(NotRetrieved) => return skin_entry.ok_or(NotRetrieved),
+            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
         let entry = SkinEntry {
@@ -269,7 +288,7 @@ impl XenosService {
             .await
             .get_head_by_uuid(uuid, overlay)
             .await?;
-        let entry = match cached {
+        let fallback = match cached {
             Hit(entry) => return Ok(entry),
             Expired(entry) => Some(entry),
             Miss => None,
@@ -277,25 +296,11 @@ impl XenosService {
 
         let skin = match self.fetch_skin(uuid).await {
             Ok(profile) => profile,
-            Err(NotRetrieved) => return entry.ok_or(NotRetrieved),
+            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
 
-        let skin_img = image::load_from_memory_with_format(&skin.bytes, image::ImageFormat::Png)?;
-        let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
-        let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
-        imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
-
-        let mut head_bytes: Vec<u8> = Vec::new();
-        let mut cur = Cursor::new(&mut head_bytes);
-        image::write_buffer_with_format(
-            &mut cur,
-            &head_img,
-            8,
-            8,
-            ColorType::Rgba8,
-            ImageOutputFormat::Png,
-        )?;
+        let head_bytes = Self::build_skin_head(&skin.bytes)?;
 
         let entry = HeadEntry {
             timestamp: get_epoch_seconds(),
