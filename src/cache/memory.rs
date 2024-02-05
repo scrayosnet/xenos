@@ -144,18 +144,19 @@ impl XenosCache for MemoryCache {
 mod test {
     use super::*;
     use crate::cache::Cached::Hit;
+    use crate::util::get_epoch_seconds;
 
     #[tokio::test]
     async fn memory_cache_uuids() {
         // given
         let mut cache = MemoryCache::with_cache_time(3000);
         let entry_hydrofin = UuidEntry {
-            timestamp: 100,
+            timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
             uuid: Uuid::new_v4(),
         };
         let entry_scrayos = UuidEntry {
-            timestamp: 100100,
+            timestamp: get_epoch_seconds(),
             username: "Scrayos".to_string(),
             uuid: Uuid::new_v4(),
         };
@@ -187,7 +188,7 @@ mod test {
         // given
         let mut cache = MemoryCache::with_cache_time(3000);
         let entry = ProfileEntry {
-            timestamp: 100,
+            timestamp: get_epoch_seconds(),
             uuid: Uuid::new_v4(),
             name: "Hydrofin".to_string(),
             properties: vec![],
@@ -215,7 +216,7 @@ mod test {
         let mut cache = MemoryCache::with_cache_time(3000);
         let uuid = Uuid::new_v4();
         let entry = SkinEntry {
-            timestamp: 1001001,
+            timestamp: get_epoch_seconds(),
             bytes: vec![0, 0, 0, 1, 0],
         };
 
@@ -226,6 +227,28 @@ mod test {
         // then
         assert_eq!(
             Hit(entry),
+            retrieved,
+            "expect cache entry to not change in cache"
+        );
+    }
+
+    #[tokio::test]
+    async fn memory_cache_skin_expired() {
+        // given
+        let mut cache = MemoryCache::with_cache_time(0);
+        let uuid = Uuid::new_v4();
+        let entry = SkinEntry {
+            timestamp: 0,
+            bytes: vec![0, 0, 0, 1, 0],
+        };
+
+        // when
+        cache.set_skin_by_uuid(uuid, entry.clone()).await.unwrap();
+        let retrieved = cache.get_skin_by_uuid(&uuid).await.unwrap();
+
+        // then
+        assert_eq!(
+            Expired(entry),
             retrieved,
             "expect cache entry to not change in cache"
         );
