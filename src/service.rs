@@ -17,10 +17,11 @@ use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use pb::profile_server::Profile;
 use pb::{UuidRequest, UuidResponse, UuidResult};
-use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};
+use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::time::Instant;
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -29,18 +30,18 @@ lazy_static! {
     static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
 }
 
-// TODO integrate metrics
 lazy_static! {
-    pub static ref PROFILE_REQ_TOTAL: IntCounterVec = register_int_counter_vec!(
+    pub static ref PROFILE_REQ_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_profile_requests_total",
-        "Total number of requests to the profile grpc service.",
-        &["request_type", "status", "cache_result"],
+        "The grpc profile response age in seconds.",
+        &["request_type"],
+        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
-    pub static ref PROFILE_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    pub static ref PROFILE_REQ_LAT_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_profile_request_duration_seconds",
-        "The grpc profile request latencies in seconds.",
-        &["request_type", "cache_result"],
+        "The grpc profile request latency in seconds.",
+        &["request_type", "status"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
@@ -280,13 +281,38 @@ impl Profile for XenosService {
         &self,
         request: Request<ProfileRequest>,
     ) -> Result<Response<ProfileResponse>, Status> {
-        let uuid = parse_uuid(&request.into_inner().uuid)?;
+        let start = Instant::now();
+        // parse input
+        let uuid = match Uuid::try_parse(&request.into_inner().uuid) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["profile", "bad_request"])
+                    .observe(start.elapsed().as_secs() as f64);
+                return Err(Status::invalid_argument("invalid uuid"));
+            }
+        };
         // get profile
         let profile = match self.fetch_profile(&uuid).await {
             Ok(profile) => profile,
-            Err(NotFound) => return Err(Status::not_found("profile not found")),
-            Err(NotRetrieved) => return Err(Status::unavailable("unable to retrieve")),
-            Err(err) => return Err(Status::internal(err.to_string())),
+            Err(NotFound) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["profile", "not_found"])
+                    .observe(start.elapsed().as_secs() as f64);
+                return Err(Status::not_found("profile not found"));
+            }
+            Err(NotRetrieved) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["profile", "not_retrieved"])
+                    .observe(start.elapsed().as_secs() as f64);
+                return Err(Status::unavailable("unable to retrieve"));
+            }
+            Err(err) => {
+                PROFILE_REQ_LAT_HISTOGRAM
+                    .with_label_values(&["profile", "error"])
+                    .observe(start.elapsed().as_secs() as f64);
+                return Err(Status::internal(err.to_string()));
+            }
         };
         // build response
         let response = ProfileResponse {
@@ -304,9 +330,16 @@ impl Profile for XenosService {
                 .collect(),
             profile_actions: profile.profile_actions,
         };
+        PROFILE_REQ_LAT_HISTOGRAM
+            .with_label_values(&["profile", "ok"])
+            .observe(start.elapsed().as_secs() as f64);
+        PROFILE_REQ_AGE_HISTOGRAM
+            .with_label_values(&["profile"])
+            .observe(profile.timestamp as f64);
         Ok(Response::new(response))
     }
 
+    // TODO track metrics
     async fn get_skin(
         &self,
         request: Request<SkinRequest>,
@@ -327,6 +360,7 @@ impl Profile for XenosService {
         Ok(Response::new(response))
     }
 
+    // TODO track metrics
     async fn get_head(
         &self,
         request: Request<HeadRequest>,
