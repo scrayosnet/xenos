@@ -1,7 +1,8 @@
 use crate::cache::Cached::{Expired, Hit, Miss};
-use crate::cache::{CacheEntry, Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::{
+    has_elapsed, CacheEntry, Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache,
+};
 use crate::error::XenosError;
-use crate::util::has_elapsed;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};

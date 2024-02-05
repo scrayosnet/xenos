@@ -62,14 +62,13 @@ pub mod pb {
 
 use crate::cache;
 use crate::cache::Cached::*;
-use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::{get_epoch_seconds, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
 use crate::mojang::{MojangApi, UsernameResolved};
 use crate::service::pb::{
     HeadRequest, HeadResponse, ProfileRequest, ProfileResponse, SkinRequest, SkinResponse,
 };
-use crate::util::get_epoch_seconds;
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use pb::profile_server::Profile;

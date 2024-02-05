@@ -1,7 +1,8 @@
 use crate::cache::Cached::{Expired, Hit, Miss};
-use crate::cache::{CacheEntry, Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::{
+    has_elapsed, CacheEntry, Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache,
+};
 use crate::error::XenosError;
-use crate::util::has_elapsed;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
@@ -144,8 +145,8 @@ impl XenosCache for MemoryCache {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::cache::get_epoch_seconds;
     use crate::cache::Cached::Hit;
-    use crate::util::get_epoch_seconds;
 
     #[tokio::test]
     async fn memory_cache_uuids() {

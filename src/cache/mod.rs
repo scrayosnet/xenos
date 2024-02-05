@@ -8,6 +8,7 @@ use crate::mojang::TexturesProperty;
 use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -144,4 +145,13 @@ pub trait XenosCache: Send + Sync {
         entry: HeadEntry,
         overlay: &bool,
     ) -> Result<(), XenosError>;
+}
+
+pub fn get_epoch_seconds() -> u64 {
+    u64::try_from(Utc::now().timestamp()).unwrap()
+}
+
+pub fn has_elapsed(time: &u64, dur: &u64) -> bool {
+    let now = get_epoch_seconds();
+    time + dur < now
 }
