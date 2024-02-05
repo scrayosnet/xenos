@@ -26,11 +26,21 @@ impl<T> From<Option<T>> for Cached<T> {
     }
 }
 
+pub trait CacheEntry {
+    fn get_timestamp(&self) -> u64;
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UuidEntry {
     pub timestamp: u64,
     pub username: String,
     pub uuid: Uuid,
+}
+
+impl CacheEntry for ProfileEntry {
+    fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -42,6 +52,12 @@ pub struct ProfileEntry {
     pub properties: Vec<ProfileProperty>,
     #[serde(default)]
     pub profile_actions: Vec<String>,
+}
+
+impl CacheEntry for ProfileEntry {
+    fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -57,10 +73,22 @@ pub struct SkinEntry {
     pub bytes: Vec<u8>,
 }
 
+impl CacheEntry for SkinEntry {
+    fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HeadEntry {
     pub timestamp: u64,
     pub bytes: Vec<u8>,
+}
+
+impl CacheEntry for HeadEntry {
+    fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
 }
 
 impl ProfileEntry {

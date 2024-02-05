@@ -1,5 +1,5 @@
 use crate::cache::Cached::{Expired, Hit, Miss};
-use crate::cache::{Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::{CacheEntry, Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
 use crate::util::has_elapsed;
 use async_trait::async_trait;
@@ -42,6 +42,30 @@ impl RedisCache {
     fn has_expired(&self, timestamp: &u64) -> bool {
         has_elapsed(timestamp, &self.cache_time)
     }
+
+    // converts a option into a cached while also incrementing redis cache response metrics
+    fn cached_from<T: CacheEntry>(&self, value: Option<T>, request_type: &str) -> Cached<T> {
+        match value {
+            Some(value) if self.has_expired(&value.get_timestamp()) => {
+                REDIS_GET_TOTAL
+                    .with_label_values(&[request_type, "expired"])
+                    .inc();
+                Expired(value)
+            }
+            Some(value) => {
+                REDIS_GET_TOTAL
+                    .with_label_values(&[request_type, "hit"])
+                    .inc();
+                Hit(value)
+            }
+            None => {
+                REDIS_GET_TOTAL
+                    .with_label_values(&[request_type, "miss"])
+                    .inc();
+                Miss
+            }
+        }
+    }
 }
 
 pub fn build_key(ns: &str, sub: &str) -> String {
@@ -62,22 +86,7 @@ impl XenosCache for RedisCache {
             .get(build_key("uuid", username.to_lowercase().as_str()))
             .await?;
         timer.observe_duration();
-        match cached {
-            Some(entry) if self.has_expired(&entry.timestamp) => {
-                REDIS_GET_TOTAL
-                    .with_label_values(&["uuid", "expired"])
-                    .inc();
-                Ok(Expired(entry))
-            }
-            Some(entry) => {
-                REDIS_GET_TOTAL.with_label_values(&["uuid", "hit"]).inc();
-                Ok(Hit(entry))
-            }
-            None => {
-                REDIS_GET_TOTAL.with_label_values(&["uuid", "miss"]).inc();
-                Ok(Miss)
-            }
-        }
+        Ok(self.cached_from(cached, "uuid"))
     }
 
     async fn set_uuid_by_username(
@@ -104,24 +113,7 @@ impl XenosCache for RedisCache {
             .get(build_key("profile", uuid.simple().to_string().as_str()))
             .await?;
         timer.observe_duration();
-        match cached {
-            Some(entry) if self.has_expired(&entry.timestamp) => {
-                REDIS_GET_TOTAL
-                    .with_label_values(&["profile", "expired"])
-                    .inc();
-                Ok(Expired(entry))
-            }
-            Some(entry) => {
-                REDIS_GET_TOTAL.with_label_values(&["profile", "hit"]).inc();
-                Ok(Hit(entry))
-            }
-            None => {
-                REDIS_GET_TOTAL
-                    .with_label_values(&["profile", "miss"])
-                    .inc();
-                Ok(Miss)
-            }
-        }
+        Ok(self.cached_from(cached, "profile"))
     }
 
     async fn set_profile_by_uuid(
@@ -148,22 +140,7 @@ impl XenosCache for RedisCache {
             .get(build_key("skin", uuid.simple().to_string().as_str()))
             .await?;
         timer.observe_duration();
-        match cached {
-            Some(entry) if self.has_expired(&entry.timestamp) => {
-                REDIS_GET_TOTAL
-                    .with_label_values(&["skin", "expired"])
-                    .inc();
-                Ok(Expired(entry))
-            }
-            Some(entry) => {
-                REDIS_GET_TOTAL.with_label_values(&["skin", "hit"]).inc();
-                Ok(Hit(entry))
-            }
-            None => {
-                REDIS_GET_TOTAL.with_label_values(&["skin", "miss"]).inc();
-                Ok(Miss)
-            }
-        }
+        Ok(self.cached_from(cached, "skin"))
     }
 
     async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
@@ -188,22 +165,7 @@ impl XenosCache for RedisCache {
             .get(build_key("head", &format!("{uuid_str}.{overlay}")))
             .await?;
         timer.observe_duration();
-        match cached {
-            Some(entry) if self.has_expired(&entry.timestamp) => {
-                REDIS_GET_TOTAL
-                    .with_label_values(&["head", "expired"])
-                    .inc();
-                Ok(Expired(entry))
-            }
-            Some(entry) => {
-                REDIS_GET_TOTAL.with_label_values(&["head", "hit"]).inc();
-                Ok(Hit(entry))
-            }
-            None => {
-                REDIS_GET_TOTAL.with_label_values(&["head", "miss"]).inc();
-                Ok(Miss)
-            }
-        }
+        Ok(self.cached_from(cached, "head"))
     }
 
     async fn set_head_by_uuid(

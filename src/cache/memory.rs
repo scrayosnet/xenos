@@ -1,5 +1,5 @@
 use crate::cache::Cached::{Expired, Hit, Miss};
-use crate::cache::{Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::{CacheEntry, Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
 use crate::util::has_elapsed;
 use async_trait::async_trait;
@@ -39,6 +39,30 @@ impl MemoryCache {
         cache
     }
 
+    // converts a option into a cached while also incrementing memory cache response metrics
+    fn cached_from<T: CacheEntry>(&self, value: Option<T>, request_type: &str) -> Cached<T> {
+        match value {
+            Some(value) if self.has_expired(&value.get_timestamp()) => {
+                MEMORY_CACHE_GET_TOTAL
+                    .with_label_values(&[request_type, "expired"])
+                    .inc();
+                Expired(value)
+            }
+            Some(value) => {
+                MEMORY_CACHE_GET_TOTAL
+                    .with_label_values(&[request_type, "hit"])
+                    .inc();
+                Hit(value)
+            }
+            None => {
+                MEMORY_CACHE_GET_TOTAL
+                    .with_label_values(&[request_type, "miss"])
+                    .inc();
+                Miss
+            }
+        }
+    }
+
     fn has_expired(&self, timestamp: &u64) -> bool {
         has_elapsed(timestamp, &self.cache_time)
     }
@@ -51,26 +75,7 @@ impl XenosCache for MemoryCache {
         username: &str,
     ) -> Result<Cached<UuidEntry>, XenosError> {
         let entry = self.uuids.get(username).cloned();
-        match entry {
-            Some(entry) if self.has_expired(&entry.timestamp) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["uuid", "hit"])
-                    .inc();
-                Ok(Hit(entry))
-            }
-            Some(entry) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["uuid", "expired"])
-                    .inc();
-                Ok(Expired(entry))
-            }
-            None => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["uuid", "miss"])
-                    .inc();
-                Ok(Miss)
-            }
-        }
+        Ok(self.cached_from(entry, "uuid"))
     }
 
     async fn set_uuid_by_username(
@@ -88,26 +93,7 @@ impl XenosCache for MemoryCache {
         uuid: &Uuid,
     ) -> Result<Cached<ProfileEntry>, XenosError> {
         let entry = self.profiles.get(uuid).cloned();
-        match entry {
-            Some(entry) if self.has_expired(&entry.timestamp) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["profile", "hit"])
-                    .inc();
-                Ok(Hit(entry))
-            }
-            Some(entry) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["profile", "expired"])
-                    .inc();
-                Ok(Expired(entry))
-            }
-            None => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["profile", "miss"])
-                    .inc();
-                Ok(Miss)
-            }
-        }
+        Ok(self.cached_from(entry, "profile"))
     }
 
     async fn set_profile_by_uuid(
@@ -122,26 +108,7 @@ impl XenosCache for MemoryCache {
 
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
         let entry = self.skins.get(uuid).cloned();
-        match entry {
-            Some(entry) if self.has_expired(&entry.timestamp) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["skin", "hit"])
-                    .inc();
-                Ok(Hit(entry))
-            }
-            Some(entry) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["skin", "expired"])
-                    .inc();
-                Ok(Expired(entry))
-            }
-            None => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["skin", "miss"])
-                    .inc();
-                Ok(Miss)
-            }
-        }
+        Ok(self.cached_from(entry, "skin"))
     }
 
     async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
@@ -157,26 +124,7 @@ impl XenosCache for MemoryCache {
     ) -> Result<Cached<HeadEntry>, XenosError> {
         let uuid_str = uuid.simple().to_string();
         let entry = self.heads.get(&format!("{uuid_str}.{overlay}")).cloned();
-        match entry {
-            Some(entry) if self.has_expired(&entry.timestamp) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["head", "hit"])
-                    .inc();
-                Ok(Hit(entry))
-            }
-            Some(entry) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["head", "expired"])
-                    .inc();
-                Ok(Expired(entry))
-            }
-            None => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&["head", "miss"])
-                    .inc();
-                Ok(Miss)
-            }
-        }
+        Ok(self.cached_from(entry, "head"))
     }
 
     async fn set_head_by_uuid(
