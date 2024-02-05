@@ -43,7 +43,7 @@ pub struct Settings {
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
-        let env_prefix = env::var("ENV_PREFIX").unwrap_or_else(|_| "app".into());
+        let env_prefix = env::var("ENV_PREFIX").unwrap_or_else(|_| "xenos".into());
 
         let s = Config::builder()
             // Start off by merging in the "default" configuration file
