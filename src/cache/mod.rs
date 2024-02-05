@@ -1,4 +1,5 @@
 pub mod memory;
+pub mod no_cache;
 pub mod redis;
 
 use crate::cache::Cached::{Hit, Miss};

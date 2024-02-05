@@ -14,6 +14,7 @@ pub struct RedisCache {
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
 pub struct MemoryCache {
+    pub enabled: bool,
     pub cache_time: u64,
 }
 

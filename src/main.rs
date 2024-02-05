@@ -5,6 +5,7 @@ use tokio::try_join;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use xenos::cache::memory::MemoryCache;
+use xenos::cache::no_cache::NoCache;
 use xenos::cache::redis::RedisCache;
 use xenos::cache::XenosCache;
 use xenos::metrics_server::metrics;
@@ -26,6 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run_metrics(settings: &Settings) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.metrics_server.enabled {
+        println!("Metrics are disabled");
         return Ok(());
     }
 
@@ -43,17 +45,21 @@ async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>>
     // build selected cache, fallback to in-memory cache
     let cache: Box<Mutex<dyn XenosCache>> = if settings.redis_cache.enabled {
         // build redis client and cache
-        println!("Connecting to redis");
+        println!("Using redis cache");
         let redis_client = redis::Client::open(settings.redis_cache.address.clone())?;
         let redis_manager = redis_client.get_connection_manager().await?;
         Box::new(Mutex::new(RedisCache {
             cache_time: settings.redis_cache.cache_time,
             redis_manager,
         }))
-    } else {
+    } else if settings.memory_cache.enabled {
+        println!("Using in-memory cache");
         Box::new(Mutex::new(MemoryCache::with_cache_time(
             settings.memory_cache.cache_time,
         )))
+    } else {
+        println!("Caching is disabled");
+        Box::new(Mutex::new(NoCache::default()))
     };
 
     // build mojang api
