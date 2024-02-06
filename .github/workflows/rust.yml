@@ -21,23 +21,36 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Install Protoc
+    - name: Install protoc
       uses: arduino/setup-protoc@v3
 
     - name: Apply caching
       uses: swatinem/rust-cache@v2
 
-    - name: Build with Cargo
+    - name: Install required cargo
+      run: cargo install clippy-sarif sarif-fmt
+
+    - name: Build with cargo
       run: cargo build --verbose
 
-    - name: Run tests with Cargo
+    - name: Run tests with cargo
       run: cargo test --verbose
 
     - name: Check format
       run: cargo fmt --check
 
     - name: Perform linting
-      run: cargo clippy
+      run:
+        cargo clippy
+        --all-features
+        --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
+      continue-on-error: true
+
+    - name: Upload analysis results to GitHub
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: rust-clippy-results.sarif
+        wait-for-processing: true
 
     - name: Perform audit
       run: cargo audit
