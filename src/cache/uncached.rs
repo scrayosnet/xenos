@@ -6,10 +6,10 @@ use uuid::Uuid;
 
 #[allow(unused)]
 #[derive(Default)]
-pub struct NoCache {}
+pub struct Uncached {}
 
 #[async_trait]
-impl XenosCache for NoCache {
+impl XenosCache for Uncached {
     async fn get_uuid_by_username(
         &mut self,
         _username: &str,

@@ -66,7 +66,7 @@ use crate::cache::{get_epoch_seconds, HeadEntry, ProfileEntry, SkinEntry, UuidEn
 use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
 use crate::mojang::{MojangApi, UsernameResolved};
-use crate::service::pb::{
+use crate::profile_service::pb::{
     HeadRequest, HeadResponse, ProfileRequest, ProfileResponse, SkinRequest, SkinResponse,
 };
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
@@ -105,12 +105,12 @@ lazy_static! {
 
 type GrpcResult<T> = Result<Response<T>, Status>;
 
-pub struct XenosService {
+pub struct ProfileService {
     pub cache: Box<Mutex<dyn XenosCache>>,
     pub mojang: Box<dyn MojangApi>,
 }
 
-impl XenosService {
+impl ProfileService {
     fn build_skin_head(skin_bytes: &[u8]) -> Result<Vec<u8>, XenosError> {
         let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
         let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
@@ -315,7 +315,7 @@ impl XenosService {
 }
 
 #[tonic::async_trait]
-impl Profile for XenosService {
+impl Profile for ProfileService {
     async fn get_uuids(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
         // parse request
         let usernames = request.into_inner().usernames;
@@ -468,6 +468,39 @@ impl Profile for XenosService {
                     .observe(start.elapsed().as_secs() as f64);
                 Err(Status::internal(err.to_string()))
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::cache::uncached::Uncached;
+    use crate::mojang::stub::StubMojang;
+
+    #[tokio::test]
+    async fn get_profile_not_found() {
+        // given
+        let mojang = StubMojang {
+            uuids: Default::default(),
+            profiles: Default::default(),
+            images: Default::default(),
+        };
+        let uncached = Uncached::default();
+        let service = ProfileService {
+            cache: Box::new(Mutex::new(uncached)),
+            mojang: Box::new(mojang),
+        };
+
+        // when
+        let uuid = Uuid::new_v4();
+        let profile = service.fetch_profile(&uuid).await;
+
+        // then
+        match profile {
+            Ok(_) => assert!(false, "profile should not have been found"),
+            Err(NotFound) => {}
+            Err(_) => assert!(false, "error should be `NotFound`"),
         }
     }
 }

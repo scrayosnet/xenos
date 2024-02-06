@@ -1,6 +1,6 @@
 pub mod memory;
-pub mod no_cache;
 pub mod redis;
+pub mod uncached;
 
 use crate::cache::Cached::{Hit, Miss};
 use crate::error::XenosError;

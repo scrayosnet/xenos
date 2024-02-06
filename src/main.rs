@@ -5,13 +5,13 @@ use tokio::try_join;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use xenos::cache::memory::MemoryCache;
-use xenos::cache::no_cache::NoCache;
 use xenos::cache::redis::RedisCache;
+use xenos::cache::uncached::Uncached;
 use xenos::cache::XenosCache;
 use xenos::metrics_server::metrics;
-use xenos::mojang::Mojang;
-use xenos::service::pb::profile_server::ProfileServer;
-use xenos::service::XenosService;
+use xenos::mojang::api::Mojang;
+use xenos::profile_service::pb::profile_server::ProfileServer;
+use xenos::profile_service::ProfileService;
 use xenos::settings::Settings;
 
 #[tokio::main]
@@ -63,20 +63,20 @@ async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>>
         )))
     } else {
         println!("Caching is disabled");
-        Box::new(Mutex::new(NoCache::default()))
+        Box::new(Mutex::new(Uncached::default()))
     };
 
     // build mojang api
     let mojang = Box::new(Mojang {});
 
     // build grpc service
-    let service = XenosService { cache, mojang };
-    let profile_service = ProfileServer::new(service);
+    let profile_service = ProfileService { cache, mojang };
+    let profile_server = ProfileServer::new(profile_service);
 
     // build grpc health reporter
-    let (mut health_reporter, health_service) = health_reporter();
+    let (mut health_reporter, health_server) = health_reporter();
     health_reporter
-        .set_serving::<ProfileServer<XenosService>>()
+        .set_serving::<ProfileServer<ProfileService>>()
         .await;
 
     // shutdown signal (future)
@@ -84,8 +84,8 @@ async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>>
 
     println!("Grpc listening on {}", settings.grpc_server.address);
     Server::builder()
-        .add_service(health_service)
-        .add_service(profile_service)
+        .add_service(health_server)
+        .add_service(profile_server)
         .serve_with_shutdown(settings.grpc_server.address, shutdown)
         .await?;
     println!("Grpc server stopped");
