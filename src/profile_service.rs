@@ -498,9 +498,8 @@ mod test {
 
         // then
         match profile {
-            Ok(_) => assert!(false, "profile should not have been found"),
             Err(NotFound) => {}
-            Err(_) => assert!(false, "error should be `NotFound`"),
+            _ => panic!("profile should be error `NotFound`"),
         }
     }
 }
