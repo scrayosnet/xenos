@@ -24,6 +24,9 @@ jobs:
     - name: Install Protoc
       uses: arduino/setup-protoc@v3
 
+    - name: Apply caching
+      uses: swatinem/rust-cache@v2
+
     - name: Build with Cargo
       run: cargo build --verbose
 
@@ -35,3 +38,6 @@ jobs:
 
     - name: Perform linting
       run: cargo clippy
+
+    - name: Perform audit
+      run: cargo audit
