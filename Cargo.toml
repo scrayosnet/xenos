@@ -17,7 +17,7 @@ edition = "2021"
 [dependencies]
 prost = "0.12"
 prost-types = { version = "0.12.3" }
-redis = { version = "0.24", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"] }
+redis = { version = "0.24", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"], optional = true }
 tokio = { version = "1.35", features = ["full"] }
 tonic = "0.10"
 tonic-health = "0.10"
@@ -36,10 +36,21 @@ hyper = "1.1"
 futures = "0.3.30"
 async-trait = "0.1.77"
 chrono = "0.4"
-prometheus = "0.13"
+prometheus = { version = "0.13" }
 futures-util = "0.3.30"
 actix-web = { version = "4", features = ["rustls"] }
 config = "0.14.0"
+cfg-if = "1.0.0"
 
 [build-dependencies]
 tonic-build = { version = "0.10", features = ["prost"] }
+
+[dev-dependencies]
+xenos = { path = ".", features = ["full"] }
+
+[features]
+default = ["cache_redis"]
+full = ["cache_redis", "cache_memory", "mojang_stub"]
+cache_redis = ["dep:redis"]
+cache_memory = []
+mojang_stub = []

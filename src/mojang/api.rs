@@ -36,7 +36,7 @@ impl Mojang {
         &self,
         usernames: &[String],
     ) -> Result<Vec<UsernameResolved>, XenosError> {
-        let timer = MOJANG_REQ_HISTOGRAM
+        let _timer = MOJANG_REQ_HISTOGRAM
             .with_label_values(&["uuids"])
             .start_timer();
         // make request
@@ -49,7 +49,6 @@ impl Mojang {
         MOJANG_REQ_TOTAL
             .with_label_values(&["uuids", response.status().as_str()])
             .inc();
-        timer.observe_duration();
         // get response
         match response.status() {
             StatusCode::NOT_FOUND => Err(NotFound),
@@ -80,7 +79,7 @@ impl MojangApi for Mojang {
             "https://sessionserver.mojang.com/session/minecraft/profile/{}",
             uuid.simple()
         );
-        let timer = MOJANG_REQ_HISTOGRAM
+        let _timer = MOJANG_REQ_HISTOGRAM
             .with_label_values(&["profile"])
             .start_timer();
         // make request
@@ -89,7 +88,6 @@ impl MojangApi for Mojang {
         MOJANG_REQ_TOTAL
             .with_label_values(&["profile", response.status().as_str()])
             .inc();
-        timer.observe_duration();
         // get response
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
@@ -106,7 +104,7 @@ impl MojangApi for Mojang {
         url: String,
         resource_tag: &str,
     ) -> Result<Bytes, XenosError> {
-        let timer = MOJANG_REQ_HISTOGRAM
+        let _timer = MOJANG_REQ_HISTOGRAM
             .with_label_values(&[&format!("texture_{resource_tag}")])
             .start_timer();
         // make request
@@ -118,7 +116,6 @@ impl MojangApi for Mojang {
                 response.status().as_str(),
             ])
             .inc();
-        timer.observe_duration();
         // get response
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),

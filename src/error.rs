@@ -1,5 +1,6 @@
 #[derive(thiserror::Error, Debug)]
 pub enum XenosError {
+    #[cfg(feature = "cache_redis")]
     #[error(transparent)]
     Redis(#[from] redis::RedisError),
     #[error(transparent)]

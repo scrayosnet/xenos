@@ -1,10 +1,9 @@
 use crate::cache::Cached::{Expired, Hit, Miss};
-use crate::cache::{
-    has_elapsed, CacheEntry, Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache,
-};
+use crate::cache::{Cached, HeadEntry, IntoCached, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
 use crate::error::XenosError;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
+
 use prometheus::{register_int_counter_vec, IntCounterVec};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -24,6 +23,26 @@ lazy_static! {
     .unwrap();
 }
 
+fn track_cache_result<T>(cached: &Cached<T>, request_type: &str) {
+    match cached {
+        Expired(_) => {
+            MEMORY_CACHE_GET_TOTAL
+                .with_label_values(&[request_type, "expired"])
+                .inc();
+        }
+        Hit(_) => {
+            MEMORY_CACHE_GET_TOTAL
+                .with_label_values(&[request_type, "hit"])
+                .inc();
+        }
+        Miss => {
+            MEMORY_CACHE_GET_TOTAL
+                .with_label_values(&[request_type, "miss"])
+                .inc();
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct MemoryCache {
     pub cache_time: u64,
@@ -40,34 +59,6 @@ impl MemoryCache {
             ..Default::default()
         }
     }
-
-    // converts a option into a cached while also incrementing memory cache response metrics
-    fn cached_from<T: CacheEntry>(&self, value: Option<T>, request_type: &str) -> Cached<T> {
-        match value {
-            Some(value) if self.has_expired(&value.get_timestamp()) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&[request_type, "expired"])
-                    .inc();
-                Expired(value)
-            }
-            Some(value) => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&[request_type, "hit"])
-                    .inc();
-                Hit(value)
-            }
-            None => {
-                MEMORY_CACHE_GET_TOTAL
-                    .with_label_values(&[request_type, "miss"])
-                    .inc();
-                Miss
-            }
-        }
-    }
-
-    fn has_expired(&self, timestamp: &u64) -> bool {
-        has_elapsed(timestamp, &self.cache_time)
-    }
 }
 
 #[async_trait]
@@ -77,7 +68,9 @@ impl XenosCache for MemoryCache {
         username: &str,
     ) -> Result<Cached<UuidEntry>, XenosError> {
         let entry = self.uuids.get(username).cloned();
-        Ok(self.cached_from(entry, "uuid"))
+        let cached = entry.into_cached(&self.cache_time);
+        track_cache_result(&cached, "uuid");
+        Ok(cached)
     }
 
     async fn set_uuid_by_username(
@@ -95,7 +88,9 @@ impl XenosCache for MemoryCache {
         uuid: &Uuid,
     ) -> Result<Cached<ProfileEntry>, XenosError> {
         let entry = self.profiles.get(uuid).cloned();
-        Ok(self.cached_from(entry, "profile"))
+        let cached = entry.into_cached(&self.cache_time);
+        track_cache_result(&cached, "profile");
+        Ok(cached)
     }
 
     async fn set_profile_by_uuid(
@@ -110,7 +105,9 @@ impl XenosCache for MemoryCache {
 
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
         let entry = self.skins.get(uuid).cloned();
-        Ok(self.cached_from(entry, "skin"))
+        let cached = entry.into_cached(&self.cache_time);
+        track_cache_result(&cached, "skin");
+        Ok(cached)
     }
 
     async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
@@ -126,7 +123,9 @@ impl XenosCache for MemoryCache {
     ) -> Result<Cached<HeadEntry>, XenosError> {
         let uuid_str = uuid.simple().to_string();
         let entry = self.heads.get(&format!("{uuid_str}.{overlay}")).cloned();
-        Ok(self.cached_from(entry, "head"))
+        let cached = entry.into_cached(&self.cache_time);
+        track_cache_result(&cached, "head");
+        Ok(cached)
     }
 
     async fn set_head_by_uuid(

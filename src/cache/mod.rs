@@ -1,8 +1,10 @@
+#[cfg(feature = "cache_memory")]
 pub mod memory;
+#[cfg(feature = "cache_redis")]
 pub mod redis;
 pub mod uncached;
 
-use crate::cache::Cached::{Hit, Miss};
+use crate::cache::Cached::{Expired, Hit, Miss};
 use crate::error::XenosError;
 use crate::mojang::TexturesProperty;
 use async_trait::async_trait;
@@ -19,10 +21,18 @@ pub enum Cached<T> {
     Miss,
 }
 
-impl<T> From<Option<T>> for Cached<T> {
-    fn from(value: Option<T>) -> Self {
-        match value {
+trait IntoCached<T> {
+    fn into_cached(self, ttl: &u64) -> Cached<T>;
+}
+
+impl<T> IntoCached<T> for Option<T>
+where
+    T: CacheEntry,
+{
+    fn into_cached(self, ttl: &u64) -> Cached<T> {
+        match self {
             None => Miss,
+            Some(v) if has_elapsed(&v.get_timestamp(), ttl) => Expired(v),
             Some(v) => Hit(v),
         }
     }
