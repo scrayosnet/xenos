@@ -1,5 +1,6 @@
-use actix_web::{App, HttpServer};
+use actix_web::{web, App, HttpServer};
 use futures_util::FutureExt;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::try_join;
 use tonic::transport::Server;
@@ -8,10 +9,12 @@ use xenos::cache::memory::MemoryCache;
 use xenos::cache::redis::RedisCache;
 use xenos::cache::uncached::Uncached;
 use xenos::cache::XenosCache;
-use xenos::metrics_server::metrics;
+use xenos::grpc_services::GrpcProfileService;
+use xenos::http_services;
+use xenos::http_services::{get_head, get_profile, get_skin, get_uuids, metrics};
 use xenos::mojang::api::Mojang;
-use xenos::profile_service::pb::profile_server::ProfileServer;
-use xenos::profile_service::ProfileService;
+use xenos::proto::profile_server::ProfileServer;
+use xenos::service::Service;
 use xenos::settings::Settings;
 
 #[tokio::main]
@@ -19,31 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read settings from config files and environment variables
     let settings = Settings::new()?;
 
-    try_join!(run_grpc(&settings), run_metrics(&settings),)?;
-    Ok(())
-}
-
-async fn run_metrics(settings: &Settings) -> Result<(), Box<dyn std::error::Error>> {
-    if !settings.metrics_server.enabled {
-        println!("Metrics server is disabled");
-        return Ok(());
-    }
-
-    // run metrics server
-    println!(
-        "Metrics server listening on {}",
-        settings.metrics_server.address
-    );
-    HttpServer::new(|| App::new().service(metrics))
-        .bind(settings.metrics_server.address)?
-        .run()
-        .await?;
-    println!("Metrics server stopped");
-    Ok(())
-}
-
-async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>> {
-    // select cache based on feature flags
+    // build service
     let cache: Box<Mutex<dyn XenosCache>> = if settings.redis_cache.enabled {
         println!("Using redis cache");
         let redis_client = redis::Client::open(settings.redis_cache.address.clone())?;
@@ -62,18 +41,54 @@ async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>>
         println!("Cache is disabled");
         Box::new(Mutex::new(Uncached::default()))
     };
-
-    // build mojang api
     let mojang = Box::new(Mojang {});
+    let service = Arc::new(Service { cache, mojang });
 
+    try_join!(
+        run_grpc(service.clone(), &settings),
+        run_http(service.clone(), &settings),
+    )?;
+    Ok(())
+}
+
+async fn run_http(
+    service: Arc<Service>,
+    settings: &Settings,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!(
+        "Http server listening on {}",
+        settings.metrics_server.address
+    );
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(http_services::State {
+                service: service.clone(),
+            }))
+            .service(get_uuids)
+            .service(get_profile)
+            .service(get_skin)
+            .service(get_head)
+            .service(metrics)
+    })
+    .bind(settings.metrics_server.address)?
+    .run()
+    .await?;
+    println!("Http server stopped");
+    Ok(())
+}
+
+async fn run_grpc(
+    service: Arc<Service>,
+    settings: &Settings,
+) -> Result<(), Box<dyn std::error::Error>> {
     // build grpc service
-    let profile_service = ProfileService { cache, mojang };
+    let profile_service = GrpcProfileService { service };
     let profile_server = ProfileServer::new(profile_service);
 
     // build grpc health reporter
     let (mut health_reporter, health_server) = health_reporter();
     health_reporter
-        .set_serving::<ProfileServer<ProfileService>>()
+        .set_serving::<ProfileServer<GrpcProfileService>>()
         .await;
 
     // shutdown signal (future)

@@ -1,5 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::compile_protos("proto/profile.proto")?;
+    tonic_build::configure()
+        .build_client(false)
+        .type_attribute(".", "#[derive(serde::Serialize,serde::Deserialize)]")
+        .compile(&["proto/profile.proto"], &["proto"])?;
     println!("Build proto successfully");
     Ok(())
 }

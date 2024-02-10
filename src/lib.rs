@@ -1,6 +1,8 @@
 pub mod cache;
 pub mod error;
-pub mod metrics_server;
+pub mod grpc_services;
+pub mod http_services;
 pub mod mojang;
-pub mod profile_service;
+pub mod proto;
+pub mod service;
 pub mod settings;

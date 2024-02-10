@@ -1,6 +1,8 @@
 #[derive(thiserror::Error, Debug)]
 pub enum XenosError {
     #[error(transparent)]
+    UuidParse(#[from] uuid::Error),
+    #[error(transparent)]
     Redis(#[from] redis::RedisError),
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
