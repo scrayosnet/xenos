@@ -149,7 +149,7 @@ mod test {
     use crate::cache::Cached::Hit;
 
     #[tokio::test]
-    async fn memory_cache_uuids() {
+    async fn get_uuid_by_username_hit() {
         // given
         let mut cache = MemoryCache::with_cache_time(3000);
         let entry_hydrofin = UuidEntry {
@@ -186,7 +186,119 @@ mod test {
     }
 
     #[tokio::test]
-    async fn memory_cache_profile() {
+    async fn get_uuid_by_username_miss() {
+        // given
+        let mut cache = MemoryCache::with_cache_time(3000);
+        let entry_hydrofin = UuidEntry {
+            timestamp: get_epoch_seconds(),
+            username: "Hydrofin".to_string(),
+            uuid: Uuid::new_v4(),
+        };
+        let entry_scrayos = UuidEntry {
+            timestamp: get_epoch_seconds(),
+            username: "Scrayos".to_string(),
+            uuid: Uuid::new_v4(),
+        };
+
+        // when
+        cache
+            .set_uuid_by_username(&entry_hydrofin.username, entry_hydrofin.clone())
+            .await
+            .unwrap();
+        cache
+            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos.clone())
+            .await
+            .unwrap();
+        let retrieved_hydrofin = cache.get_uuid_by_username("Notch").await.unwrap();
+
+        // then
+        assert_eq!(
+            Miss, retrieved_hydrofin,
+            "expect cache entry to not change in cache"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_uuid_by_username() {
+        // given
+        let mut cache = MemoryCache::with_cache_time(3000);
+        let entry_hydrofin = UuidEntry {
+            timestamp: get_epoch_seconds(),
+            username: "Hydrofin".to_string(),
+            uuid: Uuid::new_v4(),
+        };
+        let entry_scrayos = UuidEntry {
+            timestamp: get_epoch_seconds(),
+            username: "Scrayos".to_string(),
+            uuid: Uuid::new_v4(),
+        };
+
+        // when
+        cache
+            .set_uuid_by_username(&entry_hydrofin.username, entry_hydrofin.clone())
+            .await
+            .unwrap();
+        cache
+            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos.clone())
+            .await
+            .unwrap();
+
+        // then
+        let retrieved_scrayos = cache.uuids.get(&entry_scrayos.username).cloned();
+
+        assert_eq!(
+            Some(entry_scrayos),
+            retrieved_scrayos,
+            "expect cache entry to be in map with username key"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_uuid_by_username_override() {
+        // given
+        let mut cache = MemoryCache::with_cache_time(3000);
+        let entry_hydrofin = UuidEntry {
+            timestamp: get_epoch_seconds(),
+            username: "Hydrofin".to_string(),
+            uuid: Uuid::new_v4(),
+        };
+        let entry_scrayos = UuidEntry {
+            timestamp: get_epoch_seconds(),
+            username: "Scrayos".to_string(),
+            uuid: Uuid::new_v4(),
+        };
+        let entry_scrayos_2 = UuidEntry {
+            timestamp: get_epoch_seconds(),
+            username: "Scrayos 2".to_string(),
+            uuid: Uuid::new_v4(),
+        };
+
+        // when
+        cache
+            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos.clone())
+            .await
+            .unwrap();
+        cache
+            .set_uuid_by_username(&entry_hydrofin.username, entry_hydrofin.clone())
+            .await
+            .unwrap();
+        cache
+            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos_2.clone())
+            .await
+            .unwrap();
+
+        // then
+        let retrieved_scrayos = cache.uuids.get(&entry_scrayos.username).cloned();
+
+        assert_eq!(
+            Some(entry_scrayos_2),
+            retrieved_scrayos,
+            "expect cache entry to be overridden in map with username key"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_profile_by_uuid_hit() {
         // given
         let mut cache = MemoryCache::with_cache_time(3000);
         let entry = ProfileEntry {
@@ -213,7 +325,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn memory_cache_skin() {
+    async fn get_skin_by_uuid_hit() {
         // given
         let mut cache = MemoryCache::with_cache_time(3000);
         let uuid = Uuid::new_v4();
@@ -235,7 +347,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn memory_cache_skin_expired() {
+    async fn get_skin_by_uuid_expired() {
         // given
         let mut cache = MemoryCache::with_cache_time(0);
         let uuid = Uuid::new_v4();
