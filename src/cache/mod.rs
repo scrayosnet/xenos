@@ -1,6 +1,4 @@
-#[cfg(feature = "cache_memory")]
 pub mod memory;
-#[cfg(feature = "cache_redis")]
 pub mod redis;
 pub mod uncached;
 

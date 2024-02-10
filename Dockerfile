@@ -9,7 +9,7 @@ COPY . .
 # install dev dependencies and perform build process
 RUN set -eux \
  && apk add --no-cache musl-dev protoc protobuf-dev libressl-dev \
- && cargo build --release --features cache_redis
+ && cargo build --release
 
 
 FROM scratch

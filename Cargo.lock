@@ -3327,7 +3327,6 @@ dependencies = [
  "async-trait",
  "base64",
  "bytes",
- "cfg-if",
  "chrono",
  "config",
  "futures",

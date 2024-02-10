@@ -1,4 +1,9 @@
 [redis_cache]
+enabled = false
+cache_time = 300 # 5 minutes
+
+[memory_cache]
+enabled = true
 cache_time = 300 # 5 minutes
 
 [metrics_server]

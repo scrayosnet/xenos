@@ -34,7 +34,7 @@ jobs:
       run: cargo install clippy-sarif sarif-fmt
 
     - name: Build with cargo
-      run: cargo build --verbose --features cache_redis
+      run: cargo build --verbose
 
     - name: Run tests with cargo
       run: cargo test --verbose --all-features

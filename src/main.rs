@@ -4,11 +4,8 @@ use tokio::sync::Mutex;
 use tokio::try_join;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
-#[cfg(all(not(feature = "cache_redis"), feature = "cache_memory"))]
 use xenos::cache::memory::MemoryCache;
-#[cfg(feature = "cache_redis")]
 use xenos::cache::redis::RedisCache;
-#[cfg(all(not(feature = "cache_redis"), not(feature = "cache_memory")))]
 use xenos::cache::uncached::Uncached;
 use xenos::cache::XenosCache;
 use xenos::metrics_server::metrics;
@@ -47,29 +44,24 @@ async fn run_metrics(settings: &Settings) -> Result<(), Box<dyn std::error::Erro
 
 async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>> {
     // select cache based on feature flags
-    let cache: Box<Mutex<dyn XenosCache>>;
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "cache_redis")] {
-            println!("Using redis cache");
-            let redis_client = redis::Client::open(settings.redis_cache.address.clone())?;
-            let redis_manager = redis_client.get_connection_manager().await?;
-            cache = Box::new(Mutex::new(RedisCache {
-                cache_time: settings.redis_cache.cache_time,
-                expiration: settings.redis_cache.expiration,
-                redis_manager,
-            }));
-        } else if #[cfg(all(not(feature = "cache_redis"), feature = "cache_memory"))] {
-            println!("Using in-memory cache");
-            cache = Box::new(Mutex::new(MemoryCache::with_cache_time(
-                settings.memory_cache.cache_time,
-            )));
-        } else if #[cfg(all(not(feature = "cache_redis"), not(feature = "cache_memory")))] {
-            println!("Cache is disabled");
-            cache = Box::new(Mutex::new(Uncached::default()));
-        } else {
-            compile_error!("Failed to select cache!");
-        }
-    }
+    let cache: Box<Mutex<dyn XenosCache>> = if settings.redis_cache.enabled {
+        println!("Using redis cache");
+        let redis_client = redis::Client::open(settings.redis_cache.address.clone())?;
+        let redis_manager = redis_client.get_connection_manager().await?;
+        Box::new(Mutex::new(RedisCache {
+            cache_time: settings.redis_cache.cache_time,
+            expiration: settings.redis_cache.expiration,
+            redis_manager,
+        }))
+    } else if settings.memory_cache.enabled {
+        println!("Using in-memory cache");
+        Box::new(Mutex::new(MemoryCache::with_cache_time(
+            settings.memory_cache.cache_time,
+        )))
+    } else {
+        println!("Cache is disabled");
+        Box::new(Mutex::new(Uncached::default()))
+    };
 
     // build mojang api
     let mojang = Box::new(Mojang {});

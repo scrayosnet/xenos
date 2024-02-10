@@ -3,19 +3,19 @@ use serde::Deserialize;
 use std::env;
 use std::net::SocketAddr;
 
-#[cfg(feature = "cache_redis")]
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
 pub struct RedisCache {
+    pub enabled: bool,
     pub cache_time: u64,
     pub expiration: Option<usize>,
     pub address: String,
 }
 
-#[cfg(feature = "cache_memory")]
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
 pub struct MemoryCache {
+    pub enabled: bool,
     pub cache_time: u64,
 }
 
@@ -36,9 +36,7 @@ pub struct GrpcServer {
 #[allow(unused)]
 pub struct Settings {
     pub debug: bool,
-    #[cfg(feature = "cache_memory")]
     pub memory_cache: MemoryCache,
-    #[cfg(feature = "cache_redis")]
     pub redis_cache: RedisCache,
     pub metrics_server: MetricsServer,
     pub grpc_server: GrpcServer,
