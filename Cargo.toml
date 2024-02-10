@@ -49,7 +49,7 @@ tonic-build = { version = "0.10", features = ["prost"] }
 xenos = { path = ".", features = ["full"] }
 
 [features]
-default = ["cache_redis"]
+default = []
 full = ["cache_redis", "cache_memory", "mojang_stub"]
 cache_redis = ["dep:redis"]
 cache_memory = []

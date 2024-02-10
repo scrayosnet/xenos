@@ -50,6 +50,7 @@ async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>>
     let cache: Box<Mutex<dyn XenosCache>>;
     cfg_if::cfg_if! {
         if #[cfg(feature = "cache_redis")] {
+            println!("Using redis cache");
             let redis_client = redis::Client::open(settings.redis_cache.address.clone())?;
             let redis_manager = redis_client.get_connection_manager().await?;
             cache = Box::new(Mutex::new(RedisCache {
@@ -57,14 +58,17 @@ async fn run_grpc(settings: &Settings) -> Result<(), Box<dyn std::error::Error>>
                 expiration: settings.redis_cache.expiration,
                 redis_manager,
             }));
-        } else if #[cfg(feature = "cache_memory")] {
+        } else if #[cfg(all(not(feature = "cache_redis"), feature = "cache_memory"))] {
             println!("Using in-memory cache");
             cache = Box::new(Mutex::new(MemoryCache::with_cache_time(
                 settings.memory_cache.cache_time,
             )));
-        } else {
+        } else if #[cfg(all(not(feature = "cache_redis"), not(feature = "cache_memory")))] {
             println!("Cache is disabled");
             cache = Box::new(Mutex::new(Uncached::default()));
+            cache = Box::default()
+        } else {
+            compile_error!("Failed to select cache!");
         }
     }
 
