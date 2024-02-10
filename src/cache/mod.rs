@@ -1,12 +1,14 @@
 pub mod memory;
 pub mod redis;
+pub mod uncached;
 
-use crate::cache::Cached::{Hit, Miss};
+use crate::cache::Cached::{Expired, Hit, Miss};
 use crate::error::XenosError;
 use crate::mojang::TexturesProperty;
 use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -17,13 +19,25 @@ pub enum Cached<T> {
     Miss,
 }
 
-impl<T> From<Option<T>> for Cached<T> {
-    fn from(value: Option<T>) -> Self {
-        match value {
+trait IntoCached<T> {
+    fn into_cached(self, ttl: &u64) -> Cached<T>;
+}
+
+impl<T> IntoCached<T> for Option<T>
+where
+    T: CacheEntry,
+{
+    fn into_cached(self, ttl: &u64) -> Cached<T> {
+        match self {
             None => Miss,
+            Some(v) if has_elapsed(&v.get_timestamp(), ttl) => Expired(v),
             Some(v) => Hit(v),
         }
     }
+}
+
+pub trait CacheEntry {
+    fn get_timestamp(&self) -> u64;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -31,6 +45,12 @@ pub struct UuidEntry {
     pub timestamp: u64,
     pub username: String,
     pub uuid: Uuid,
+}
+
+impl CacheEntry for UuidEntry {
+    fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -42,6 +62,12 @@ pub struct ProfileEntry {
     pub properties: Vec<ProfileProperty>,
     #[serde(default)]
     pub profile_actions: Vec<String>,
+}
+
+impl CacheEntry for ProfileEntry {
+    fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -57,10 +83,22 @@ pub struct SkinEntry {
     pub bytes: Vec<u8>,
 }
 
+impl CacheEntry for SkinEntry {
+    fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HeadEntry {
     pub timestamp: u64,
     pub bytes: Vec<u8>,
+}
+
+impl CacheEntry for HeadEntry {
+    fn get_timestamp(&self) -> u64 {
+        self.timestamp
+    }
 }
 
 impl ProfileEntry {
@@ -115,4 +153,13 @@ pub trait XenosCache: Send + Sync {
         entry: HeadEntry,
         overlay: &bool,
     ) -> Result<(), XenosError>;
+}
+
+pub fn get_epoch_seconds() -> u64 {
+    u64::try_from(Utc::now().timestamp()).unwrap()
+}
+
+pub fn has_elapsed(time: &u64, dur: &u64) -> bool {
+    let now = get_epoch_seconds();
+    time + dur < now
 }

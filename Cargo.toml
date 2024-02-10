@@ -36,9 +36,17 @@ hyper = "1.1"
 futures = "0.3.30"
 async-trait = "0.1.77"
 chrono = "0.4"
-prometheus = "0.13"
+prometheus = { version = "0.13" }
 futures-util = "0.3.30"
 actix-web = { version = "4", features = ["rustls"] }
+config = "0.14.0"
 
 [build-dependencies]
 tonic-build = { version = "0.10", features = ["prost"] }
+
+[dev-dependencies]
+xenos = { path = ".", features = ["mojang_stub"] }
+
+[features]
+default = []
+mojang_stub = []

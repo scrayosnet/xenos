@@ -94,3 +94,6 @@ target/
 
 # Compiled resources
 build/
+
+# local configuration
+config/local.toml
