@@ -1,32 +1,28 @@
-use tokio::sync::Mutex;
-use tonic::{Code, Request};
-use xenos::cache::uncached::Uncached;
-use xenos::mojang::stub::StubMojang;
-use xenos::profile_service::pb::profile_server::Profile;
-use xenos::profile_service::pb::ProfileRequest;
-use xenos::profile_service::ProfileService;
+mod common;
 
+use crate::common::ServiceBuilder;
+use uuid::Uuid;
+
+/// Tests that uuids for multiple usernames can be found successfully.
 #[tokio::test]
-async fn get_profile_not_found() {
+async fn get_uuids_found() {
     // given
-    let mojang = StubMojang {
-        uuids: Default::default(),
-        profiles: Default::default(),
-        images: Default::default(),
-    };
-    let uncached = Uncached::default();
-    let service = ProfileService {
-        cache: Box::new(Mutex::new(uncached)),
-        mojang: Box::new(mojang),
-    };
-    let request: Request<ProfileRequest> = Request::<ProfileRequest>::new(ProfileRequest {
-        uuid: uuid::Uuid::new_v4().to_string(),
-    });
+    let uuid = Uuid::new_v4();
+    let service = ServiceBuilder::default()
+        .with_username("Hydrofin", uuid)
+        .with_username("Scrayos", Uuid::new_v4())
+        .build();
 
     // when
-    let response = service.get_profile(request).await;
+    let mut result = service
+        .get_uuids(&["Hydrofin".to_string(), "scrayos".to_string()])
+        .await
+        .unwrap();
+    result.sort_by_key(|e| e.username.clone());
 
     // then
-    assert!(response.is_err());
-    assert_eq!(Code::NotFound, response.expect_err("").code());
+    assert_eq!(2, result.len());
+    assert_eq!("Hydrofin", result[0].username);
+    assert_eq!(uuid, result[0].uuid);
+    assert_eq!("Scrayos", result[1].username);
 }
