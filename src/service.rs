@@ -23,14 +23,14 @@ lazy_static! {
 
 lazy_static! {
     pub static ref PROFILE_REQ_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_profile_requests_total",
+        "xenos_profile_age_seconds",
         "The grpc profile response age in seconds.",
         &["request_type", "status"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
     pub static ref PROFILE_REQ_LAT_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_profile_request_duration_seconds",
+        "xenos_profile_latency_seconds",
         "The grpc profile request latency in seconds.",
         &["request_type", "status"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
