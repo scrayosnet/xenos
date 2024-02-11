@@ -1,3 +1,5 @@
+debug = false
+
 [redis_cache]
 enabled = false
 cache_time = 300 # 5 minutes
