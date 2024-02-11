@@ -45,6 +45,8 @@ pub struct UuidEntry {
     pub timestamp: u64,
     pub username: String,
     pub uuid: Uuid,
+    #[serde(default)]
+    pub not_found: bool,
 }
 
 impl CacheEntry for UuidEntry {

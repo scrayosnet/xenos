@@ -155,11 +155,13 @@ mod test {
             timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
         let entry_scrayos = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Scrayos".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
 
         // when
@@ -192,11 +194,13 @@ mod test {
             timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
         let entry_scrayos = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Scrayos".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
 
         // when
@@ -225,11 +229,13 @@ mod test {
             timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
         let entry_scrayos = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Scrayos".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
 
         // when
@@ -260,16 +266,19 @@ mod test {
             timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
         let entry_scrayos = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Scrayos".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
         let entry_scrayos_2 = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Scrayos 2".to_string(),
             uuid: Uuid::new_v4(),
+            not_found: false,
         };
 
         // when

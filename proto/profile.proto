@@ -32,6 +32,9 @@ message UuidResult {
     string username = 2;
     // The UUID in hyphenated form.
     string uuid = 3;
+    // If the response is for a username that was not found. If the UUID is not nil, then the
+    // username was assigned to a user but no longer is.
+    bool not_found = 4;
 }
 
 // UuidResponse is a response with the Minecraft UUIDs of the requested usernames.

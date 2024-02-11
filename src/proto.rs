@@ -46,6 +46,7 @@ impl From<UuidEntry> for UuidResult {
             timestamp: value.timestamp,
             username: value.username,
             uuid: value.uuid.hyphenated().to_string(),
+            not_found: value.not_found,
         }
     }
 }

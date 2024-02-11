@@ -5,7 +5,7 @@ use crate::cache::{
 };
 use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotRetrieved};
-use crate::mojang::{MojangApi, UsernameResolved};
+use crate::mojang::MojangApi;
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
@@ -93,10 +93,13 @@ impl Service {
                         timestamp: 0,
                         username: username.to_lowercase(),
                         uuid: Uuid::nil(),
+                        not_found: true,
                     },
                 )
             }));
 
+        // cache misses contains all usernames (lowercase) that match the regex and are either
+        // expired in the cache or not in the cache
         let mut cache_misses = vec![];
         for (username, uuid) in uuids.iter_mut() {
             // 2. filter invalid (regex)
@@ -136,21 +139,34 @@ impl Service {
                 .map(|data| (data.name.to_lowercase(), data))
                 .collect();
             for username in cache_misses {
-                let res = found.get(&username).cloned().unwrap_or(UsernameResolved {
-                    name: username.to_lowercase(),
-                    id: Uuid::nil(),
-                });
-                let key = res.name.to_lowercase();
-                let entry = UuidEntry {
-                    timestamp: get_epoch_seconds(),
-                    username: res.name,
-                    uuid: res.id,
+                let entry = match found.get(&username) {
+                    None => match uuids.get(&username) {
+                        // not in cache and not found -> set as not_found
+                        None => UuidEntry {
+                            timestamp: get_epoch_seconds(),
+                            username: username.clone(),
+                            uuid: Uuid::nil(),
+                            not_found: true,
+                        },
+                        // expired in cache and not found -> update as not_found
+                        Some(entry) => UuidEntry {
+                            not_found: true,
+                            ..entry.clone()
+                        },
+                    },
+                    // found -> set as found
+                    Some(res) => UuidEntry {
+                        timestamp: get_epoch_seconds(),
+                        username: res.name.clone(),
+                        uuid: res.id,
+                        not_found: false,
+                    },
                 };
-                uuids.insert(key.clone(), entry.clone());
+                uuids.insert(username.clone(), entry.clone());
                 self.cache
                     .lock()
                     .await
-                    .set_uuid_by_username(&key, entry)
+                    .set_uuid_by_username(&username, entry)
                     .await?;
             }
         }
