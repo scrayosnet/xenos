@@ -1,5 +1,7 @@
+use crate::cache::XenosCache;
 use crate::error::XenosError;
 use crate::error::XenosError::{NotFound, NotRetrieved, UuidParse};
+use crate::mojang::MojangApi;
 use crate::proto::{
     profile_server::Profile, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
     SkinRequest, SkinResponse, UuidRequest, UuidResponse,
@@ -22,12 +24,20 @@ impl From<XenosError> for Status {
     }
 }
 
-pub struct GrpcProfileService {
-    pub service: Arc<Service>,
+pub struct GrpcProfileService<C = dyn XenosCache, M = dyn MojangApi>
+where
+    C: XenosCache + ?Sized,
+    M: MojangApi + ?Sized,
+{
+    pub service: Arc<Service<C, M>>,
 }
 
 #[tonic::async_trait]
-impl Profile for GrpcProfileService {
+impl<C, M> Profile for GrpcProfileService<C, M>
+where
+    C: XenosCache + ?Sized + 'static,
+    M: MojangApi + ?Sized + 'static,
+{
     async fn get_uuids(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
         let usernames = request.into_inner().usernames;
         let uuids = self.service.get_uuids(&usernames).await?;

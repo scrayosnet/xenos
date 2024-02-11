@@ -1,4 +1,6 @@
+use crate::cache::XenosCache;
 use crate::error::XenosError;
+use crate::mojang::MojangApi;
 use crate::proto::{
     HeadRequest, HeadResponse, ProfileRequest, ProfileResponse, SkinRequest, SkinResponse,
     UuidRequest, UuidResponse,
@@ -12,8 +14,12 @@ use prometheus::{Encoder, TextEncoder};
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub struct State {
-    pub service: Arc<Service>,
+pub struct State<C = dyn XenosCache, M = dyn MojangApi>
+where
+    C: XenosCache + ?Sized,
+    M: MojangApi + ?Sized,
+{
+    pub service: Arc<Service<C, M>>,
 }
 
 impl error::ResponseError for XenosError {

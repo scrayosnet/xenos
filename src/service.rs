@@ -58,12 +58,20 @@ where
         .observe(start.elapsed().as_secs_f64());
 }
 
-pub struct Service {
-    pub cache: Box<Mutex<dyn XenosCache>>,
-    pub mojang: Box<dyn MojangApi>,
+pub struct Service<C = dyn XenosCache, M = dyn MojangApi>
+where
+    C: XenosCache + ?Sized,
+    M: MojangApi + ?Sized,
+{
+    pub cache: Box<Mutex<C>>,
+    pub mojang: Box<M>,
 }
 
-impl Service {
+impl<C, M> Service<C, M>
+where
+    C: XenosCache + ?Sized,
+    M: MojangApi + ?Sized,
+{
     fn build_skin_head(skin_bytes: &[u8]) -> Result<Vec<u8>, XenosError> {
         let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
         let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
@@ -301,5 +309,41 @@ impl Service {
             .set_head_by_uuid(*uuid, entry.clone(), overlay)
             .await?;
         Ok(entry)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::cache::memory::MemoryCache;
+    use crate::mojang::stub::StubMojang;
+    use crate::mojang::UsernameResolved;
+
+    #[tokio::test]
+    async fn get_uuids_not_found() {
+        // given
+        let mojang = Box::new(StubMojang {
+            uuids: HashMap::from([(
+                "hydrofin".to_string(),
+                UsernameResolved {
+                    id: Uuid::new_v4(),
+                    name: "Hydrofin".to_string(),
+                },
+            )]),
+            profiles: Default::default(),
+            images: Default::default(),
+        });
+        let cache = Box::new(Mutex::new(MemoryCache::with_cache_time(0)));
+        let mut service = Service { cache, mojang };
+
+        // when
+        service.get_uuids(&["hydrofin".to_string()]).await.unwrap();
+        service.mojang.uuids.remove("hydrofin");
+        let result = service.get_uuids(&["hydrofin".to_string()]).await.unwrap();
+
+        // then
+        assert_eq!(1, result.len());
+        assert_eq!("Hydrofin", result[0].username.as_str());
+        assert!(result[0].not_found);
     }
 }

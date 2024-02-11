@@ -163,5 +163,5 @@ pub fn get_epoch_seconds() -> u64 {
 
 pub fn has_elapsed(time: &u64, dur: &u64) -> bool {
     let now = get_epoch_seconds();
-    time + dur < now
+    time + dur <= now
 }

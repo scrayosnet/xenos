@@ -13,6 +13,7 @@ use xenos::grpc_services::GrpcProfileService;
 use xenos::http_services;
 use xenos::http_services::{get_head, get_profile, get_skin, get_uuids, metrics};
 use xenos::mojang::api::Mojang;
+use xenos::mojang::MojangApi;
 use xenos::proto::profile_server::ProfileServer;
 use xenos::service::Service;
 use xenos::settings::Settings;
@@ -41,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Cache is disabled");
         Box::new(Mutex::new(Uncached::default()))
     };
-    let mojang = Box::new(Mojang {});
+    let mojang: Box<dyn MojangApi> = Box::new(Mojang {});
     let service = Arc::new(Service { cache, mojang });
 
     try_join!(
