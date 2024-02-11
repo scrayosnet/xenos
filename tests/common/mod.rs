@@ -1,3 +1,8 @@
+//! The common module provides common utilities and implementation for the integration tests.
+//!
+//! The biggest contribution is the [Mojang Stub](StubMojang) that allows predictable test results
+//! by "hard coding" responses.
+
 use crate::common::mojang_stub::StubMojang;
 use std::string::ToString;
 use tokio::sync::Mutex;

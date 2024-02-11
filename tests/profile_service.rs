@@ -3,6 +3,7 @@ mod common;
 use crate::common::ServiceBuilder;
 use uuid::Uuid;
 
+/// Tests that uuids for multiple usernames can be found successfully.
 #[tokio::test]
 async fn get_uuids_found() {
     // given
@@ -22,5 +23,6 @@ async fn get_uuids_found() {
     // then
     assert_eq!(2, result.len());
     assert_eq!("Hydrofin", result[0].username);
+    assert_eq!(uuid, result[0].uuid);
     assert_eq!("Scrayos", result[1].username);
 }
