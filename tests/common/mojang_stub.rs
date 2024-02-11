@@ -1,9 +1,9 @@
-use crate::error::XenosError;
-use crate::mojang::{MojangApi, Profile, UsernameResolved};
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::collections::HashMap;
 use uuid::Uuid;
+use xenos::error::XenosError;
+use xenos::mojang::{MojangApi, Profile, UsernameResolved};
 
 #[derive(Default)]
 pub struct StubMojang {
@@ -45,7 +45,7 @@ mod test {
                     "hydrofin".to_string(),
                     UsernameResolved {
                         id: Uuid::new_v4(),
-                        name: "Hydrofin".to_string(),
+                        name: "HYDROFIN".to_string(),
                     },
                 ),
                 (
@@ -60,7 +60,7 @@ mod test {
             images: Default::default(),
         };
         let usernames = [
-            "Hydrofin".to_string(),
+            "HYDROFIN".to_string(),
             "scrayos".to_string(),
             "herbert".to_string(),
         ];

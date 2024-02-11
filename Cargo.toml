@@ -45,8 +45,7 @@ config = "0.14.0"
 tonic-build = { version = "0.10", features = ["prost"] }
 
 [dev-dependencies]
-xenos = { path = ".", features = ["mojang_stub"] }
+xenos = { path = ".", features = ["default"] }
 
 [features]
 default = []
-mojang_stub = []

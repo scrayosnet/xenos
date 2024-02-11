@@ -1,6 +1,4 @@
 pub mod api;
-#[cfg(feature = "mojang_stub")]
-pub mod stub;
 
 use crate::error::XenosError;
 use async_trait::async_trait;
