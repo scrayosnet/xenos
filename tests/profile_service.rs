@@ -9,7 +9,7 @@ async fn get_uuids_found() {
     // given
     let uuid = Uuid::new_v4();
     let service = ServiceBuilder::default()
-        .with_username("Hydrofin", uuid.clone())
+        .with_username("Hydrofin", uuid)
         .with_username("Scrayos", Uuid::new_v4())
         .build();
 
