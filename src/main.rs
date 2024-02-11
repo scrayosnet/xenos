@@ -44,6 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mojang = Box::new(Mojang {});
     let service = Arc::new(Service { cache, mojang });
 
+    // try to start all servers (disabled servers return directly)
     try_join!(
         run_grpc(service.clone(), &settings),
         run_http(service.clone(), &settings),
@@ -55,22 +56,33 @@ async fn run_http(
     service: Arc<Service>,
     settings: &Settings,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        "Http server listening on {}",
-        settings.metrics_server.address
-    );
+    if !settings.metrics.enabled && !settings.http_server.rest_gateway {
+        println!("Http server disabled");
+        return Ok(());
+    }
+
+    println!("Http server listening on {}", settings.http_server.address);
+    let rest_gateway_enabled = settings.http_server.rest_gateway;
+    let metrics_enabled = settings.metrics.enabled;
     HttpServer::new(move || {
-        App::new()
-            .app_data(web::Data::new(http_services::State {
-                service: service.clone(),
-            }))
-            .service(get_uuids)
-            .service(get_profile)
-            .service(get_skin)
-            .service(get_head)
-            .service(metrics)
+        let mut app = App::new().app_data(web::Data::new(http_services::State {
+            service: service.clone(),
+        }));
+        // add rest gateway services
+        if rest_gateway_enabled {
+            app = app
+                .service(get_uuids)
+                .service(get_profile)
+                .service(get_skin)
+                .service(get_head)
+        }
+        // add metrics service
+        if metrics_enabled {
+            app = app.service(metrics)
+        }
+        app
     })
-    .bind(settings.metrics_server.address)?
+    .bind(settings.http_server.address)?
     .run()
     .await?;
     println!("Http server stopped");
@@ -81,6 +93,11 @@ async fn run_grpc(
     service: Arc<Service>,
     settings: &Settings,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if !settings.grpc_server.enabled {
+        println!("Grpc server disabled");
+        return Ok(());
+    }
+
     // build grpc service
     let profile_service = GrpcProfileService { service };
     let profile_server = ProfileServer::new(profile_service);
@@ -94,7 +111,7 @@ async fn run_grpc(
     // shutdown signal (future)
     let shutdown = tokio::signal::ctrl_c().map(|_| ());
 
-    println!("Grpc listening on {}", settings.grpc_server.address);
+    println!("Grpc server listening on {}", settings.grpc_server.address);
     Server::builder()
         .add_service(health_server)
         .add_service(profile_server)

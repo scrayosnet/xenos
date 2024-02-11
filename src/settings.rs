@@ -21,14 +21,21 @@ pub struct MemoryCache {
 
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
-pub struct MetricsServer {
-    pub enabled: bool,
+pub struct HttpServer {
+    pub rest_gateway: bool,
     pub address: SocketAddr,
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
+pub struct Metrics {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(unused)]
 pub struct GrpcServer {
+    pub enabled: bool,
     pub address: SocketAddr,
 }
 
@@ -38,7 +45,8 @@ pub struct Settings {
     pub debug: bool,
     pub memory_cache: MemoryCache,
     pub redis_cache: RedisCache,
-    pub metrics_server: MetricsServer,
+    pub metrics: Metrics,
+    pub http_server: HttpServer,
     pub grpc_server: GrpcServer,
 }
 
