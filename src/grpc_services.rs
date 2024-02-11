@@ -59,7 +59,7 @@ impl Profile for GrpcProfileService {
         let req = request.into_inner();
         let overlay = &req.overlay;
         let uuid = Uuid::try_parse(&req.uuid).map_err(UuidParse)?;
-        let head = self.service.get_head(&uuid, &overlay).await?;
+        let head = self.service.get_head(&uuid, overlay).await?;
         Ok(Response::new(head.into()))
     }
 }

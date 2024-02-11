@@ -1,6 +1,8 @@
 use crate::cache;
 use crate::cache::Cached::*;
-use crate::cache::{get_epoch_seconds, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::{
+    get_epoch_seconds, CacheEntry, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache,
+};
 use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotRetrieved};
 use crate::mojang::{MojangApi, UsernameResolved};
@@ -10,19 +12,20 @@ use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::time::Instant;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use XenosError::NotFound;
 
 lazy_static! {
     static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
 }
 
-// todo use
 lazy_static! {
     pub static ref PROFILE_REQ_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_profile_requests_total",
         "The grpc profile response age in seconds.",
-        &["request_type"],
+        &["request_type", "status"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
@@ -33,6 +36,26 @@ lazy_static! {
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
+}
+
+pub fn track_service_call<T>(result: &Result<T, XenosError>, start: Instant, request_type: &str)
+where
+    T: CacheEntry,
+{
+    let status = match result {
+        Ok(entry) => {
+            PROFILE_REQ_AGE_HISTOGRAM
+                .with_label_values(&[request_type, "ok"])
+                .observe((get_epoch_seconds() - entry.get_timestamp()) as f64);
+            "ok"
+        }
+        Err(NotRetrieved) => "not_retrieved",
+        Err(NotFound) => "not_found",
+        Err(_) => "error",
+    };
+    PROFILE_REQ_LAT_HISTOGRAM
+        .with_label_values(&[request_type, status])
+        .observe(start.elapsed().as_secs_f64());
 }
 
 pub struct Service {
@@ -136,6 +159,13 @@ impl Service {
     }
 
     pub async fn get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
+        let start = Instant::now();
+        let result = self._get_profile(uuid).await;
+        track_service_call(&result, start, "profile");
+        result
+    }
+
+    async fn _get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
         // return cached if not elapsed
         let cached = self.cache.lock().await.get_profile_by_uuid(uuid).await?;
         let fallback = match cached {
@@ -174,6 +204,13 @@ impl Service {
     }
 
     pub async fn get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
+        let start = Instant::now();
+        let result = self._get_skin(uuid).await;
+        track_service_call(&result, start, "skin");
+        result
+    }
+
+    async fn _get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
         let cached = self.cache.lock().await.get_skin_by_uuid(uuid).await?;
         let fallback = match cached {
             Hit(entry) => return Ok(entry),
@@ -211,6 +248,13 @@ impl Service {
     }
 
     pub async fn get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
+        let start = Instant::now();
+        let result = self._get_head(uuid, overlay).await;
+        track_service_call(&result, start, "head");
+        result
+    }
+
+    async fn _get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
         let cached = self
             .cache
             .lock()
