@@ -13,17 +13,12 @@ impl From<HashMap<String, UuidEntry>> for UuidResponse {
 
 impl From<UuidEntry> for UuidResult {
     fn from(value: UuidEntry) -> Self {
-        if let Some(data) = value.data {
-            return UuidResult {
-                timestamp: value.timestamp,
-                username: data.username,
-                uuid: data.uuid.hyphenated().to_string(),
-            };
-        }
         UuidResult {
             timestamp: value.timestamp,
-            username: "".to_string(),
-            uuid: "".to_string(),
+            data: value.data.map(|data| UuidData {
+                username: data.username,
+                uuid: data.uuid.hyphenated().to_string(),
+            }),
         }
     }
 }

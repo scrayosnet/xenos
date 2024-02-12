@@ -24,10 +24,16 @@ message UuidRequest {
     repeated string usernames = 1;
 }
 
-// UuidResult is an individual result of the Minecraft UUID resolution.
+// UuidResult is an individual result of the Minecraft UUID resolution at a specific timestamp.
 message UuidResult {
     // The unix timestamp (in seconds) at which the returned data was last updated.
     uint64 timestamp = 1;
+    // The resolved uuid data (username and uuid).
+    optional UuidData data = 2;
+}
+
+// UuidData is an individual result of the Minecraft UUID resolution.
+message UuidData {
     // The username with correct capitalization.
     string username = 2;
     // The UUID in hyphenated form.
