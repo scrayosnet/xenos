@@ -36,8 +36,8 @@ message UuidResult {
 
 // UuidResponse is a response with the Minecraft UUIDs of the requested usernames.
 message UuidResponse {
-    // The individual results of the requested usernames.
-    repeated UuidResult resolved = 1;
+    // The individual results of the requested usernames. The keys are the requested usernames in lowercase.
+    map<string, UuidResult> resolved = 1;
 }
 
 // ProfileRequest is a request of the Minecraft Profile of a specific UUID.
@@ -81,7 +81,7 @@ message SkinResponse {
     // The unix timestamp (in seconds) at which the returned data was last updated.
     uint64 timestamp = 1;
     // The binary data of the 64x64 PNG image of the player's Skin.
-    bytes data = 2;
+    bytes bytes = 2;
 }
 
 // HeadRequest is a request of the Head texture of a specific UUID.
@@ -97,5 +97,5 @@ message HeadResponse {
     // The unix timestamp (in seconds) at which the returned data was last updated.
     uint64 timestamp = 1;
     // The binary data of the 8x8 PNG image of the player's Head.
-    bytes data = 2;
+    bytes bytes = 2;
 }

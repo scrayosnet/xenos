@@ -1,23 +1,58 @@
 use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry};
+use std::collections::HashMap;
 
 tonic::include_proto!("scrayosnet.xenos");
 
+impl From<HashMap<String, UuidEntry>> for UuidResponse {
+    fn from(value: HashMap<String, UuidEntry>) -> Self {
+        UuidResponse {
+            resolved: value.into_iter().map(|(k, v)| (k, v.into())).collect(),
+        }
+    }
+}
+
+impl From<UuidEntry> for UuidResult {
+    fn from(value: UuidEntry) -> Self {
+        if let Some(data) = value.data {
+            return UuidResult {
+                timestamp: value.timestamp,
+                username: data.username,
+                uuid: data.uuid.hyphenated().to_string(),
+            };
+        }
+        UuidResult {
+            timestamp: value.timestamp,
+            username: "".to_string(),
+            uuid: "".to_string(),
+        }
+    }
+}
+
 impl From<ProfileEntry> for ProfileResponse {
     fn from(value: ProfileEntry) -> Self {
+        if let Some(data) = value.data {
+            return ProfileResponse {
+                timestamp: value.timestamp,
+                uuid: data.uuid.hyphenated().to_string(),
+                name: data.name,
+                properties: data
+                    .properties
+                    .into_iter()
+                    .map(|prop| ProfileProperty {
+                        name: prop.name,
+                        value: prop.value,
+                        signature: prop.signature,
+                    })
+                    .collect(),
+                profile_actions: data.profile_actions,
+            };
+        }
         ProfileResponse {
             timestamp: value.timestamp,
-            uuid: value.uuid.hyphenated().to_string(),
-            name: value.name,
-            properties: value
-                .properties
-                .into_iter()
-                .map(|prop| ProfileProperty {
-                    name: prop.name,
-                    value: prop.value,
-                    signature: prop.signature,
-                })
-                .collect(),
-            profile_actions: value.profile_actions,
+            uuid: "".to_string(),
+            name: "".to_string(),
+            properties: vec![],
+            profile_actions: vec![],
         }
     }
 }
@@ -26,7 +61,7 @@ impl From<SkinEntry> for SkinResponse {
     fn from(value: SkinEntry) -> Self {
         SkinResponse {
             timestamp: value.timestamp,
-            data: value.bytes,
+            bytes: value.data.unwrap_or(vec![]),
         }
     }
 }
@@ -35,25 +70,7 @@ impl From<HeadEntry> for HeadResponse {
     fn from(value: HeadEntry) -> Self {
         HeadResponse {
             timestamp: value.timestamp,
-            data: value.bytes,
-        }
-    }
-}
-
-impl From<UuidEntry> for UuidResult {
-    fn from(value: UuidEntry) -> Self {
-        UuidResult {
-            timestamp: value.timestamp,
-            username: value.username,
-            uuid: value.uuid.hyphenated().to_string(),
-        }
-    }
-}
-
-impl From<Vec<UuidEntry>> for UuidResponse {
-    fn from(value: Vec<UuidEntry>) -> Self {
-        UuidResponse {
-            resolved: value.into_iter().map(|v| v.into()).collect(),
+            bytes: value.data.unwrap_or(vec![]),
         }
     }
 }

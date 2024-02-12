@@ -1,16 +1,18 @@
 use crate::cache;
 use crate::cache::Cached::*;
 use crate::cache::{
-    get_epoch_seconds, CacheEntry, HeadEntry, ProfileEntry, SkinEntry, UuidEntry, XenosCache,
+    get_epoch_seconds, CacheEntry, HeadEntry, ProfileData, ProfileEntry, SkinEntry, UuidData,
+    UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotRetrieved};
-use crate::mojang::{MojangApi, UsernameResolved};
+use crate::mojang::{MojangApi, Profile};
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::io::Cursor;
 use std::time::Instant;
 use tokio::sync::Mutex;
@@ -38,15 +40,18 @@ lazy_static! {
     .unwrap();
 }
 
-pub fn track_service_call<T>(result: &Result<T, XenosError>, start: Instant, request_type: &str)
-where
-    T: CacheEntry,
+pub fn track_service_call<D>(
+    result: &Result<CacheEntry<D>, XenosError>,
+    start: Instant,
+    request_type: &str,
+) where
+    D: Debug + Clone + PartialEq + Eq,
 {
     let status = match result {
         Ok(entry) => {
             PROFILE_REQ_AGE_HISTOGRAM
                 .with_label_values(&[request_type, "ok"])
-                .observe((get_epoch_seconds() - entry.get_timestamp()) as f64);
+                .observe((get_epoch_seconds() - entry.timestamp) as f64);
             "ok"
         }
         Err(NotRetrieved) => "not_retrieved",
@@ -56,6 +61,25 @@ where
     PROFILE_REQ_LAT_HISTOGRAM
         .with_label_values(&[request_type, status])
         .observe(start.elapsed().as_secs_f64());
+}
+
+impl From<Profile> for ProfileData {
+    fn from(value: Profile) -> Self {
+        ProfileData {
+            uuid: value.id,
+            name: value.name,
+            properties: value
+                .properties
+                .into_iter()
+                .map(|prop| cache::ProfileProperty {
+                    name: prop.name,
+                    value: prop.value,
+                    signature: prop.signature,
+                })
+                .collect(),
+            profile_actions: value.profile_actions,
+        }
+    }
 }
 
 pub struct Service {
@@ -83,19 +107,16 @@ impl Service {
         Ok(head_bytes)
     }
 
-    pub async fn get_uuids(&self, usernames: &[String]) -> Result<Vec<UuidEntry>, XenosError> {
+    pub async fn get_uuids(
+        &self,
+        usernames: &[String],
+    ) -> Result<HashMap<String, UuidEntry>, XenosError> {
         // 1. initialize with uuid not found
-        let mut uuids: HashMap<String, UuidEntry> =
-            HashMap::from_iter(usernames.iter().map(|username| {
-                (
-                    username.to_lowercase(),
-                    UuidEntry {
-                        timestamp: 0,
-                        username: username.to_lowercase(),
-                        uuid: Uuid::nil(),
-                    },
-                )
-            }));
+        let mut uuids: HashMap<String, UuidEntry> = HashMap::from_iter(
+            usernames
+                .iter()
+                .map(|username| (username.to_lowercase(), UuidEntry::new_empty())),
+        );
 
         let mut cache_misses = vec![];
         for (username, uuid) in uuids.iter_mut() {
@@ -128,7 +149,7 @@ impl Service {
         if !cache_misses.is_empty() {
             let response = match self.mojang.fetch_uuids(&cache_misses).await {
                 Ok(r) => r,
-                Err(NotRetrieved) => return Ok(uuids.into_values().collect()),
+                Err(NotRetrieved) => return Ok(uuids),
                 Err(err) => return Err(err),
             };
             let found: HashMap<_, _> = response
@@ -136,26 +157,26 @@ impl Service {
                 .map(|data| (data.name.to_lowercase(), data))
                 .collect();
             for username in cache_misses {
-                let res = found.get(&username).cloned().unwrap_or(UsernameResolved {
-                    name: username.to_lowercase(),
-                    id: Uuid::nil(),
-                });
-                let key = res.name.to_lowercase();
-                let entry = UuidEntry {
-                    timestamp: get_epoch_seconds(),
+                // build new cache entry
+                let data = found.get(&username).cloned().map(|res| UuidData {
                     username: res.name,
                     uuid: res.id,
+                });
+                let entry = UuidEntry {
+                    timestamp: get_epoch_seconds(),
+                    data,
                 };
-                uuids.insert(key.clone(), entry.clone());
+                // update response and cache
+                uuids.insert(username.clone(), entry.clone());
                 self.cache
                     .lock()
                     .await
-                    .set_uuid_by_username(&key, entry)
+                    .set_uuid_by_username(&username, entry)
                     .await?;
             }
         }
 
-        Ok(uuids.into_values().collect())
+        Ok(uuids)
     }
 
     pub async fn get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
@@ -166,7 +187,7 @@ impl Service {
     }
 
     async fn _get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
-        // return cached if not elapsed
+        // try to get from cache
         let cached = self.cache.lock().await.get_profile_by_uuid(uuid).await?;
         let fallback = match cached {
             Hit(entry) => return Ok(entry),
@@ -174,38 +195,22 @@ impl Service {
             Miss => None,
         };
 
-        // try to fetch
+        // try to fetch from mojang and update cache
         let profile = match self.mojang.fetch_profile(uuid).await {
-            Ok(r) => r,
+            Ok(profile) => profile,
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(NotFound) => {
                 self.cache
                     .lock()
                     .await
-                    .set_profile_by_uuid(
-                        *uuid,
-                        ProfileEntry::new_missing(get_epoch_seconds(), *uuid),
-                    )
+                    .set_profile_by_uuid(*uuid, ProfileEntry::new_empty())
                     .await?;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
         };
-        let entry = ProfileEntry {
-            timestamp: get_epoch_seconds(),
-            uuid: *uuid,
-            name: profile.name,
-            properties: profile
-                .properties
-                .into_iter()
-                .map(|prop| cache::ProfileProperty {
-                    name: prop.name,
-                    value: prop.value,
-                    signature: prop.signature,
-                })
-                .collect(),
-            profile_actions: profile.profile_actions,
-        };
+
+        let entry = ProfileEntry::new(profile.into());
         self.cache
             .lock()
             .await
@@ -222,6 +227,7 @@ impl Service {
     }
 
     async fn _get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
+        // try to get from cache
         let cached = self.cache.lock().await.get_skin_by_uuid(uuid).await?;
         let fallback = match cached {
             Hit(entry) => return Ok(entry),
@@ -229,35 +235,43 @@ impl Service {
             Miss => None,
         };
 
-        let profile = match self.get_profile(uuid).await {
-            Ok(profile) => profile,
+        let profile_data = match self.get_profile(uuid).await {
+            Ok(ProfileEntry {
+                data: Some(profile_data),
+                ..
+            }) => profile_data,
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
-            Err(NotFound) => {
-                // TODO handle?
+            Ok(_) | Err(NotFound) => {
+                self.cache
+                    .lock()
+                    .await
+                    .set_skin_by_uuid(*uuid, SkinEntry::new_empty())
+                    .await?;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
         };
 
-        let skin_url = profile
+        let skin_url = profile_data
             .get_textures()?
             .textures
             .skin
             .ok_or(InvalidTextures("skin missing".to_string()))?
             .url;
         let skin = match self.mojang.fetch_image_bytes(skin_url, "skin").await {
-            Ok(r) => r,
+            Ok(skin) => skin,
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(NotFound) => {
-                // TODO handle?
+                self.cache
+                    .lock()
+                    .await
+                    .set_skin_by_uuid(*uuid, SkinEntry::new_empty())
+                    .await?;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
         };
-        let entry = SkinEntry {
-            timestamp: get_epoch_seconds(),
-            bytes: skin.to_vec(),
-        };
+        let entry = SkinEntry::new(skin.to_vec());
         self.cache
             .lock()
             .await
@@ -286,22 +300,26 @@ impl Service {
             Miss => None,
         };
 
-        let skin = match self.get_skin(uuid).await {
-            Ok(profile) => profile,
-            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
-            Err(NotFound) => {
-                // TODO handle?
+        let skin_data = match self.get_skin(uuid).await {
+            Ok(SkinEntry {
+                data: Some(skin_data),
+                ..
+            }) => skin_data,
+            Ok(_) | Err(NotFound) => {
+                self.cache
+                    .lock()
+                    .await
+                    .set_head_by_uuid(*uuid, HeadEntry::new_empty(), overlay)
+                    .await?;
                 return Err(NotFound);
             }
+            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(err) => return Err(err),
         };
 
-        let head_bytes = Self::build_skin_head(&skin.bytes)?;
+        let head_bytes = Self::build_skin_head(&skin_data)?;
 
-        let entry = HeadEntry {
-            timestamp: get_epoch_seconds(),
-            bytes: head_bytes,
-        };
+        let entry = HeadEntry::new(head_bytes);
         self.cache
             .lock()
             .await
