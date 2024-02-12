@@ -4,6 +4,7 @@ use crate::error::XenosError;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
+use crate::settings;
 use prometheus::{register_int_counter_vec, IntCounterVec};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -43,9 +44,9 @@ fn track_cache_result<T>(cached: &Cached<T>, request_type: &str) {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug)]
 pub struct MemoryCache {
-    pub cache_time: u64,
+    pub settings: settings::Cache,
     uuids: HashMap<String, UuidEntry>,
     profiles: HashMap<Uuid, ProfileEntry>,
     skins: HashMap<Uuid, SkinEntry>,
@@ -53,10 +54,34 @@ pub struct MemoryCache {
 }
 
 impl MemoryCache {
-    pub fn with_cache_time(cache_time: u64) -> Self {
+    pub fn new(settings: settings::Cache) -> Self {
         MemoryCache {
-            cache_time,
-            ..Default::default()
+            settings,
+            uuids: HashMap::default(),
+            profiles: HashMap::default(),
+            skins: HashMap::default(),
+            heads: HashMap::default(),
+        }
+    }
+
+    pub fn with_expiry(expiry: u64) -> Self {
+        MemoryCache {
+            settings: settings::Cache {
+                variant: settings::CacheVariant::Memory,
+                redis: None,
+                expiry_uuid: expiry,
+                expiry_uuid_missing: expiry,
+                expiry_profile: expiry,
+                expiry_profile_missing: expiry,
+                expiry_skin: expiry,
+                expiry_skin_missing: expiry,
+                expiry_head: expiry,
+                expiry_head_missing: expiry,
+            },
+            uuids: HashMap::default(),
+            profiles: HashMap::default(),
+            skins: HashMap::default(),
+            heads: HashMap::default(),
         }
     }
 }
@@ -68,7 +93,10 @@ impl XenosCache for MemoryCache {
         username: &str,
     ) -> Result<Cached<UuidEntry>, XenosError> {
         let entry = self.uuids.get(username).cloned();
-        let cached = entry.into_cached(&self.cache_time);
+        let cached = entry.into_cached(
+            &self.settings.expiry_uuid,
+            &self.settings.expiry_uuid_missing,
+        );
         track_cache_result(&cached, "uuid");
         Ok(cached)
     }
@@ -88,7 +116,10 @@ impl XenosCache for MemoryCache {
         uuid: &Uuid,
     ) -> Result<Cached<ProfileEntry>, XenosError> {
         let entry = self.profiles.get(uuid).cloned();
-        let cached = entry.into_cached(&self.cache_time);
+        let cached = entry.into_cached(
+            &self.settings.expiry_profile,
+            &self.settings.expiry_profile_missing,
+        );
         track_cache_result(&cached, "profile");
         Ok(cached)
     }
@@ -105,7 +136,10 @@ impl XenosCache for MemoryCache {
 
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
         let entry = self.skins.get(uuid).cloned();
-        let cached = entry.into_cached(&self.cache_time);
+        let cached = entry.into_cached(
+            &self.settings.expiry_skin,
+            &self.settings.expiry_skin_missing,
+        );
         track_cache_result(&cached, "skin");
         Ok(cached)
     }
@@ -123,7 +157,10 @@ impl XenosCache for MemoryCache {
     ) -> Result<Cached<HeadEntry>, XenosError> {
         let uuid_str = uuid.simple().to_string();
         let entry = self.heads.get(&format!("{uuid_str}.{overlay}")).cloned();
-        let cached = entry.into_cached(&self.cache_time);
+        let cached = entry.into_cached(
+            &self.settings.expiry_head,
+            &self.settings.expiry_head_missing,
+        );
         track_cache_result(&cached, "head");
         Ok(cached)
     }
@@ -150,7 +187,7 @@ mod test {
     #[tokio::test]
     async fn get_uuid_by_username_hit() {
         // given
-        let mut cache = MemoryCache::with_cache_time(3000);
+        let mut cache = MemoryCache::with_expiry(3000);
         let entry_hydrofin = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
@@ -187,7 +224,7 @@ mod test {
     #[tokio::test]
     async fn get_uuid_by_username_miss() {
         // given
-        let mut cache = MemoryCache::with_cache_time(3000);
+        let mut cache = MemoryCache::with_expiry(3000);
         let entry_hydrofin = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
@@ -220,7 +257,7 @@ mod test {
     #[tokio::test]
     async fn set_uuid_by_username() {
         // given
-        let mut cache = MemoryCache::with_cache_time(3000);
+        let mut cache = MemoryCache::with_expiry(3000);
         let entry_hydrofin = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
@@ -255,7 +292,7 @@ mod test {
     #[tokio::test]
     async fn set_uuid_by_username_override() {
         // given
-        let mut cache = MemoryCache::with_cache_time(3000);
+        let mut cache = MemoryCache::with_expiry(3000);
         let entry_hydrofin = UuidEntry {
             timestamp: get_epoch_seconds(),
             username: "Hydrofin".to_string(),
@@ -299,7 +336,7 @@ mod test {
     #[tokio::test]
     async fn get_profile_by_uuid_hit() {
         // given
-        let mut cache = MemoryCache::with_cache_time(3000);
+        let mut cache = MemoryCache::with_expiry(3000);
         let entry = ProfileEntry {
             timestamp: get_epoch_seconds(),
             uuid: Uuid::new_v4(),
@@ -326,7 +363,7 @@ mod test {
     #[tokio::test]
     async fn get_skin_by_uuid_hit() {
         // given
-        let mut cache = MemoryCache::with_cache_time(3000);
+        let mut cache = MemoryCache::with_expiry(3000);
         let uuid = Uuid::new_v4();
         let entry = SkinEntry {
             timestamp: get_epoch_seconds(),
@@ -348,7 +385,7 @@ mod test {
     #[tokio::test]
     async fn get_skin_by_uuid_expired() {
         // given
-        let mut cache = MemoryCache::with_cache_time(0);
+        let mut cache = MemoryCache::with_expiry(0);
         let uuid = Uuid::new_v4();
         let entry = SkinEntry {
             timestamp: 0,

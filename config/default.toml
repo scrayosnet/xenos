@@ -1,15 +1,17 @@
 debug = false
 
-[redis_cache]
-enabled = false
-cache_time = 300 # 5 minutes
-
-[memory_cache]
-enabled = true
-cache_time = 300 # 5 minutes
+[cache]
+variant = "memory"
+expiry_uuid = 300 # 5 minutes
+expiry_uuid_missing = 900 # 15 minutes
+expiry_profile = 300 # 5 minutes
+expiry_profile_missing = 900 # 15 minutes
+expiry_skin = 300 # 5 minutes
+expiry_skin_missing = 900 # 15 minutes
+expiry_head = 300 # 5 minutes
+expiry_head_missing = 900 # 15 minutes
 
 [http_server]
-enabled = false
 rest_gateway = false
 address = "0.0.0.0:9990"
 

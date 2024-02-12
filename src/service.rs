@@ -178,6 +178,17 @@ impl Service {
         let profile = match self.mojang.fetch_profile(uuid).await {
             Ok(r) => r,
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
+            Err(NotFound) => {
+                self.cache
+                    .lock()
+                    .await
+                    .set_profile_by_uuid(
+                        *uuid,
+                        ProfileEntry::new_missing(get_epoch_seconds(), *uuid),
+                    )
+                    .await?;
+                return Err(NotFound);
+            }
             Err(err) => return Err(err),
         };
         let entry = ProfileEntry {
@@ -221,6 +232,10 @@ impl Service {
         let profile = match self.get_profile(uuid).await {
             Ok(profile) => profile,
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
+            Err(NotFound) => {
+                // TODO handle?
+                return Err(NotFound);
+            }
             Err(err) => return Err(err),
         };
 
@@ -233,6 +248,10 @@ impl Service {
         let skin = match self.mojang.fetch_image_bytes(skin_url, "skin").await {
             Ok(r) => r,
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
+            Err(NotFound) => {
+                // TODO handle?
+                return Err(NotFound);
+            }
             Err(err) => return Err(err),
         };
         let entry = SkinEntry {
@@ -270,6 +289,10 @@ impl Service {
         let skin = match self.get_skin(uuid).await {
             Ok(profile) => profile,
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
+            Err(NotFound) => {
+                // TODO handle?
+                return Err(NotFound);
+            }
             Err(err) => return Err(err),
         };
 

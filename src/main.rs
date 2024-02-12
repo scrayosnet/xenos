@@ -15,32 +15,30 @@ use xenos::http_services::{get_head, get_profile, get_skin, get_uuids, metrics};
 use xenos::mojang::api::Mojang;
 use xenos::proto::profile_server::ProfileServer;
 use xenos::service::Service;
-use xenos::settings::Settings;
+use xenos::settings::{CacheVariant, Settings};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read settings from config files and environment variables
     let settings = Settings::new()?;
 
-    // build service
-    let cache: Box<Mutex<dyn XenosCache>> = if settings.redis_cache.enabled {
-        println!("Using redis cache");
-        let redis_client = redis::Client::open(settings.redis_cache.address.clone())?;
-        let redis_manager = redis_client.get_connection_manager().await?;
-        Box::new(Mutex::new(RedisCache {
-            cache_time: settings.redis_cache.cache_time,
-            expiration: settings.redis_cache.expiration,
-            redis_manager,
-        }))
-    } else if settings.memory_cache.enabled {
-        println!("Using in-memory cache");
-        Box::new(Mutex::new(MemoryCache::with_cache_time(
-            settings.memory_cache.cache_time,
-        )))
-    } else {
-        println!("Cache is disabled");
-        Box::new(Mutex::new(Uncached::default()))
+    // select and build cache
+    println!("Using cache {:?}", settings.cache.variant);
+    let cache: Box<Mutex<dyn XenosCache>> = match settings.cache.variant {
+        CacheVariant::Redis => {
+            let address = settings.cache.redis.clone().unwrap().address.clone();
+            let redis_client = redis::Client::open(address)?;
+            let redis_manager = redis_client.get_connection_manager().await?;
+            Box::new(Mutex::new(RedisCache {
+                settings: settings.cache.clone(),
+                redis_manager,
+            }))
+        }
+        CacheVariant::Memory => Box::new(Mutex::new(MemoryCache::new(settings.cache.clone()))),
+        CacheVariant::None => Box::new(Mutex::new(Uncached::default())),
     };
+
+    // build service
     let mojang = Box::new(Mojang {});
     let service = Arc::new(Service { cache, mojang });
 

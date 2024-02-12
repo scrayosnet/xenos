@@ -20,17 +20,20 @@ pub enum Cached<T> {
 }
 
 trait IntoCached<T> {
-    fn into_cached(self, ttl: &u64) -> Cached<T>;
+    fn into_cached(self, expiry: &u64, expiry_missing: &u64) -> Cached<T>;
 }
 
 impl<T> IntoCached<T> for Option<T>
 where
     T: CacheEntry,
 {
-    fn into_cached(self, ttl: &u64) -> Cached<T> {
+    fn into_cached(self, expiry: &u64, expiry_missing: &u64) -> Cached<T> {
         match self {
             None => Miss,
-            Some(v) if has_elapsed(&v.get_timestamp(), ttl) => Expired(v),
+            Some(v) if v.is_missing() && has_elapsed(&v.get_timestamp(), expiry_missing) => {
+                Expired(v)
+            }
+            Some(v) if has_elapsed(&v.get_timestamp(), expiry) => Expired(v),
             Some(v) => Hit(v),
         }
     }
@@ -38,6 +41,8 @@ where
 
 pub trait CacheEntry {
     fn get_timestamp(&self) -> u64;
+    /// An entry is missing if it was not found by mojang
+    fn is_missing(&self) -> bool;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -50,6 +55,9 @@ pub struct UuidEntry {
 impl CacheEntry for UuidEntry {
     fn get_timestamp(&self) -> u64 {
         self.timestamp
+    }
+    fn is_missing(&self) -> bool {
+        self.uuid.is_nil()
     }
 }
 
@@ -64,9 +72,24 @@ pub struct ProfileEntry {
     pub profile_actions: Vec<String>,
 }
 
+impl ProfileEntry {
+    pub fn new_missing(timestamp: u64, uuid: Uuid) -> Self {
+        Self {
+            timestamp,
+            uuid,
+            name: "".to_string(),
+            properties: vec![],
+            profile_actions: vec![],
+        }
+    }
+}
+
 impl CacheEntry for ProfileEntry {
     fn get_timestamp(&self) -> u64 {
         self.timestamp
+    }
+    fn is_missing(&self) -> bool {
+        self.name.is_empty()
     }
 }
 
@@ -87,6 +110,9 @@ impl CacheEntry for SkinEntry {
     fn get_timestamp(&self) -> u64 {
         self.timestamp
     }
+    fn is_missing(&self) -> bool {
+        self.bytes.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,6 +124,9 @@ pub struct HeadEntry {
 impl CacheEntry for HeadEntry {
     fn get_timestamp(&self) -> u64 {
         self.timestamp
+    }
+    fn is_missing(&self) -> bool {
+        self.bytes.is_empty()
     }
 }
 
