@@ -42,7 +42,7 @@ actix-web = { version = "4", features = ["rustls"] }
 config = "0.14.0"
 
 [build-dependencies]
-tonic-build = { version = "0.10", features = ["prost"] }
+tonic-build = { version = "0.11", features = ["prost"] }
 
 [dev-dependencies]
 xenos = { path = ".", features = ["default"] }
