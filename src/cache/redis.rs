@@ -67,8 +67,8 @@ pub struct RedisCache {
 impl RedisCache {
     fn build_set_options(&self) -> SetOptions {
         let mut opts = SetOptions::default();
-        if let Some(expiration) = self.settings.redis.clone().unwrap().ttl {
-            opts = opts.with_expiration(SetExpiry::EX(expiration));
+        if let Some(ttl) = self.settings.redis.ttl {
+            opts = opts.with_expiration(SetExpiry::EX(ttl));
         }
         opts
     }

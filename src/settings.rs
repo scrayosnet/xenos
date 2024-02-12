@@ -19,7 +19,7 @@ pub enum CacheVariant {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Cache {
     pub variant: CacheVariant,
-    pub redis: Option<RedisCache>,
+    pub redis: RedisCache,
     pub expiry_uuid: u64,
     pub expiry_uuid_missing: u64,
     pub expiry_profile: u64,

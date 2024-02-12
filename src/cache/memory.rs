@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use lazy_static::lazy_static;
 
 use crate::settings;
+use crate::settings::RedisCache;
 use prometheus::{register_int_counter_vec, IntCounterVec};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -68,7 +69,10 @@ impl MemoryCache {
         MemoryCache {
             settings: settings::Cache {
                 variant: settings::CacheVariant::Memory,
-                redis: None,
+                redis: RedisCache {
+                    address: "".to_string(),
+                    ttl: None,
+                },
                 expiry_uuid: expiry,
                 expiry_uuid_missing: expiry,
                 expiry_profile: expiry,

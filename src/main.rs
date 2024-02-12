@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Using cache {:?}", settings.cache.variant);
     let cache: Box<Mutex<dyn XenosCache>> = match settings.cache.variant {
         CacheVariant::Redis => {
-            let address = settings.cache.redis.clone().unwrap().address.clone();
+            let address = settings.cache.redis.address.clone();
             let redis_client = redis::Client::open(address)?;
             let redis_manager = redis_client.get_connection_manager().await?;
             Box::new(Mutex::new(RedisCache {

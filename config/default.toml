@@ -11,6 +11,10 @@ expiry_skin_missing = 300 # 5 minutes
 expiry_head = 600 # 10 minutes
 expiry_head_missing = 300 # 5 minutes
 
+[cache.redis]
+address = "redis://username:password@example.com/0"
+ttl = 86400
+
 [http_server]
 rest_gateway = false
 address = "0.0.0.0:9990"
