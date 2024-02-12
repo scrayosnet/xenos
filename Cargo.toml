@@ -20,7 +20,7 @@ prost-types = { version = "0.12.3" }
 redis = { version = "0.24", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"] }
 tokio = { version = "1.35", features = ["full"] }
 tonic = "0.10"
-tonic-health = "0.10"
+tonic-health = "0.11"
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 uuid = { version = "1.7", features = ["v4", "serde"] }
