@@ -59,9 +59,12 @@ async fn run_http(
         return Ok(());
     }
 
-    println!("Http server listening on {}", settings.http_server.address);
     let rest_gateway_enabled = settings.http_server.rest_gateway;
     let metrics_enabled = settings.metrics.enabled;
+    println!(
+        "Http server listening on {}: Metrics {}, Rest gateway {}",
+        settings.http_server.address, metrics_enabled, rest_gateway_enabled
+    );
     HttpServer::new(move || {
         let mut app = App::new().app_data(web::Data::new(http_services::State {
             service: service.clone(),

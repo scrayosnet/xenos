@@ -13,7 +13,6 @@ use xenos::service::Service;
 
 pub mod mojang_stub;
 
-#[derive(Default)]
 pub struct ServiceBuilder {
     cache: MemoryCache,
     mojang: StubMojang,
@@ -21,6 +20,13 @@ pub struct ServiceBuilder {
 
 #[allow(dead_code)]
 impl ServiceBuilder {
+    pub fn new() -> Self {
+        ServiceBuilder {
+            cache: MemoryCache::with_expiry(300),
+            mojang: Default::default(),
+        }
+    }
+
     pub fn with_username(mut self, username: &str, uuid: Uuid) -> Self {
         self.mojang.uuids.insert(
             username.to_lowercase(),

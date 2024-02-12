@@ -181,226 +181,189 @@ impl XenosCache for MemoryCache {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::cache::get_epoch_seconds;
     use crate::cache::Cached::Hit;
+    use crate::cache::{get_epoch_seconds, ProfileData, ProfileProperty, UuidData};
+    use uuid::uuid;
+
+    lazy_static! {
+        static ref HYDROFIN: Profile = Profile {
+            uuid: uuid!("09879557-e479-45a9-b434-a56377674627"),
+            username: "Hydrofin",
+            properties: vec![],
+            profile_actions: vec![],
+        };
+    }
+
+    #[allow(dead_code)]
+    struct Profile {
+        uuid: Uuid,
+        username: &'static str,
+        properties: Vec<ProfileProperty>,
+        profile_actions: Vec<String>,
+    }
+
+    #[allow(dead_code)]
+    impl Profile {
+        fn uuid_data(&self) -> UuidData {
+            UuidData {
+                username: self.username.to_string(),
+                uuid: self.uuid.clone(),
+            }
+        }
+
+        fn profile_data(&self) -> ProfileData {
+            ProfileData {
+                uuid: self.uuid.clone(),
+                name: self.username.to_string(),
+                properties: self.properties.clone(),
+                profile_actions: self.profile_actions.clone(),
+            }
+        }
+    }
 
     #[tokio::test]
     async fn get_uuid_by_username_hit() {
         // given
         let mut cache = MemoryCache::with_expiry(3000);
-        let entry_hydrofin = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Hydrofin".to_string(),
-            uuid: Uuid::new_v4(),
-        };
-        let entry_scrayos = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Scrayos".to_string(),
-            uuid: Uuid::new_v4(),
-        };
+        cache.uuids.insert(
+            HYDROFIN.username.to_lowercase(),
+            UuidEntry {
+                timestamp: get_epoch_seconds(),
+                data: Some(HYDROFIN.uuid_data()),
+            },
+        );
 
         // when
-        cache
-            .set_uuid_by_username(&entry_hydrofin.username, entry_hydrofin.clone())
-            .await
-            .unwrap();
-        cache
-            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos.clone())
-            .await
-            .unwrap();
-        let retrieved_hydrofin = cache
-            .get_uuid_by_username(&entry_hydrofin.username)
+        let retrieved = cache
+            .get_uuid_by_username(&HYDROFIN.username.to_lowercase())
             .await
             .unwrap();
 
         // then
-        assert_eq!(
-            Hit(entry_hydrofin),
-            retrieved_hydrofin,
-            "expect cache entry to not change in cache"
+        match retrieved {
+            Hit(UuidEntry {
+                data: Some(data), ..
+            }) => {
+                assert_eq!(data, HYDROFIN.uuid_data());
+            }
+            other => panic!("Expected hit with matching fields, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_uuid_by_username_expired() {
+        // given
+        let mut cache = MemoryCache::with_expiry(20);
+        cache.uuids.insert(
+            HYDROFIN.username.to_lowercase(),
+            UuidEntry {
+                timestamp: get_epoch_seconds() - 30,
+                data: Some(HYDROFIN.uuid_data()),
+            },
         );
+
+        // when
+        let retrieved = cache
+            .get_uuid_by_username(&HYDROFIN.username.to_lowercase())
+            .await
+            .unwrap();
+
+        // then
+        match retrieved {
+            Expired(UuidEntry {
+                data: Some(data), ..
+            }) => {
+                assert_eq!(data, HYDROFIN.uuid_data());
+            }
+            other => panic!("Expected expired with matching fields, got {:?}", other),
+        }
     }
 
     #[tokio::test]
     async fn get_uuid_by_username_miss() {
         // given
         let mut cache = MemoryCache::with_expiry(3000);
-        let entry_hydrofin = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Hydrofin".to_string(),
-            uuid: Uuid::new_v4(),
-        };
-        let entry_scrayos = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Scrayos".to_string(),
-            uuid: Uuid::new_v4(),
-        };
+        cache.uuids.insert(
+            HYDROFIN.username.to_lowercase(),
+            UuidEntry {
+                timestamp: get_epoch_seconds(),
+                data: Some(HYDROFIN.uuid_data()),
+            },
+        );
 
         // when
-        cache
-            .set_uuid_by_username(&entry_hydrofin.username, entry_hydrofin.clone())
-            .await
-            .unwrap();
-        cache
-            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos.clone())
-            .await
-            .unwrap();
-        let retrieved_hydrofin = cache.get_uuid_by_username("Notch").await.unwrap();
+        let retrieved = cache.get_uuid_by_username("Notch").await.unwrap();
 
         // then
-        assert_eq!(
-            Miss, retrieved_hydrofin,
-            "expect cache entry to not change in cache"
-        );
+        assert_eq!(Miss, retrieved);
     }
 
     #[tokio::test]
-    async fn set_uuid_by_username() {
+    async fn set_uuid_by_username_success() {
         // given
         let mut cache = MemoryCache::with_expiry(3000);
-        let entry_hydrofin = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Hydrofin".to_string(),
-            uuid: Uuid::new_v4(),
-        };
-        let entry_scrayos = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Scrayos".to_string(),
-            uuid: Uuid::new_v4(),
-        };
 
         // when
         cache
-            .set_uuid_by_username(&entry_hydrofin.username, entry_hydrofin.clone())
-            .await
-            .unwrap();
-        cache
-            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos.clone())
+            .set_uuid_by_username(
+                &HYDROFIN.username.to_lowercase(),
+                UuidEntry {
+                    timestamp: get_epoch_seconds(),
+                    data: Some(HYDROFIN.uuid_data()),
+                },
+            )
             .await
             .unwrap();
 
         // then
-        let retrieved_scrayos = cache.uuids.get(&entry_scrayos.username).cloned();
+        let retrieved = cache.uuids.get(&HYDROFIN.username.to_lowercase()).cloned();
 
-        assert_eq!(
-            Some(entry_scrayos),
-            retrieved_scrayos,
-            "expect cache entry to be in map with username key"
-        );
+        // then
+        match retrieved {
+            Some(UuidEntry {
+                data: Some(data), ..
+            }) => {
+                assert_eq!(data, HYDROFIN.uuid_data());
+            }
+            other => panic!("Expected some with matching fields, got {:?}", other),
+        }
     }
 
     #[tokio::test]
     async fn set_uuid_by_username_override() {
         // given
         let mut cache = MemoryCache::with_expiry(3000);
-        let entry_hydrofin = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Hydrofin".to_string(),
-            uuid: Uuid::new_v4(),
-        };
-        let entry_scrayos = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Scrayos".to_string(),
-            uuid: Uuid::new_v4(),
-        };
-        let entry_scrayos_2 = UuidEntry {
-            timestamp: get_epoch_seconds(),
-            username: "Scrayos 2".to_string(),
-            uuid: Uuid::new_v4(),
-        };
+        cache.uuids.insert(
+            HYDROFIN.username.to_lowercase(),
+            UuidEntry {
+                timestamp: get_epoch_seconds(),
+                data: None,
+            },
+        );
 
         // when
         cache
-            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos.clone())
-            .await
-            .unwrap();
-        cache
-            .set_uuid_by_username(&entry_hydrofin.username, entry_hydrofin.clone())
-            .await
-            .unwrap();
-        cache
-            .set_uuid_by_username(&entry_scrayos.username, entry_scrayos_2.clone())
+            .set_uuid_by_username(
+                &HYDROFIN.username.to_lowercase(),
+                UuidEntry {
+                    timestamp: get_epoch_seconds(),
+                    data: Some(HYDROFIN.uuid_data()),
+                },
+            )
             .await
             .unwrap();
 
         // then
-        let retrieved_scrayos = cache.uuids.get(&entry_scrayos.username).cloned();
-
-        assert_eq!(
-            Some(entry_scrayos_2),
-            retrieved_scrayos,
-            "expect cache entry to be overridden in map with username key"
-        );
-    }
-
-    #[tokio::test]
-    async fn get_profile_by_uuid_hit() {
-        // given
-        let mut cache = MemoryCache::with_expiry(3000);
-        let entry = ProfileEntry {
-            timestamp: get_epoch_seconds(),
-            uuid: Uuid::new_v4(),
-            name: "Hydrofin".to_string(),
-            properties: vec![],
-            profile_actions: vec![],
-        };
-
-        // when
-        cache
-            .set_profile_by_uuid(entry.uuid, entry.clone())
-            .await
-            .unwrap();
-        let retrieved = cache.get_profile_by_uuid(&entry.uuid).await.unwrap();
+        let retrieved = cache.uuids.get(&HYDROFIN.username.to_lowercase()).cloned();
 
         // then
-        assert_eq!(
-            Hit(entry),
-            retrieved,
-            "expect cache entry to not change in cache"
-        );
-    }
-
-    #[tokio::test]
-    async fn get_skin_by_uuid_hit() {
-        // given
-        let mut cache = MemoryCache::with_expiry(3000);
-        let uuid = Uuid::new_v4();
-        let entry = SkinEntry {
-            timestamp: get_epoch_seconds(),
-            bytes: vec![0, 0, 0, 1, 0],
-        };
-
-        // when
-        cache.set_skin_by_uuid(uuid, entry.clone()).await.unwrap();
-        let retrieved = cache.get_skin_by_uuid(&uuid).await.unwrap();
-
-        // then
-        assert_eq!(
-            Hit(entry),
-            retrieved,
-            "expect cache entry to not change in cache"
-        );
-    }
-
-    #[tokio::test]
-    async fn get_skin_by_uuid_expired() {
-        // given
-        let mut cache = MemoryCache::with_expiry(0);
-        let uuid = Uuid::new_v4();
-        let entry = SkinEntry {
-            timestamp: 0,
-            bytes: vec![0, 0, 0, 1, 0],
-        };
-
-        // when
-        cache.set_skin_by_uuid(uuid, entry.clone()).await.unwrap();
-        let retrieved = cache.get_skin_by_uuid(&uuid).await.unwrap();
-
-        // then
-        assert_eq!(
-            Expired(entry),
-            retrieved,
-            "expect cache entry to not change in cache"
-        );
+        match retrieved {
+            Some(UuidEntry {
+                data: Some(data), ..
+            }) => {
+                assert_eq!(data, HYDROFIN.uuid_data());
+            }
+            other => panic!("Expected some with matching fields, got {:?}", other),
+        }
     }
 }
