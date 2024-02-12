@@ -1,6 +1,9 @@
 use crate::cache::Cached::{Expired, Hit, Miss};
-use crate::cache::{Cached, HeadEntry, IntoCached, ProfileEntry, SkinEntry, UuidEntry, XenosCache};
+use crate::cache::{
+    CacheEntry, Cached, HeadEntry, IntoCached, ProfileEntry, SkinEntry, UuidEntry, XenosCache,
+};
 use crate::error::XenosError;
+use crate::settings;
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};
@@ -9,6 +12,9 @@ use redis::{
     from_redis_value, AsyncCommands, FromRedisValue, RedisResult, RedisWrite, SetExpiry,
     SetOptions, ToRedisArgs, Value,
 };
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use std::fmt::Debug;
 use uuid::Uuid;
 
 lazy_static! {
@@ -54,16 +60,15 @@ fn track_cache_result<T>(cached: &Cached<T>, request_type: &str) {
 }
 
 pub struct RedisCache {
-    pub cache_time: u64,
-    pub expiration: Option<usize>,
+    pub settings: settings::Cache,
     pub redis_manager: ConnectionManager,
 }
 
 impl RedisCache {
     fn build_set_options(&self) -> SetOptions {
         let mut opts = SetOptions::default();
-        if let Some(expiration) = self.expiration {
-            opts = opts.with_expiration(SetExpiry::EX(expiration));
+        if let Some(ttl) = self.settings.redis.ttl {
+            opts = opts.with_expiration(SetExpiry::EX(ttl));
         }
         opts
     }
@@ -86,7 +91,10 @@ impl XenosCache for RedisCache {
             .redis_manager
             .get(build_key("uuid", username.to_lowercase().as_str()))
             .await?;
-        let cached = entry.into_cached(&self.cache_time);
+        let cached = entry.into_cached(
+            &self.settings.expiry_uuid,
+            &self.settings.expiry_uuid_missing,
+        );
         track_cache_result(&cached, "uuid");
         Ok(cached)
     }
@@ -118,7 +126,10 @@ impl XenosCache for RedisCache {
             .redis_manager
             .get(build_key("profile", uuid.simple().to_string().as_str()))
             .await?;
-        let cached = entry.into_cached(&self.cache_time);
+        let cached = entry.into_cached(
+            &self.settings.expiry_profile,
+            &self.settings.expiry_profile_missing,
+        );
         track_cache_result(&cached, "profile");
         Ok(cached)
     }
@@ -147,7 +158,10 @@ impl XenosCache for RedisCache {
             .redis_manager
             .get(build_key("skin", uuid.simple().to_string().as_str()))
             .await?;
-        let cached = entry.into_cached(&self.cache_time);
+        let cached = entry.into_cached(
+            &self.settings.expiry_skin,
+            &self.settings.expiry_skin_missing,
+        );
         track_cache_result(&cached, "skin");
         Ok(cached)
     }
@@ -177,7 +191,10 @@ impl XenosCache for RedisCache {
             .redis_manager
             .get(build_key("head", &format!("{uuid_str}.{overlay}")))
             .await?;
-        let cached = entry.into_cached(&self.cache_time);
+        let cached = entry.into_cached(
+            &self.settings.expiry_head,
+            &self.settings.expiry_head_missing,
+        );
         track_cache_result(&cached, "head");
         Ok(cached)
     }
@@ -203,65 +220,20 @@ impl XenosCache for RedisCache {
 
 // type serialization
 
-impl FromRedisValue for UuidEntry {
+impl<D> FromRedisValue for CacheEntry<D>
+where
+    D: Debug + Clone + PartialEq + Eq + DeserializeOwned,
+{
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
         let v: String = from_redis_value(v)?;
         Ok(serde_json::from_str(&v)?)
     }
 }
 
-impl ToRedisArgs for UuidEntry {
-    fn write_redis_args<W>(&self, out: &mut W)
-    where
-        W: ?Sized + RedisWrite,
-    {
-        let str = serde_json::to_string(self).unwrap_or("".to_string());
-        out.write_arg(str.as_ref())
-    }
-}
-
-impl FromRedisValue for ProfileEntry {
-    fn from_redis_value(v: &Value) -> RedisResult<Self> {
-        let v: String = from_redis_value(v)?;
-        Ok(serde_json::from_str(&v)?)
-    }
-}
-
-impl ToRedisArgs for ProfileEntry {
-    fn write_redis_args<W>(&self, out: &mut W)
-    where
-        W: ?Sized + RedisWrite,
-    {
-        let str = serde_json::to_string(self).unwrap_or("".to_string());
-        out.write_arg(str.as_ref())
-    }
-}
-
-impl FromRedisValue for SkinEntry {
-    fn from_redis_value(v: &Value) -> RedisResult<Self> {
-        let v: String = from_redis_value(v)?;
-        Ok(serde_json::from_str(&v)?)
-    }
-}
-
-impl ToRedisArgs for SkinEntry {
-    fn write_redis_args<W>(&self, out: &mut W)
-    where
-        W: ?Sized + RedisWrite,
-    {
-        let str = serde_json::to_string(self).unwrap_or("".to_string());
-        out.write_arg(str.as_ref())
-    }
-}
-
-impl FromRedisValue for HeadEntry {
-    fn from_redis_value(v: &Value) -> RedisResult<Self> {
-        let v: String = from_redis_value(v)?;
-        Ok(serde_json::from_str(&v)?)
-    }
-}
-
-impl ToRedisArgs for HeadEntry {
+impl<D> ToRedisArgs for CacheEntry<D>
+where
+    D: Debug + Clone + PartialEq + Eq + Serialize,
+{
     fn write_redis_args<W>(&self, out: &mut W)
     where
         W: ?Sized + RedisWrite,

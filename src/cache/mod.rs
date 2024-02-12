@@ -10,6 +10,7 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -19,55 +20,70 @@ pub enum Cached<T> {
     Miss,
 }
 
-trait IntoCached<T> {
-    fn into_cached(self, ttl: &u64) -> Cached<T>;
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CacheEntry<D>
+where
+    D: Debug + Clone + PartialEq + Eq,
+{
+    pub timestamp: u64,
+    pub data: Option<D>,
 }
 
-impl<T> IntoCached<T> for Option<T>
+impl<D> CacheEntry<D>
 where
-    T: CacheEntry,
+    D: Debug + Clone + PartialEq + Eq,
 {
-    fn into_cached(self, ttl: &u64) -> Cached<T> {
+    pub fn new_empty() -> Self {
+        Self {
+            timestamp: get_epoch_seconds(),
+            data: None,
+        }
+    }
+
+    pub fn new(data: D) -> Self {
+        Self {
+            timestamp: get_epoch_seconds(),
+            data: Some(data),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_none()
+    }
+}
+
+pub trait IntoCached<T> {
+    fn into_cached(self, expiry: &u64, expiry_missing: &u64) -> Cached<T>;
+}
+
+impl<D> IntoCached<CacheEntry<D>> for Option<CacheEntry<D>>
+where
+    D: Debug + Clone + PartialEq + Eq,
+{
+    fn into_cached(self, expiry: &u64, expiry_missing: &u64) -> Cached<CacheEntry<D>> {
         match self {
             None => Miss,
-            Some(v) if has_elapsed(&v.get_timestamp(), ttl) => Expired(v),
+            Some(v) if v.is_empty() && has_elapsed(&v.timestamp, expiry_missing) => Expired(v),
+            Some(v) if has_elapsed(&v.timestamp, expiry) => Expired(v),
             Some(v) => Hit(v),
         }
     }
 }
 
-pub trait CacheEntry {
-    fn get_timestamp(&self) -> u64;
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct UuidEntry {
-    pub timestamp: u64,
+pub struct UuidData {
     pub username: String,
     pub uuid: Uuid,
 }
 
-impl CacheEntry for UuidEntry {
-    fn get_timestamp(&self) -> u64 {
-        self.timestamp
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProfileEntry {
-    pub timestamp: u64,
+pub struct ProfileData {
     pub uuid: Uuid,
     pub name: String,
     #[serde(default)]
     pub properties: Vec<ProfileProperty>,
     #[serde(default)]
     pub profile_actions: Vec<String>,
-}
-
-impl CacheEntry for ProfileEntry {
-    fn get_timestamp(&self) -> u64 {
-        self.timestamp
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -77,38 +93,19 @@ pub struct ProfileProperty {
     pub signature: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SkinEntry {
-    pub timestamp: u64,
-    pub bytes: Vec<u8>,
-}
+pub type UuidEntry = CacheEntry<UuidData>;
+pub type ProfileEntry = CacheEntry<ProfileData>;
+pub type SkinEntry = CacheEntry<Vec<u8>>;
+pub type HeadEntry = CacheEntry<Vec<u8>>;
 
-impl CacheEntry for SkinEntry {
-    fn get_timestamp(&self) -> u64 {
-        self.timestamp
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct HeadEntry {
-    pub timestamp: u64,
-    pub bytes: Vec<u8>,
-}
-
-impl CacheEntry for HeadEntry {
-    fn get_timestamp(&self) -> u64 {
-        self.timestamp
-    }
-}
-
-impl ProfileEntry {
+impl ProfileData {
     pub fn get_textures(&self) -> Result<TexturesProperty, XenosError> {
         let prop = self
             .properties
             .iter()
             .find(|prop| prop.name == *"textures")
             .ok_or(XenosError::InvalidTextures("missing".to_string()))?;
-        ProfileEntry::parse_texture_prop(prop.value.clone())
+        Self::parse_texture_prop(prop.value.clone())
     }
 
     fn parse_texture_prop(b64: String) -> Result<TexturesProperty, XenosError> {
