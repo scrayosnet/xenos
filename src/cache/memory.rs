@@ -207,13 +207,13 @@ mod test {
         fn uuid_data(&self) -> UuidData {
             UuidData {
                 username: self.username.to_string(),
-                uuid: self.uuid.clone(),
+                uuid: self.uuid,
             }
         }
 
         fn profile_data(&self) -> ProfileData {
             ProfileData {
-                uuid: self.uuid.clone(),
+                uuid: self.uuid,
                 name: self.username.to_string(),
                 properties: self.properties.clone(),
                 profile_actions: self.profile_actions.clone(),
