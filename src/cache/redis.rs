@@ -80,6 +80,7 @@ pub fn build_key(ns: &str, sub: &str) -> String {
 
 #[async_trait]
 impl XenosCache for RedisCache {
+    #[tracing::instrument(skip(self))]
     async fn get_uuid_by_username(
         &mut self,
         username: &str,
@@ -99,6 +100,7 @@ impl XenosCache for RedisCache {
         Ok(cached)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_uuid_by_username(
         &mut self,
         username: &str,
@@ -115,6 +117,7 @@ impl XenosCache for RedisCache {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_profile_by_uuid(
         &mut self,
         uuid: &Uuid,
@@ -134,6 +137,7 @@ impl XenosCache for RedisCache {
         Ok(cached)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_profile_by_uuid(
         &mut self,
         uuid: Uuid,
@@ -150,6 +154,7 @@ impl XenosCache for RedisCache {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
         let _timer = REDIS_GET_HISTOGRAM
             .with_label_values(&["skin"])
@@ -166,6 +171,7 @@ impl XenosCache for RedisCache {
         Ok(cached)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
         REDIS_SET_TOTAL.with_label_values(&["skin"]).inc();
         self.redis_manager
@@ -178,6 +184,7 @@ impl XenosCache for RedisCache {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_head_by_uuid(
         &mut self,
         uuid: &Uuid,
@@ -199,6 +206,7 @@ impl XenosCache for RedisCache {
         Ok(cached)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_head_by_uuid(
         &mut self,
         uuid: Uuid,

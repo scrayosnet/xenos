@@ -32,6 +32,7 @@ lazy_static! {
 pub struct Mojang;
 
 impl Mojang {
+    #[tracing::instrument(skip(self))]
     async fn fetch_uuids_chunk(
         &self,
         usernames: &[String],
@@ -64,6 +65,7 @@ impl Mojang {
 
 #[async_trait]
 impl MojangApi for Mojang {
+    #[tracing::instrument(skip(self))]
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
         // split into requests with ten or fewer usernames
         let mut resolved = vec![];
@@ -74,6 +76,7 @@ impl MojangApi for Mojang {
         Ok(resolved)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
         let url = format!(
             "https://sessionserver.mojang.com/session/minecraft/profile/{}",
@@ -99,6 +102,7 @@ impl MojangApi for Mojang {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn fetch_image_bytes(
         &self,
         url: String,

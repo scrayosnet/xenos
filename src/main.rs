@@ -20,6 +20,7 @@ use xenos::service::Service;
 use xenos::settings::{CacheVariant, Settings};
 
 #[tokio::main]
+#[tracing::instrument]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // install global subscriber configured based on RUST_LOG envvar.
     tracing_subscriber::fmt::init();
@@ -27,6 +28,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // read settings from config files and environment variables
     let settings = Settings::new()?;
+    if settings.debug {
+        info!("Debug mode enabled");
+    }
 
     // select and build cache
     info!(
@@ -63,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[tracing::instrument(skip_all)]
 async fn run_http(
     service: Arc<Service>,
     settings: &Settings,
@@ -106,6 +111,7 @@ async fn run_http(
     Ok(())
 }
 
+#[tracing::instrument(skip_all)]
 async fn run_grpc(
     service: Arc<Service>,
     settings: &Settings,
