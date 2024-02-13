@@ -5,6 +5,8 @@ use tokio::sync::Mutex;
 use tokio::try_join;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
+use tracing::info;
+use tracing_subscriber;
 use xenos::cache::memory::MemoryCache;
 use xenos::cache::redis::RedisCache;
 use xenos::cache::uncached::Uncached;
@@ -19,13 +21,21 @@ use xenos::settings::{CacheVariant, Settings};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // install global subscriber configured based on RUST_LOG envvar.
+    tracing_subscriber::fmt::init();
+    info!("Starting Xenos...");
+
     // read settings from config files and environment variables
     let settings = Settings::new()?;
 
     // select and build cache
-    println!("Using cache {:?}", settings.cache.variant);
+    info!(
+        cache = settings.cache.variant.to_string(),
+        "Initializing cache"
+    );
     let cache: Box<Mutex<dyn XenosCache>> = match settings.cache.variant {
         CacheVariant::Redis => {
+            info!("Initializing redis client and connection pool");
             let address = settings.cache.redis.address.clone();
             let redis_client = redis::Client::open(address)?;
             let redis_manager = redis_client.get_connection_manager().await?;
@@ -39,7 +49,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // build service
+    info!("Initializing mojang api");
     let mojang = Box::new(Mojang {});
+    info!("Building Xenos service");
     let service = Arc::new(Service { cache, mojang });
 
     // try to start all servers (disabled servers return directly)
@@ -47,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_grpc(service.clone(), &settings),
         run_http(service.clone(), &settings),
     )?;
+    info!("Xenos stopped successfully");
     Ok(())
 }
 
@@ -55,15 +68,18 @@ async fn run_http(
     settings: &Settings,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.metrics.enabled && !settings.http_server.rest_gateway {
-        println!("Http server disabled");
+        info!("Http server is disabled (enable either metrics or rest gateway)");
         return Ok(());
     }
 
-    let rest_gateway_enabled = settings.http_server.rest_gateway;
-    let metrics_enabled = settings.metrics.enabled;
-    println!(
-        "Http server listening on {}: Metrics {}, Rest gateway {}",
-        settings.http_server.address, metrics_enabled, rest_gateway_enabled
+    let rest_gateway_enabled = settings.metrics.enabled;
+    let metrics_enabled = settings.http_server.rest_gateway;
+    info!(
+        address = settings.http_server.address.to_string(),
+        metrics = metrics_enabled,
+        rest_gateway = rest_gateway_enabled,
+        "Http server listening on {}",
+        settings.http_server.address
     );
     HttpServer::new(move || {
         let mut app = App::new().app_data(web::Data::new(http_services::State {
@@ -86,7 +102,7 @@ async fn run_http(
     .bind(settings.http_server.address)?
     .run()
     .await?;
-    println!("Http server stopped");
+    info!("Http server stopped successfully");
     Ok(())
 }
 
@@ -95,7 +111,7 @@ async fn run_grpc(
     settings: &Settings,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.grpc_server.enabled {
-        println!("Grpc server disabled");
+        info!("GRPC server is disabled");
         return Ok(());
     }
 
@@ -104,6 +120,7 @@ async fn run_grpc(
     let profile_server = ProfileServer::new(profile_service);
 
     // build grpc health reporter
+    info!("Initializing gRPC health reporter");
     let (mut health_reporter, health_server) = health_reporter();
     health_reporter
         .set_serving::<ProfileServer<GrpcProfileService>>()
@@ -112,12 +129,15 @@ async fn run_grpc(
     // shutdown signal (future)
     let shutdown = tokio::signal::ctrl_c().map(|_| ());
 
-    println!("Grpc server listening on {}", settings.grpc_server.address);
+    info!(
+        address = settings.grpc_server.address.to_string(),
+        "GRPC server listening on {}", settings.grpc_server.address
+    );
     Server::builder()
         .add_service(health_server)
         .add_service(profile_server)
         .serve_with_shutdown(settings.grpc_server.address, shutdown)
         .await?;
-    println!("Grpc server stopped");
+    info!("GRPC server stopped successfully");
     Ok(())
 }
