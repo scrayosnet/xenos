@@ -1,6 +1,7 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::env;
+use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,13 +49,27 @@ pub struct GrpcServer {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct Sentry {
+    pub enabled: bool,
+    pub address: String,
+    pub environment: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[allow(unused)]
 pub struct Settings {
     pub debug: bool,
     pub cache: Cache,
     pub metrics: Metrics,
+    pub sentry: Sentry,
     pub http_server: HttpServer,
     pub grpc_server: GrpcServer,
+}
+
+impl Display for CacheVariant {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl Settings {

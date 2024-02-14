@@ -88,6 +88,7 @@ pub struct Service {
 }
 
 impl Service {
+    #[tracing::instrument(skip(skin_bytes))]
     fn build_skin_head(skin_bytes: &[u8]) -> Result<Vec<u8>, XenosError> {
         let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
         let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
@@ -107,6 +108,7 @@ impl Service {
         Ok(head_bytes)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_uuids(
         &self,
         usernames: &[String],
@@ -179,6 +181,7 @@ impl Service {
         Ok(uuids)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
         let start = Instant::now();
         let result = self._get_profile(uuid).await;
@@ -219,6 +222,7 @@ impl Service {
         Ok(entry)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
         let start = Instant::now();
         let result = self._get_skin(uuid).await;
@@ -280,6 +284,7 @@ impl Service {
         Ok(entry)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
         let start = Instant::now();
         let result = self._get_head(uuid, overlay).await;

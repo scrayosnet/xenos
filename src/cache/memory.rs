@@ -92,6 +92,7 @@ impl MemoryCache {
 
 #[async_trait]
 impl XenosCache for MemoryCache {
+    #[tracing::instrument(skip(self))]
     async fn get_uuid_by_username(
         &mut self,
         username: &str,
@@ -105,6 +106,7 @@ impl XenosCache for MemoryCache {
         Ok(cached)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_uuid_by_username(
         &mut self,
         username: &str,
@@ -115,6 +117,7 @@ impl XenosCache for MemoryCache {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_profile_by_uuid(
         &mut self,
         uuid: &Uuid,
@@ -128,6 +131,7 @@ impl XenosCache for MemoryCache {
         Ok(cached)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_profile_by_uuid(
         &mut self,
         uuid: Uuid,
@@ -138,6 +142,7 @@ impl XenosCache for MemoryCache {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_skin_by_uuid(&mut self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
         let entry = self.skins.get(uuid).cloned();
         let cached = entry.into_cached(
@@ -148,12 +153,14 @@ impl XenosCache for MemoryCache {
         Ok(cached)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_skin_by_uuid(&mut self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
         MEMORY_CACHE_SET_TOTAL.with_label_values(&["skin"]).inc();
         self.skins.insert(uuid, entry);
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_head_by_uuid(
         &mut self,
         uuid: &Uuid,
@@ -169,6 +176,7 @@ impl XenosCache for MemoryCache {
         Ok(cached)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_head_by_uuid(
         &mut self,
         uuid: Uuid,

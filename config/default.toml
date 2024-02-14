@@ -15,6 +15,11 @@ expiry_head_missing = 300 # 5 minutes
 address = "redis://username:password@example.com/0"
 ttl = 86400
 
+[sentry]
+enabled = false
+address = "https://key@sentry.io/42"
+environment = "staging"
+
 [http_server]
 rest_gateway = false
 address = "0.0.0.0:9990"
