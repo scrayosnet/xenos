@@ -7,7 +7,7 @@ use tokio::try_join;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::info;
-use tracing_subscriber;
+
 use tracing_subscriber::prelude::*;
 use xenos::cache::memory::MemoryCache;
 use xenos::cache::redis::RedisCache;
@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // initialize sentry
     let _sentry = sentry::init((
-        (&settings.sentry.enabled).then_some(settings.sentry.address.clone()),
+        settings.sentry.enabled.then_some(settings.sentry.address.clone()),
         sentry::ClientOptions {
             debug: settings.debug,
             release: sentry::release_name!(),
