@@ -3,7 +3,6 @@ use serde::Deserialize;
 use std::env;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
-use tracing::info;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisCache {
@@ -50,11 +49,19 @@ pub struct GrpcServer {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct Sentry {
+    pub enabled: bool,
+    pub address: String,
+    pub environment: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[allow(unused)]
 pub struct Settings {
     pub debug: bool,
     pub cache: Cache,
     pub metrics: Metrics,
+    pub sentry: Sentry,
     pub http_server: HttpServer,
     pub grpc_server: GrpcServer,
 }
@@ -70,7 +77,6 @@ impl Settings {
     /// The settings are composed of the `config/default`, the `config/local`, and the environment variables.
     pub fn new() -> Result<Self, ConfigError> {
         let env_prefix = env::var("ENV_PREFIX").unwrap_or_else(|_| "xenos".into());
-        info!(env_prefix = env_prefix, "Loading settings");
 
         let s = Config::builder()
             // Start off by merging in the "default" configuration file

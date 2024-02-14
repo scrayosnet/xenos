@@ -1,5 +1,6 @@
 use actix_web::{web, App, HttpServer};
 use futures_util::FutureExt;
+use std::borrow::Cow::Owned;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::try_join;
@@ -7,6 +8,7 @@ use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::info;
 use tracing_subscriber;
+use tracing_subscriber::prelude::*;
 use xenos::cache::memory::MemoryCache;
 use xenos::cache::redis::RedisCache;
 use xenos::cache::uncached::Uncached;
@@ -19,27 +21,53 @@ use xenos::proto::profile_server::ProfileServer;
 use xenos::service::Service;
 use xenos::settings::{CacheVariant, Settings};
 
-#[tokio::main]
-#[tracing::instrument]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // install global subscriber configured based on RUST_LOG envvar.
-    tracing_subscriber::fmt::init();
-    info!("Starting Xenos...");
-
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read settings from config files and environment variables
     let settings = Settings::new()?;
+
+    // initialize sentry
+    let _sentry = sentry::init((
+        (&settings.sentry.enabled).then_some(settings.sentry.address.clone()),
+        sentry::ClientOptions {
+            debug: settings.debug,
+            release: sentry::release_name!(),
+            environment: Some(Owned(settings.sentry.environment.clone())),
+            ..sentry::ClientOptions::default()
+        },
+    ));
+
+    // initialize logging with sentry hook
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(sentry_tracing::layer())
+        .init();
+    if _sentry.is_enabled() {
+        info!("sentry is enabled");
+    }
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async { start(settings).await })
+}
+
+#[tracing::instrument(skip(settings))]
+async fn start(settings: Settings) -> Result<(), Box<dyn std::error::Error>> {
+    info!("starting Xenos...");
+
     if settings.debug {
-        info!("Debug mode enabled");
+        info!("debug mode enabled");
     }
 
     // select and build cache
     info!(
         cache = settings.cache.variant.to_string(),
-        "Initializing cache"
+        "initializing cache"
     );
     let cache: Box<Mutex<dyn XenosCache>> = match settings.cache.variant {
         CacheVariant::Redis => {
-            info!("Initializing redis client and connection pool");
+            info!("initializing redis client and connection pool");
             let address = settings.cache.redis.address.clone();
             let redis_client = redis::Client::open(address)?;
             let redis_manager = redis_client.get_connection_manager().await?;
@@ -53,9 +81,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // build service
-    info!("Initializing mojang api");
+    info!("initializing mojang api");
     let mojang = Box::new(Mojang {});
-    info!("Building Xenos service");
+    info!("building Xenos service");
     let service = Arc::new(Service { cache, mojang });
 
     // try to start all servers (disabled servers return directly)
@@ -73,7 +101,7 @@ async fn run_http(
     settings: &Settings,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.metrics.enabled && !settings.http_server.rest_gateway {
-        info!("Http server is disabled (enable either metrics or rest gateway)");
+        info!("http server is disabled (enable either metrics or rest gateway)");
         return Ok(());
     }
 
@@ -83,7 +111,7 @@ async fn run_http(
         address = settings.http_server.address.to_string(),
         metrics = metrics_enabled,
         rest_gateway = rest_gateway_enabled,
-        "Http server listening on {}",
+        "http server listening on {}",
         settings.http_server.address
     );
     HttpServer::new(move || {
@@ -107,7 +135,7 @@ async fn run_http(
     .bind(settings.http_server.address)?
     .run()
     .await?;
-    info!("Http server stopped successfully");
+    info!("http server stopped successfully");
     Ok(())
 }
 
@@ -117,7 +145,7 @@ async fn run_grpc(
     settings: &Settings,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.grpc_server.enabled {
-        info!("GRPC server is disabled");
+        info!("gRPC server is disabled");
         return Ok(());
     }
 
@@ -126,7 +154,7 @@ async fn run_grpc(
     let profile_server = ProfileServer::new(profile_service);
 
     // build grpc health reporter
-    info!("Initializing gRPC health reporter");
+    info!("initializing gRPC health reporter");
     let (mut health_reporter, health_server) = health_reporter();
     health_reporter
         .set_serving::<ProfileServer<GrpcProfileService>>()
@@ -137,13 +165,13 @@ async fn run_grpc(
 
     info!(
         address = settings.grpc_server.address.to_string(),
-        "GRPC server listening on {}", settings.grpc_server.address
+        "gRPC server listening on {}", settings.grpc_server.address
     );
     Server::builder()
         .add_service(health_server)
         .add_service(profile_server)
         .serve_with_shutdown(settings.grpc_server.address, shutdown)
         .await?;
-    info!("GRPC server stopped successfully");
+    info!("gRPC server stopped successfully");
     Ok(())
 }
