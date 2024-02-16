@@ -80,6 +80,7 @@ impl Settings {
     /// The settings are composed of the `config/default`, the `config/local`, and the environment variables.
     pub fn new() -> Result<Self, ConfigError> {
         let env_prefix = env::var("ENV_PREFIX").unwrap_or_else(|_| "xenos".into());
+        let config_file = env::var("CONFIG_FILE").unwrap_or_else(|_| "config/config".into());
 
         let s = Config::builder()
             // Start off by merging in the "default" configuration file
@@ -87,6 +88,9 @@ impl Settings {
             // Add in a local configuration file
             // This file shouldn't be checked in to git
             .add_source(File::with_name("config/local").required(false))
+            // Add in a configured configuration file
+            // This file shouldn't be checked in to git
+            .add_source(File::with_name(&config_file).required(false))
             // Add in settings from the environment (with a prefix of APP)
             // E.g. `XENOS__DEBUG=1` would set the `debug` key, on the other hand,
             // `XENOS__CACHE__VARIANT=redis` would enable the redis cache.
