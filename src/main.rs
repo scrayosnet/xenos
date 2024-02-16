@@ -15,7 +15,7 @@ use xenos::cache::uncached::Uncached;
 use xenos::cache::XenosCache;
 use xenos::grpc_services::GrpcProfileService;
 use xenos::http_services;
-use xenos::http_services::{get_head, get_profile, get_skin, get_uuids, metrics};
+use xenos::http_services::{configure_metrics, configure_rest_gateway};
 use xenos::mojang::api::Mojang;
 use xenos::proto::profile_server::ProfileServer;
 use xenos::service::Service;
@@ -23,7 +23,7 @@ use xenos::settings::{CacheVariant, Settings};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read settings from config files and environment variables
-    let settings = Settings::new()?;
+    let settings = Arc::new(Settings::new()?);
 
     // initialize sentry
     let _sentry = sentry::init((
@@ -55,8 +55,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .block_on(async { start(settings).await })
 }
 
+/// Starts Xenos, should only be called once in `main` after sentry and logging has be initialized.
+/// It blocks until all started services complete (or after a graceful shutdown when a shutdown signal
+/// is received)
 #[tracing::instrument(skip(settings))]
-async fn start(settings: Settings) -> Result<(), Box<dyn std::error::Error>> {
+async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
     info!("starting Xenos...");
 
     if settings.debug {
@@ -91,25 +94,28 @@ async fn start(settings: Settings) -> Result<(), Box<dyn std::error::Error>> {
 
     // try to start all servers (disabled servers return directly)
     try_join!(
-        run_grpc(service.clone(), &settings),
-        run_http(service.clone(), &settings),
+        run_grpc(service.clone(), settings.clone()),
+        run_http(service.clone(), settings.clone()),
     )?;
     info!("Xenos stopped successfully");
     Ok(())
 }
 
+/// Tries to start the http server. The http server is started if either the rest gateway or the
+/// metrics service is enabled. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]
 async fn run_http(
     service: Arc<Service>,
-    settings: &Settings,
+    settings: Arc<Settings>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.metrics.enabled && !settings.http_server.rest_gateway {
         info!("http server is disabled (enable either metrics or rest gateway)");
         return Ok(());
     }
 
-    let rest_gateway_enabled = settings.metrics.enabled;
-    let metrics_enabled = settings.http_server.rest_gateway;
+    let address = settings.http_server.address;
+    let metrics_enabled = settings.metrics.enabled;
+    let rest_gateway_enabled = settings.http_server.rest_gateway;
     info!(
         address = settings.http_server.address.to_string(),
         metrics = metrics_enabled,
@@ -118,61 +124,71 @@ async fn run_http(
         settings.http_server.address
     );
     HttpServer::new(move || {
-        let mut app = App::new().app_data(web::Data::new(http_services::State {
-            service: service.clone(),
-        }));
-        // add rest gateway services
-        if rest_gateway_enabled {
-            app = app
-                .service(get_uuids)
-                .service(get_profile)
-                .service(get_skin)
-                .service(get_head)
-        }
-        // add metrics service
-        if metrics_enabled {
-            app = app.service(metrics)
-        }
-        app
+        App::new()
+            .app_data(web::Data::new(http_services::State {
+                settings: settings.clone(),
+                service: service.clone(),
+            }))
+            .configure(|cfg| {
+                if metrics_enabled {
+                    configure_metrics(cfg)
+                }
+            })
+            .configure(|cfg| {
+                if rest_gateway_enabled {
+                    configure_rest_gateway(cfg)
+                }
+            })
     })
-    .bind(settings.http_server.address)?
+    .bind(address)?
     .run()
     .await?;
     info!("http server stopped successfully");
     Ok(())
 }
 
+/// Tries to start the grpc server. The grpc server is started if it is enabled. It also starts the
+/// health reporter. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]
 async fn run_grpc(
     service: Arc<Service>,
-    settings: &Settings,
+    settings: Arc<Settings>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !settings.grpc_server.enabled {
-        info!("gRPC server is disabled");
+    if !settings.grpc_server.profile_enabled && !settings.grpc_server.health_enabled {
+        info!("gRPC server is disabled (enable either health or profile)");
         return Ok(());
     }
 
-    // build grpc service
-    let profile_service = GrpcProfileService { service };
-    let profile_server = ProfileServer::new(profile_service);
+    // build profile server
+    let profile_server = settings
+        .grpc_server
+        .profile_enabled
+        .then(|| ProfileServer::new(GrpcProfileService { service }));
 
-    // build grpc health reporter
-    info!("initializing gRPC health reporter");
-    let (mut health_reporter, health_server) = health_reporter();
-    health_reporter
-        .set_serving::<ProfileServer<GrpcProfileService>>()
-        .await;
+    // build health server
+    let mut health_server = None;
+    if settings.grpc_server.health_enabled {
+        info!("initializing gRPC health reporter");
+        let (mut reporter, server) = health_reporter();
+        reporter
+            .set_serving::<ProfileServer<GrpcProfileService>>()
+            .await;
+        health_server = Some(server)
+    }
 
     // shutdown signal (future)
     let shutdown = tokio::signal::ctrl_c().map(|_| ());
 
     info!(
         address = settings.grpc_server.address.to_string(),
-        "gRPC server listening on {}", settings.grpc_server.address
+        health = settings.grpc_server.health_enabled,
+        profile = settings.grpc_server.profile_enabled,
+        "gRPC server listening on {}",
+        settings.grpc_server.address
     );
     Server::builder()
-        .add_service(health_server)
-        .add_service(profile_server)
+        .add_optional_service(health_server)
+        .add_optional_service(profile_server)
         .serve_with_shutdown(settings.grpc_server.address, shutdown)
         .await?;
     info!("gRPC server stopped successfully");
