@@ -4,17 +4,16 @@ use crate::proto::{
     UuidRequest, UuidResponse,
 };
 use crate::service::Service;
+use crate::settings::Settings;
 use actix_web::body::BoxBody;
+use actix_web::error::ErrorUnauthorized;
 use actix_web::http::header::CONTENT_TYPE;
 use actix_web::http::StatusCode;
 use actix_web::{error, get, post, web, HttpRequest, HttpResponse, Responder};
+use actix_web_httpauth::extractors::basic::BasicAuth;
 use prometheus::{Encoder, TextEncoder};
 use std::sync::Arc;
 use uuid::Uuid;
-
-pub struct State {
-    pub service: Arc<Service>,
-}
 
 impl error::ResponseError for XenosError {
     fn status_code(&self) -> StatusCode {
@@ -40,20 +39,62 @@ impl Responder for XenosError {
     }
 }
 
+/// `State` is the http application (root level) data. It is shared between all http service calls.
+#[derive(Clone)]
+pub struct State {
+    pub settings: Arc<Settings>,
+    pub service: Arc<Service>,
+}
+
+/// Configures the metrics service(s).
+///
+/// It ignores whether the metrics service should be [enabled](settings::Metrics.enabled).
+/// The metrics basic auth configuration is read at runtime at every call.
+///
+/// This configuration can be used in along with the [rest gateway](configure_rest_gateway).
+pub fn configure_metrics(cfg: &mut web::ServiceConfig) {
+    // basic auth is validated by the metrics service itself
+    cfg.service(metrics);
+}
+
+/// Configures the rest gateway service(s).
+///
+/// It ignores whether the gateway service should be [enabled](settings::HttpServer.rest_gateway).
+///
+/// This configuration can be used in along with the [metrics](configure_metrics).
+pub fn configure_rest_gateway(cfg: &mut web::ServiceConfig) {
+    cfg.service(get_uuids)
+        .service(get_profile)
+        .service(get_skin)
+        .service(get_head);
+}
+
 #[get("/metrics")]
-pub async fn metrics() -> impl Responder {
+async fn metrics(data: web::Data<State>, auth: Option<BasicAuth>) -> impl Responder {
+    // validate auth
+    let ms = &data.settings.metrics;
+    if ms.auth_enabled {
+        if let Some(auth) = auth {
+            if auth.user_id() != ms.username || auth.password() != Some(&ms.password) {
+                return Err(ErrorUnauthorized("invalid credentials"));
+            }
+        } else {
+            return Err(ErrorUnauthorized("missing credentials"));
+        }
+    }
+
+    // build metrics
     let encoder = TextEncoder::new();
     let metric_families = prometheus::gather();
     let mut buffer = vec![];
     encoder.encode(&metric_families, &mut buffer).unwrap();
-
-    HttpResponse::Ok()
+    Ok(HttpResponse::Ok()
         .insert_header((CONTENT_TYPE, encoder.format_type()))
-        .body(buffer)
+        .body(buffer))
 }
 
 #[post("/uuids")]
-pub async fn get_uuids(
+async fn get_uuids(
     data: web::Data<State>,
     json: web::Json<UuidRequest>,
 ) -> Result<impl Responder, XenosError> {
@@ -63,7 +104,7 @@ pub async fn get_uuids(
 }
 
 #[post("/profile")]
-pub async fn get_profile(
+async fn get_profile(
     data: web::Data<State>,
     json: web::Json<ProfileRequest>,
 ) -> Result<impl Responder, XenosError> {
@@ -73,7 +114,7 @@ pub async fn get_profile(
 }
 
 #[post("/skin")]
-pub async fn get_skin(
+async fn get_skin(
     data: web::Data<State>,
     json: web::Json<SkinRequest>,
 ) -> Result<impl Responder, XenosError> {
@@ -83,7 +124,7 @@ pub async fn get_skin(
 }
 
 #[post("/head")]
-pub async fn get_head(
+async fn get_head(
     data: web::Data<State>,
     json: web::Json<HeadRequest>,
 ) -> Result<impl Responder, XenosError> {

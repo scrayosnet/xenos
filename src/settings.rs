@@ -40,6 +40,9 @@ pub struct HttpServer {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Metrics {
     pub enabled: bool,
+    pub auth_enabled: bool,
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

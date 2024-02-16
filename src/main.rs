@@ -15,7 +15,7 @@ use xenos::cache::uncached::Uncached;
 use xenos::cache::XenosCache;
 use xenos::grpc_services::GrpcProfileService;
 use xenos::http_services;
-use xenos::http_services::{get_head, get_profile, get_skin, get_uuids, metrics};
+use xenos::http_services::{configure_metrics, configure_rest_gateway};
 use xenos::mojang::api::Mojang;
 use xenos::proto::profile_server::ProfileServer;
 use xenos::service::Service;
@@ -23,7 +23,7 @@ use xenos::settings::{CacheVariant, Settings};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read settings from config files and environment variables
-    let settings = Settings::new()?;
+    let settings = Arc::new(Settings::new()?);
 
     // initialize sentry
     let _sentry = sentry::init((
@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tracing::instrument(skip(settings))]
-async fn start(settings: Settings) -> Result<(), Box<dyn std::error::Error>> {
+async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
     info!("starting Xenos...");
 
     if settings.debug {
@@ -91,8 +91,8 @@ async fn start(settings: Settings) -> Result<(), Box<dyn std::error::Error>> {
 
     // try to start all servers (disabled servers return directly)
     try_join!(
-        run_grpc(service.clone(), &settings),
-        run_http(service.clone(), &settings),
+        run_grpc(service.clone(), settings.clone()),
+        run_http(service.clone(), settings.clone()),
     )?;
     info!("Xenos stopped successfully");
     Ok(())
@@ -101,15 +101,16 @@ async fn start(settings: Settings) -> Result<(), Box<dyn std::error::Error>> {
 #[tracing::instrument(skip_all)]
 async fn run_http(
     service: Arc<Service>,
-    settings: &Settings,
+    settings: Arc<Settings>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.metrics.enabled && !settings.http_server.rest_gateway {
         info!("http server is disabled (enable either metrics or rest gateway)");
         return Ok(());
     }
 
-    let rest_gateway_enabled = settings.metrics.enabled;
-    let metrics_enabled = settings.http_server.rest_gateway;
+    let address = settings.http_server.address.clone();
+    let metrics_enabled = settings.metrics.enabled;
+    let rest_gateway_enabled = settings.http_server.rest_gateway;
     info!(
         address = settings.http_server.address.to_string(),
         metrics = metrics_enabled,
@@ -118,24 +119,23 @@ async fn run_http(
         settings.http_server.address
     );
     HttpServer::new(move || {
-        let mut app = App::new().app_data(web::Data::new(http_services::State {
-            service: service.clone(),
-        }));
-        // add rest gateway services
-        if rest_gateway_enabled {
-            app = app
-                .service(get_uuids)
-                .service(get_profile)
-                .service(get_skin)
-                .service(get_head)
-        }
-        // add metrics service
-        if metrics_enabled {
-            app = app.service(metrics)
-        }
-        app
+        App::new()
+            .app_data(web::Data::new(http_services::State {
+                settings: settings.clone(),
+                service: service.clone(),
+            }))
+            .configure(|cfg| {
+                if metrics_enabled {
+                    configure_metrics(cfg)
+                }
+            })
+            .configure(|cfg| {
+                if rest_gateway_enabled {
+                    configure_rest_gateway(cfg)
+                }
+            })
     })
-    .bind(settings.http_server.address)?
+    .bind(address)?
     .run()
     .await?;
     info!("http server stopped successfully");
@@ -145,7 +145,7 @@ async fn run_http(
 #[tracing::instrument(skip_all)]
 async fn run_grpc(
     service: Arc<Service>,
-    settings: &Settings,
+    settings: Arc<Settings>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.grpc_server.enabled {
         info!("gRPC server is disabled");
