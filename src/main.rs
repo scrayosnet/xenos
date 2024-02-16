@@ -155,7 +155,7 @@ async fn run_grpc(
     settings: Arc<Settings>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !settings.grpc_server.profile_enabled && !settings.grpc_server.health_enabled {
-        info!("gRPC server is disabled");
+        info!("gRPC server is disabled (enable either health or profile)");
         return Ok(());
     }
 
