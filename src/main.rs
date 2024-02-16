@@ -108,7 +108,7 @@ async fn run_http(
         return Ok(());
     }
 
-    let address = settings.http_server.address.clone();
+    let address = settings.http_server.address;
     let metrics_enabled = settings.metrics.enabled;
     let rest_gateway_enabled = settings.http_server.rest_gateway;
     info!(
