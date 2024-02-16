@@ -55,6 +55,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .block_on(async { start(settings).await })
 }
 
+/// Starts Xenos, should only be called once in `main` after sentry and logging has be initialized.
+/// It blocks until all started services complete (or after a graceful shutdown when a shutdown signal
+/// is received)
 #[tracing::instrument(skip(settings))]
 async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
     info!("starting Xenos...");
@@ -98,6 +101,8 @@ async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+/// Tries to start the http server. The http server is started if either the rest gateway or the
+/// metrics service is enabled. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]
 async fn run_http(
     service: Arc<Service>,
@@ -142,37 +147,48 @@ async fn run_http(
     Ok(())
 }
 
+/// Tries to start the grpc server. The grpc server is started if it is enabled. It also starts the
+/// health reporter. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]
 async fn run_grpc(
     service: Arc<Service>,
     settings: Arc<Settings>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !settings.grpc_server.enabled {
+    if !settings.grpc_server.profile_enabled && !settings.grpc_server.health_enabled {
         info!("gRPC server is disabled");
         return Ok(());
     }
 
-    // build grpc service
-    let profile_service = GrpcProfileService { service };
-    let profile_server = ProfileServer::new(profile_service);
+    // build profile server
+    let profile_server = settings
+        .grpc_server
+        .profile_enabled
+        .then(|| ProfileServer::new(GrpcProfileService { service }));
 
-    // build grpc health reporter
-    info!("initializing gRPC health reporter");
-    let (mut health_reporter, health_server) = health_reporter();
-    health_reporter
-        .set_serving::<ProfileServer<GrpcProfileService>>()
-        .await;
+    // build health server
+    let mut health_server = None;
+    if settings.grpc_server.health_enabled {
+        info!("initializing gRPC health reporter");
+        let (mut reporter, server) = health_reporter();
+        reporter
+            .set_serving::<ProfileServer<GrpcProfileService>>()
+            .await;
+        health_server = Some(server)
+    }
 
     // shutdown signal (future)
     let shutdown = tokio::signal::ctrl_c().map(|_| ());
 
     info!(
         address = settings.grpc_server.address.to_string(),
-        "gRPC server listening on {}", settings.grpc_server.address
+        health = settings.grpc_server.health_enabled,
+        profile = settings.grpc_server.profile_enabled,
+        "gRPC server listening on {}",
+        settings.grpc_server.address
     );
     Server::builder()
-        .add_service(health_server)
-        .add_service(profile_server)
+        .add_optional_service(health_server)
+        .add_optional_service(profile_server)
         .serve_with_shutdown(settings.grpc_server.address, shutdown)
         .await?;
     info!("gRPC server stopped successfully");

@@ -31,5 +31,6 @@ username = "username"
 password = "password"
 
 [grpc_server]
-enabled = true
+profile_enabled = true
+health_enabled = true
 address = "0.0.0.0:50051"

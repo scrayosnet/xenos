@@ -24,6 +24,10 @@
 //! Nested settings like `redis_cache.enabled` can be overwritten by the environment variable `XENOS__REDIS_CACHE__ENABLED`.
 //! The env prefix `XENOS` can be altered by setting `ENV_PREFIX`.
 //!
+//! An additional, optional config file can be applied by setting the `CONFIG_FILE` environment variable.
+//! By default, it is set to `config/config`, loading any supported file type. It is intended to be supplied
+//! by the deployment.
+//!
 //! ```rs
 //! let settings = Setting::new()
 //! ```
