@@ -6,6 +6,7 @@ use crate::cache::{
 use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotRetrieved};
 use crate::mojang::Mojang;
+use crate::settings::Settings;
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
@@ -14,6 +15,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
 use std::io::Cursor;
+use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 use XenosError::NotFound;
@@ -68,6 +70,7 @@ where
 }
 
 pub struct Service {
+    settings: Arc<Settings>,
     cache: Box<dyn XenosCache>,
     mojang: Box<dyn Mojang>,
 }
@@ -75,8 +78,20 @@ pub struct Service {
 // service api
 impl Service {
     /// Builds a new [Service] with selected cache and mojang api implementation.
-    pub fn new(cache: Box<dyn XenosCache>, mojang: Box<dyn Mojang>) -> Self {
-        Self { cache, mojang }
+    pub fn new(
+        settings: Arc<Settings>,
+        cache: Box<dyn XenosCache>,
+        mojang: Box<dyn Mojang>,
+    ) -> Self {
+        Self {
+            settings,
+            cache,
+            mojang,
+        }
+    }
+
+    pub fn settings(&self) -> &Settings {
+        &self.settings
     }
 
     #[tracing::instrument(skip(skin_bytes))]

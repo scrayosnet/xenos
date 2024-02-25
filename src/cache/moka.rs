@@ -12,7 +12,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct MokaCache {
     settings: settings::MokaCache,
-    // caches TODO one cache for all?
+    // caches
     uuids: Cache<String, UuidEntry>,
     profiles: Cache<Uuid, ProfileEntry>,
     skins: Cache<Uuid, SkinEntry>,

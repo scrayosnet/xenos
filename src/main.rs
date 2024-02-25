@@ -1,4 +1,3 @@
-use futures_util::FutureExt;
 use std::borrow::Cow::Owned;
 use std::sync::Arc;
 use tracing::info;
@@ -33,6 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("sentry is enabled");
     }
 
+    // run xenos blocking
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

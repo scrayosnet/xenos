@@ -1,13 +1,10 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::env;
-use std::fmt::Display;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-// TODO update settings structure
-
-/// `Cache` hold the service cache configuration. The service supports multiple cache variants tht can
+/// [Cache] hold the service cache configuration. The service supports multiple cache variants tht can
 /// be selected with `variant`. The cache considers entry's to be expired if they reach a configured age.
 /// The expiry can be configured for each cache resource type and if the cache entry indicates that,
 /// for example, an uuid or name is not a valid profile id.
@@ -52,21 +49,20 @@ pub struct RedisCache {
     pub entries: CacheEntries,
 }
 
-// TODO rename -> RestServer
-/// `HttpServer` holds the http server configuration. The http server is implicitly enabled if either
+/// [RestServer] holds the http server configuration. The http server is implicitly enabled if either
 /// the rest gateway of the metrics service is enabled. If enabled, the http server also exposes the
 /// metrics service at `/metrics`.
 ///
 /// The rest gateway exposes the grpc service api over rest.
 #[derive(Debug, Clone, Deserialize)]
-pub struct HttpServer {
+pub struct RestServer {
     /// Whether the rest gateway should be enabled.
     pub rest_gateway: bool,
     /// The address of the http server. E.g. `0.0.0.0:9990` for running with an exposed port.
     pub address: SocketAddr,
 }
 
-/// `Metrics` holds the metrics service configuration. The metrics service is part of the http server.
+/// [Metrics] holds the metrics service configuration. The metrics service is part of the http server.
 /// The http server will be, if not already so, implicitly enabled if the metrics service is enabled.
 /// If enabled, it is exposed at the http server at `/metrics`.
 ///
@@ -85,7 +81,7 @@ pub struct Metrics {
     pub password: String,
 }
 
-/// `GrpcServer` holds the grpc server configuration. The grpc server is implicitly enabled if either
+/// [GrpcServer] holds the grpc server configuration. The grpc server is implicitly enabled if either
 /// the health reports or the profile api is enabled.
 #[derive(Debug, Clone, Deserialize)]
 pub struct GrpcServer {
@@ -97,7 +93,7 @@ pub struct GrpcServer {
     pub address: SocketAddr,
 }
 
-/// `Sentry` hold the sentry configuration. The release is automatically inferred from cargo.
+/// [Sentry] hold the sentry configuration. The release is automatically inferred from cargo.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Sentry {
     /// Whether sentry should be enabled.
@@ -109,7 +105,7 @@ pub struct Sentry {
     pub environment: String,
 }
 
-/// `Settings` holds all configuration for the application. I.g. one immutable instance is created
+/// [Settings] holds all configuration for the application. I.g. one immutable instance is created
 /// on startup and then shared among the application components.
 ///
 /// If both the grpc and http server are disabled, the application will exit immediately after startup
@@ -125,12 +121,12 @@ pub struct Settings {
     pub testing: bool,
     /// The service cache configuration.
     pub cache: Cache,
-    /// The metrics configuration. The metrics service is part of the [`http_server`](HttpServer).
+    /// The metrics configuration. The metrics service is part of the [`http_server`](RestServer).
     pub metrics: Metrics,
     /// The sentry configuration.
     pub sentry: Sentry,
     /// The http server configuration. The http server will be enabled if either the rest gateway is enabled or the metrics.
-    pub http_server: HttpServer,
+    pub http_server: RestServer,
     /// The grpc server configuration.
     pub grpc_server: GrpcServer,
 }

@@ -11,7 +11,7 @@ use uuid::{uuid, Uuid};
 
 lazy_static! {
     /// The mojang profile of Hydrofin.
-    static ref HYDROFIN: TestingProfile = TestingProfile::new(
+    pub static ref HYDROFIN: TestingProfile = TestingProfile::new(
         uuid!("09879557e47945a9b434a56377674627"),
         "Hydrofin",
         Bytes::new(), // TODO fill data
@@ -19,7 +19,7 @@ lazy_static! {
     );
 
     /// The mojang profile of Scrayos.
-    static ref SCRAYOS: TestingProfile = TestingProfile::new(
+    pub static ref SCRAYOS: TestingProfile = TestingProfile::new(
         uuid!("9c09eef4f68d4387975172bbff53d5a0"),
         "Scrayos",
         Bytes::new(), // TODO fill data
@@ -31,9 +31,9 @@ lazy_static! {
 /// the [MojangTestingApi] with valid data.
 #[derive(Debug)]
 pub struct TestingProfile {
-    profile: Profile,
-    skin: Bytes,
-    cape: Bytes,
+    pub profile: Profile,
+    pub skin: Bytes,
+    pub cape: Bytes,
 }
 
 impl TestingProfile {

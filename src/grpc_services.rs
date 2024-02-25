@@ -25,7 +25,13 @@ impl From<XenosError> for Status {
 }
 
 pub struct GrpcProfileService {
-    pub service: Arc<Service>,
+    service: Arc<Service>,
+}
+
+impl GrpcProfileService {
+    pub fn new(service: Arc<Service>) -> Self {
+        Self { service }
+    }
 }
 
 #[tonic::async_trait]

@@ -24,15 +24,6 @@ pub struct RedisCache {
     redis_manager: Arc<Mutex<ConnectionManager>>,
 }
 
-impl Debug for RedisCache {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // prints all fields except the redis connection
-        f.debug_struct("RedisCache")
-            .field("settings", &self.settings)
-            .finish()
-    }
-}
-
 impl RedisCache {
     /// Created a new empty [Redis Cache](RedisCache) with no expiry (~585 aeons).
     /// Use successive builder methods to set expiry and ttl explicitly.
@@ -42,15 +33,14 @@ impl RedisCache {
             redis_manager: Arc::new(Mutex::new(con)),
         }
     }
+}
 
-    /// Generates [SetOptions] from the cache configuration. Mostly used to set the optional ttl.
-    fn build_set_options(&self) -> SetOptions {
-        let mut opts = SetOptions::default();
-        // TODO reimplement ttl!
-        //if let Some(ttl) = self.ttl {
-        //    opts = opts.with_expiration(SetExpiry::EX(ttl));
-        //}
-        opts
+impl Debug for RedisCache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // prints all fields except the redis connection
+        f.debug_struct("RedisCache")
+            .field("settings", &self.settings)
+            .finish()
     }
 }
 
@@ -92,7 +82,9 @@ impl XenosCache for RedisCache {
                 .set_options(
                     build_key("uuid", username.to_lowercase().as_str()),
                     entry,
-                    self.build_set_options(),
+                    SetOptions::default().with_expiration(SetExpiry::EX(
+                        self.settings.entries.uuid.ttl.as_secs() as usize,
+                    )),
                 )
                 .await?;
             Ok(())
@@ -127,7 +119,9 @@ impl XenosCache for RedisCache {
                 .set_options(
                     build_key("profile", uuid.simple().to_string().as_str()),
                     entry,
-                    self.build_set_options(),
+                    SetOptions::default().with_expiration(SetExpiry::EX(
+                        self.settings.entries.profile.ttl.as_secs() as usize,
+                    )),
                 )
                 .await?;
             Ok(())
@@ -162,7 +156,9 @@ impl XenosCache for RedisCache {
                 .set_options(
                     build_key("skin", uuid.simple().to_string().as_str()),
                     entry,
-                    self.build_set_options(),
+                    SetOptions::default().with_expiration(SetExpiry::EX(
+                        self.settings.entries.skin.ttl.as_secs() as usize,
+                    )),
                 )
                 .await?;
             Ok(())
@@ -208,7 +204,9 @@ impl XenosCache for RedisCache {
                 .set_options(
                     build_key("head", &format!("{uuid_str}.{overlay}")),
                     entry,
-                    self.build_set_options(),
+                    SetOptions::default().with_expiration(SetExpiry::EX(
+                        self.settings.entries.head.ttl.as_secs() as usize,
+                    )),
                 )
                 .await?;
             Ok(())
