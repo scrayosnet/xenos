@@ -25,15 +25,30 @@ impl MokaCache {
     pub fn new(settings: &settings::MokaCache) -> Self {
         Self {
             settings: settings.clone(),
-            uuids: Cache::new(settings.entries.uuid.max_capacity),
-            profiles: Cache::new(settings.entries.uuid.max_capacity),
-            skins: Cache::new(settings.entries.uuid.max_capacity),
-            heads: Cache::new(settings.entries.uuid.max_capacity),
+            uuids: Cache::builder()
+                .max_capacity(settings.entries.uuid.max_capacity)
+                .time_to_live(settings.entries.uuid.ttl)
+                .time_to_idle(settings.entries.uuid.tti)
+                .build(),
+            profiles: Cache::builder()
+                .max_capacity(settings.entries.profile.max_capacity)
+                .time_to_live(settings.entries.profile.ttl)
+                .time_to_idle(settings.entries.profile.tti)
+                .build(),
+            skins: Cache::builder()
+                .max_capacity(settings.entries.skin.max_capacity)
+                .time_to_live(settings.entries.skin.ttl)
+                .time_to_idle(settings.entries.skin.tti)
+                .build(),
+            heads: Cache::builder()
+                .max_capacity(settings.entries.head.max_capacity)
+                .time_to_live(settings.entries.head.ttl)
+                .time_to_idle(settings.entries.head.tti)
+                .build(),
         }
     }
 }
 
-// TODO use ttl and tti
 #[async_trait]
 impl XenosCache for MokaCache {
     #[tracing::instrument(skip(self))]

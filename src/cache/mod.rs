@@ -11,6 +11,7 @@ use chrono::Utc;
 pub use monitor::{monitor_cache_get, monitor_cache_set};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use std::time::Duration;
 use uuid::Uuid;
 
 /// A [Cached] is a cache response wrapper. It is used to signal the state of the cache response.
@@ -66,14 +67,14 @@ where
 
 /// A utility for converting something into a [Cached].
 pub trait IntoCached<T> {
-    fn into_cached(self, expiry: &u64, expiry_missing: &u64) -> Cached<T>;
+    fn into_cached(self, expiry: &Duration, expiry_missing: &Duration) -> Cached<T>;
 }
 
 impl<D> IntoCached<CacheEntry<D>> for Option<CacheEntry<D>>
 where
     D: Debug + Clone + PartialEq + Eq,
 {
-    fn into_cached(self, expiry: &u64, expiry_missing: &u64) -> Cached<CacheEntry<D>> {
+    fn into_cached(self, expiry: &Duration, expiry_missing: &Duration) -> Cached<CacheEntry<D>> {
         match self {
             None => Miss,
             Some(v) if v.is_empty() && has_elapsed(&v.timestamp, expiry_missing) => Expired(v),
@@ -147,7 +148,7 @@ pub fn get_epoch_seconds() -> u64 {
     u64::try_from(Utc::now().timestamp()).unwrap()
 }
 
-pub fn has_elapsed(time: &u64, dur: &u64) -> bool {
+pub fn has_elapsed(time: &u64, dur: &Duration) -> bool {
     let now = get_epoch_seconds();
-    time + dur < now
+    time + dur.as_secs() < now
 }

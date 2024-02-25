@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::env;
 use std::fmt::Display;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 // TODO update settings structure
 
@@ -29,12 +30,12 @@ pub struct CacheEntries {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CacheEntry {
     pub max_capacity: u64,
-    pub expiry: u64,
-    pub expiry_missing: u64,
-    pub ttl: u64,
-    pub ttl_missing: u64,
-    pub tti: u64,
-    pub tti_missing: u64,
+    pub expiry: Duration,
+    pub expiry_missing: Duration,
+    pub ttl: Duration,
+    pub ttl_missing: Duration,
+    pub tti: Duration,
+    pub tti_missing: Duration,
 }
 
 #[derive(Debug, Clone, Deserialize)]
