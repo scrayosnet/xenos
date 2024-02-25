@@ -1,40 +1,10 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::env;
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
 use std::net::SocketAddr;
 
 // TODO update settings structure
-
-/// `Redis` hold the redis cache configuration.
-#[derive(Debug, Clone, Deserialize)]
-pub struct RedisCache {
-    /// The redis instance address. If redis is not selected, this field can be any value.
-    pub address: String,
-    /// The time-to-live for cache entries. This should be set higher than the expiry. It is used to
-    /// "limit" the number of cache entries.
-    pub ttl: Option<usize>,
-}
-
-/// The different supported cache variants.
-#[derive(Debug, Clone, Deserialize)]
-pub enum CacheVariant {
-    /// Use redis caching.
-    Redis,
-    /// Store cache entries in-memory. Useful for testing and if no persistent storage can be used.
-    /// To get the most out of Xenos, a persistent storage option should be chosen.
-    Memory,
-    /// Disable caching. This variant is primarily intended for local testing. It may be useful if
-    /// Xenos is oly used to provide a consistent api interface for the mojang api. But generally
-    /// this variant should be avoided.
-    None,
-}
-
-impl Display for CacheVariant {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
 
 /// `Cache` hold the service cache configuration. The service supports multiple cache variants tht can
 /// be selected with `variant`. The cache considers entry's to be expired if they reach a configured age.
@@ -44,28 +14,44 @@ impl Display for CacheVariant {
 /// Nested fields are used for cache variant specific configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Cache {
-    /// The variant of the cache that should be used.
-    pub variant: CacheVariant,
-    /// Redis specific configuration.
     pub redis: RedisCache,
-    /// The expiry for username to uuid cache entries.
-    pub expiry_uuid: u64,
-    /// The expiry for not awarded username cache entries.
-    pub expiry_uuid_missing: u64,
-    /// The expiry for uuid to profile cache entries.
-    pub expiry_profile: u64,
-    /// The expiry for not awarded uuid cache entries.
-    pub expiry_profile_missing: u64,
-    /// The expiry for uuid to skin cache entries.
-    pub expiry_skin: u64,
-    /// The expiry for not awarded uuid cache entries.
-    pub expiry_skin_missing: u64,
-    /// The expiry for uuid to head cache entries.
-    pub expiry_head: u64,
-    /// The expiry for not awarded uuid cache entries.
-    pub expiry_head_missing: u64,
+    pub moka: MokaCache,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CacheEntries {
+    pub uuid: CacheEntry,
+    pub profile: CacheEntry,
+    pub skin: CacheEntry,
+    pub head: CacheEntry,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CacheEntry {
+    pub max_capacity: u64,
+    pub expiry: u64,
+    pub expiry_missing: u64,
+    pub ttl: u64,
+    pub ttl_missing: u64,
+    pub tti: u64,
+    pub tti_missing: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MokaCache {
+    pub enabled: bool,
+    pub entries: CacheEntries,
+}
+
+/// `Redis` hold the redis cache configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RedisCache {
+    pub enabled: bool,
+    pub address: String,
+    pub entries: CacheEntries,
+}
+
+// TODO rename -> RestServer
 /// `HttpServer` holds the http server configuration. The http server is implicitly enabled if either
 /// the rest gateway of the metrics service is enabled. If enabled, the http server also exposes the
 /// metrics service at `/metrics`.

@@ -9,7 +9,7 @@ use tracing::info;
 
 use chaining::ChainingCache;
 use tracing_subscriber::prelude::*;
-use xenos::cache::memory::MemoryCache;
+use xenos::cache::moka::MokaCache;
 use xenos::cache::redis::RedisCache;
 use xenos::cache::{chaining, XenosCache};
 use xenos::grpc_services::GrpcProfileService;
@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .block_on(async { start(settings).await })
 }
 
-/// Starts Xenos, should only be called once in `main` after sentry and logging has be initialized.
+/// Starts Xenos, should only be called once in `main` after sentry and logging have be initialized.
 /// It blocks until all started services complete (or after a graceful shutdown when a shutdown signal
 /// is received)
 #[tracing::instrument(skip(settings))]
@@ -68,31 +68,20 @@ async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>
     info!("building chaining cache from caches");
     let cache = Box::new(
         ChainingCache::new()
-            // the top most layer is the local cache, in this case the in-memory cache
+            // the top most layer is a local (in-memory) cache, in this case a moka cache
             .add_cache(true /* TODO enable from settings */, || async {
-                info!("adding in-memory cache to chaining cache");
-                let cs = &settings.cache;
-                let cache = MemoryCache::new()
-                    // TODO chose different expiry for local cache
-                    .with_expiry_uuid(cs.expiry_uuid, cs.expiry_uuid_missing)
-                    .with_expiry_profile(cs.expiry_profile, cs.expiry_profile_missing)
-                    .with_expiry_skin(cs.expiry_skin, cs.expiry_skin_missing)
-                    .with_expiry_head(cs.expiry_head, cs.expiry_head_missing);
+                info!("adding moka cache to chaining cache");
+                let cache = MokaCache::new(&settings.cache.moka);
                 Ok(Box::new(cache) as Box<dyn XenosCache>)
             })
             .await?
-            // the next layer is a remote cache, in this case the redis cache
+            // the next layer is a remote cache, in this case a redis cache
             .add_cache(true /* TODO enable from settings */, || async {
                 info!("adding redis cache to chaining cache");
                 let cs = &settings.cache;
                 let redis_client = redis::Client::open(cs.redis.address.clone())?;
                 let redis_manager = redis_client.get_connection_manager().await?;
-                let cache = RedisCache::new(redis_manager)
-                    .with_ttl(cs.redis.ttl)
-                    .with_expiry_uuid(cs.expiry_uuid, cs.expiry_uuid_missing)
-                    .with_expiry_profile(cs.expiry_profile, cs.expiry_profile_missing)
-                    .with_expiry_skin(cs.expiry_skin, cs.expiry_skin_missing)
-                    .with_expiry_head(cs.expiry_head, cs.expiry_head_missing);
+                let cache = RedisCache::new(redis_manager, &settings.cache.redis);
                 Ok(Box::new(cache) as Box<dyn XenosCache>)
             })
             .await?,

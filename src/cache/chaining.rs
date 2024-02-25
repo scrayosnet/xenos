@@ -36,6 +36,7 @@ use Cached::{Expired, Hit};
 ///
 #[derive(Debug)]
 pub struct ChainingCache {
+    // TODO make priority based
     caches: Vec<Box<dyn XenosCache>>,
 }
 

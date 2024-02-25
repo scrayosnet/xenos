@@ -1,5 +1,5 @@
 pub mod chaining;
-pub mod memory;
+pub mod moka;
 mod monitor;
 pub mod redis;
 

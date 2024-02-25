@@ -3,6 +3,7 @@ use crate::cache::{
     SkinEntry, UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
+use crate::settings;
 use async_trait::async_trait;
 use redis::aio::ConnectionManager;
 use redis::{
@@ -19,17 +20,7 @@ use uuid::Uuid;
 
 // TODO add docu
 pub struct RedisCache {
-    // expiry settings
-    ttl: Option<usize>,
-    expiry_uuid: u64,
-    expiry_uuid_missing: u64,
-    expiry_profile: u64,
-    expiry_profile_missing: u64,
-    expiry_skin: u64,
-    expiry_skin_missing: u64,
-    expiry_head: u64,
-    expiry_head_missing: u64,
-    // redis connection
+    settings: settings::RedisCache,
     redis_manager: Arc<Mutex<ConnectionManager>>,
 }
 
@@ -37,15 +28,7 @@ impl Debug for RedisCache {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // prints all fields except the redis connection
         f.debug_struct("RedisCache")
-            .field("ttl", &self.ttl)
-            .field("expiry_uuid", &self.expiry_uuid)
-            .field("expiry_uuid_missing", &self.expiry_uuid_missing)
-            .field("expiry_profile", &self.expiry_profile)
-            .field("expiry_profile_missing", &self.expiry_profile_missing)
-            .field("expiry_skin", &self.expiry_skin)
-            .field("expiry_skin_missing", &self.expiry_skin_missing)
-            .field("expiry_head", &self.expiry_head)
-            .field("expiry_head_missing", &self.expiry_head_missing)
+            .field("settings", &self.settings)
             .finish()
     }
 }
@@ -53,61 +36,20 @@ impl Debug for RedisCache {
 impl RedisCache {
     /// Created a new empty [Redis Cache](RedisCache) with no expiry (~585 aeons).
     /// Use successive builder methods to set expiry and ttl explicitly.
-    pub fn new(con: ConnectionManager) -> Self {
+    pub fn new(con: ConnectionManager, settings: &settings::RedisCache) -> Self {
         Self {
-            ttl: None,
-            expiry_uuid: u64::MAX,
-            expiry_uuid_missing: u64::MAX,
-            expiry_profile: u64::MAX,
-            expiry_profile_missing: u64::MAX,
-            expiry_skin: u64::MAX,
-            expiry_skin_missing: u64::MAX,
-            expiry_head: u64::MAX,
-            expiry_head_missing: u64::MAX,
+            settings: settings.clone(),
             redis_manager: Arc::new(Mutex::new(con)),
         }
-    }
-
-    /// Sets the expiry for username to uuid cache facet.
-    pub fn with_expiry_uuid(mut self, default: u64, missing: u64) -> Self {
-        self.expiry_uuid = default;
-        self.expiry_uuid_missing = missing;
-        self
-    }
-
-    /// Sets the expiry for uuid to profile cache facet.
-    pub fn with_expiry_profile(mut self, default: u64, missing: u64) -> Self {
-        self.expiry_profile = default;
-        self.expiry_profile_missing = missing;
-        self
-    }
-
-    /// Sets the expiry for uuid to skin cache facet.
-    pub fn with_expiry_skin(mut self, default: u64, missing: u64) -> Self {
-        self.expiry_skin = default;
-        self.expiry_skin_missing = missing;
-        self
-    }
-
-    /// Sets the expiry for uuid to head cache facet.
-    pub fn with_expiry_head(mut self, default: u64, missing: u64) -> Self {
-        self.expiry_head = default;
-        self.expiry_head_missing = missing;
-        self
-    }
-
-    /// Sets the expiry for all entry types (default/missing).
-    pub fn with_ttl(mut self, ttl: Option<usize>) -> Self {
-        self.ttl = ttl;
-        self
     }
 
     /// Generates [SetOptions] from the cache configuration. Mostly used to set the optional ttl.
     fn build_set_options(&self) -> SetOptions {
         let mut opts = SetOptions::default();
-        if let Some(ttl) = self.ttl {
-            opts = opts.with_expiration(SetExpiry::EX(ttl));
-        }
+        // TODO reimplement ttl!
+        //if let Some(ttl) = self.ttl {
+        //    opts = opts.with_expiration(SetExpiry::EX(ttl));
+        //}
         opts
     }
 }
@@ -128,7 +70,10 @@ impl XenosCache for RedisCache {
                 .await
                 .get(build_key("uuid", username.to_lowercase().as_str()))
                 .await?;
-            let cached = entry.into_cached(&self.expiry_uuid, &self.expiry_uuid_missing);
+            let cached = entry.into_cached(
+                &self.settings.entries.uuid.expiry,
+                &self.settings.entries.uuid.expiry_missing,
+            );
             Ok(cached)
         })
         .await
@@ -164,7 +109,10 @@ impl XenosCache for RedisCache {
                 .await
                 .get(build_key("profile", uuid.simple().to_string().as_str()))
                 .await?;
-            let cached = entry.into_cached(&self.expiry_profile, &self.expiry_profile_missing);
+            let cached = entry.into_cached(
+                &self.settings.entries.profile.expiry,
+                &self.settings.entries.profile.expiry_missing,
+            );
             Ok(cached)
         })
         .await
@@ -196,7 +144,10 @@ impl XenosCache for RedisCache {
                 .await
                 .get(build_key("skin", uuid.simple().to_string().as_str()))
                 .await?;
-            let cached = entry.into_cached(&self.expiry_skin, &self.expiry_skin_missing);
+            let cached = entry.into_cached(
+                &self.settings.entries.skin.expiry,
+                &self.settings.entries.skin.expiry_missing,
+            );
             Ok(cached)
         })
         .await
@@ -233,7 +184,10 @@ impl XenosCache for RedisCache {
                 .await
                 .get(build_key("head", &format!("{uuid_str}.{overlay}")))
                 .await?;
-            let cached = entry.into_cached(&self.expiry_head, &self.expiry_head_missing);
+            let cached = entry.into_cached(
+                &self.settings.entries.head.expiry,
+                &self.settings.entries.head.expiry_missing,
+            );
             Ok(cached)
         })
         .await

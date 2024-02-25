@@ -46,6 +46,7 @@ sentry = { version = "0.32.2" }
 sentry-tracing = "0.32.2"
 actix-web-httpauth = "0.8.1"
 parking_lot = "0.12.1"
+moka = { version = "0.12.5", features = ["future"] }
 
 [build-dependencies]
 tonic-build = { version = "0.11.0", features = ["prost"] }
