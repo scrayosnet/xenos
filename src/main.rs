@@ -2,24 +2,25 @@ use actix_web::{web, App, HttpServer};
 use futures_util::FutureExt;
 use std::borrow::Cow::Owned;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::try_join;
 use tonic::transport::Server;
 use tonic_health::server::health_reporter;
 use tracing::info;
 
+use chaining::ChainingCache;
 use tracing_subscriber::prelude::*;
 use xenos::cache::memory::MemoryCache;
 use xenos::cache::redis::RedisCache;
-use xenos::cache::uncached::Uncached;
-use xenos::cache::XenosCache;
+use xenos::cache::{chaining, XenosCache};
 use xenos::grpc_services::GrpcProfileService;
 use xenos::http_services;
 use xenos::http_services::{configure_metrics, configure_rest_gateway};
-use xenos::mojang::api::Mojang;
+use xenos::mojang::mojang::MojangApi;
+use xenos::mojang::testing::MojangTestingApi;
+use xenos::mojang::Mojang;
 use xenos::proto::profile_server::ProfileServer;
 use xenos::service::Service;
-use xenos::settings::{CacheVariant, Settings};
+use xenos::settings::Settings;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read settings from config files and environment variables
@@ -60,47 +61,67 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// is received)
 #[tracing::instrument(skip(settings))]
 async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
-    info!("starting Xenos...");
+    info!(debug = settings.debug, "starting Xenos...");
 
-    if settings.debug {
-        info!("debug mode enabled");
+    // build chaining cache with selected caches
+    // it consists of a local and remote cache
+    info!("building chaining cache from caches");
+    let cache = Box::new(
+        ChainingCache::new()
+            // the top most layer is the local cache, in this case the in-memory cache
+            .add_cache(true /* TODO enable from settings */, || async {
+                info!("adding in-memory cache to chaining cache");
+                let cs = &settings.cache;
+                let cache = MemoryCache::new()
+                    // TODO chose different expiry for local cache
+                    .with_expiry_uuid(cs.expiry_uuid, cs.expiry_uuid_missing)
+                    .with_expiry_profile(cs.expiry_profile, cs.expiry_profile_missing)
+                    .with_expiry_skin(cs.expiry_skin, cs.expiry_skin_missing)
+                    .with_expiry_head(cs.expiry_head, cs.expiry_head_missing);
+                Ok(Box::new(cache) as Box<dyn XenosCache>)
+            })
+            .await?
+            // the next layer is a remote cache, in this case the redis cache
+            .add_cache(true /* TODO enable from settings */, || async {
+                info!("adding redis cache to chaining cache");
+                let cs = &settings.cache;
+                let redis_client = redis::Client::open(cs.redis.address.clone())?;
+                let redis_manager = redis_client.get_connection_manager().await?;
+                let cache = RedisCache::new(redis_manager)
+                    .with_ttl(cs.redis.ttl)
+                    .with_expiry_uuid(cs.expiry_uuid, cs.expiry_uuid_missing)
+                    .with_expiry_profile(cs.expiry_profile, cs.expiry_profile_missing)
+                    .with_expiry_skin(cs.expiry_skin, cs.expiry_skin_missing)
+                    .with_expiry_head(cs.expiry_head, cs.expiry_head_missing);
+                Ok(Box::new(cache) as Box<dyn XenosCache>)
+            })
+            .await?,
+    );
+
+    // build mojang api
+    // it is either the actual mojang api or a testing api for integration tests
+    info!("building mojang api");
+    let mut mojang: Box<dyn Mojang> = Box::new(MojangApi::new());
+    if settings.testing {
+        info!("replacing mojang api with testing api, DISABLE IN PRODUCTION!");
+        mojang = Box::new(MojangTestingApi::new())
     }
 
-    // select and build cache
-    info!(
-        cache = settings.cache.variant.to_string(),
-        "initializing cache"
-    );
-    let cache: Box<Mutex<dyn XenosCache>> = match settings.cache.variant {
-        CacheVariant::Redis => {
-            info!("initializing redis client and connection pool");
-            let address = settings.cache.redis.address.clone();
-            let redis_client = redis::Client::open(address)?;
-            let redis_manager = redis_client.get_connection_manager().await?;
-            Box::new(Mutex::new(RedisCache {
-                settings: settings.cache.clone(),
-                redis_manager,
-            }))
-        }
-        CacheVariant::Memory => Box::new(Mutex::new(MemoryCache::new(settings.cache.clone()))),
-        CacheVariant::None => Box::new(Mutex::new(Uncached::default())),
-    };
+    // build xenos service from cache and mojang api
+    // the service is then shared by the grpc and rest servers
+    info!("building shared xenos service");
+    let service = Arc::new(Service::new(cache, mojang));
 
-    // build service
-    info!("initializing mojang api");
-    let mojang = Box::new(Mojang {});
-    info!("building Xenos service");
-    let service = Arc::new(Service { cache, mojang });
-
-    // try to start all servers (disabled servers return directly)
+    // try to start grpc and rest servers (disabled servers return directly)
     try_join!(
         run_grpc(service.clone(), settings.clone()),
         run_http(service.clone(), settings.clone()),
     )?;
-    info!("Xenos stopped successfully");
+    info!("xenos stopped successfully");
     Ok(())
 }
 
+// TODO refactor and use axum
 /// Tries to start the http server. The http server is started if either the rest gateway or the
 /// metrics service is enabled. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]
@@ -147,6 +168,7 @@ async fn run_http(
     Ok(())
 }
 
+// TODO refactor
 /// Tries to start the grpc server. The grpc server is started if it is enabled. It also starts the
 /// health reporter. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]

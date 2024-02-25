@@ -15,6 +15,8 @@ use prometheus::{Encoder, TextEncoder};
 use std::sync::Arc;
 use uuid::Uuid;
 
+// TODO add documentation and use axum
+
 impl error::ResponseError for XenosError {
     fn status_code(&self) -> StatusCode {
         match self {

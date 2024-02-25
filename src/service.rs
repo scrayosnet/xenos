@@ -1,21 +1,20 @@
-use crate::cache;
 use crate::cache::Cached::*;
 use crate::cache::{
-    get_epoch_seconds, CacheEntry, HeadEntry, ProfileData, ProfileEntry, SkinEntry, UuidData,
-    UuidEntry, XenosCache,
+    get_epoch_seconds, CacheEntry, HeadEntry, ProfileEntry, SkinEntry, UuidData, UuidEntry,
+    XenosCache,
 };
 use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotRetrieved};
-use crate::mojang::{MojangApi, Profile};
+use crate::mojang::Mojang;
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::future::Future;
 use std::io::Cursor;
 use std::time::Instant;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 use XenosError::NotFound;
 
@@ -40,14 +39,18 @@ lazy_static! {
     .unwrap();
 }
 
-pub fn track_service_call<D>(
-    result: &Result<CacheEntry<D>, XenosError>,
-    start: Instant,
+async fn monitor_service_call<F, Fut, D>(
     request_type: &str,
-) where
-    D: Debug + Clone + PartialEq + Eq,
+    f: F,
+) -> Result<CacheEntry<D>, XenosError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<CacheEntry<D>, XenosError>>,
+    D: Debug + Clone + Eq,
 {
-    let status = match result {
+    let start = Instant::now();
+    let result = f().await;
+    let status = match &result {
         Ok(entry) => {
             PROFILE_REQ_AGE_HISTOGRAM
                 .with_label_values(&[request_type, "ok"])
@@ -61,33 +64,21 @@ pub fn track_service_call<D>(
     PROFILE_REQ_LAT_HISTOGRAM
         .with_label_values(&[request_type, status])
         .observe(start.elapsed().as_secs_f64());
-}
-
-impl From<Profile> for ProfileData {
-    fn from(value: Profile) -> Self {
-        ProfileData {
-            uuid: value.id,
-            name: value.name,
-            properties: value
-                .properties
-                .into_iter()
-                .map(|prop| cache::ProfileProperty {
-                    name: prop.name,
-                    value: prop.value,
-                    signature: prop.signature,
-                })
-                .collect(),
-            profile_actions: value.profile_actions,
-        }
-    }
+    result
 }
 
 pub struct Service {
-    pub cache: Box<Mutex<dyn XenosCache>>,
-    pub mojang: Box<dyn MojangApi>,
+    cache: Box<dyn XenosCache>,
+    mojang: Box<dyn Mojang>,
 }
 
+// service api
 impl Service {
+    /// Builds a new [Service] with selected cache and mojang api implementation.
+    pub fn new(cache: Box<dyn XenosCache>, mojang: Box<dyn Mojang>) -> Self {
+        Self { cache, mojang }
+    }
+
     #[tracing::instrument(skip(skin_bytes))]
     fn build_skin_head(skin_bytes: &[u8]) -> Result<Vec<u8>, XenosError> {
         let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
@@ -127,12 +118,7 @@ impl Service {
                 continue;
             }
             // 3. get from cache; if elapsed, try to refresh
-            let cached = self
-                .cache
-                .lock()
-                .await
-                .get_uuid_by_username(username)
-                .await?;
+            let cached = self.cache.get_uuid_by_username(username).await?;
             match cached {
                 Hit(entry) => {
                     *uuid = entry;
@@ -170,11 +156,7 @@ impl Service {
                 };
                 // update response and cache
                 uuids.insert(username.clone(), entry.clone());
-                self.cache
-                    .lock()
-                    .await
-                    .set_uuid_by_username(&username, entry)
-                    .await?;
+                self.cache.set_uuid_by_username(&username, entry).await?;
             }
         }
 
@@ -183,15 +165,12 @@ impl Service {
 
     #[tracing::instrument(skip(self))]
     pub async fn get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
-        let start = Instant::now();
-        let result = self._get_profile(uuid).await;
-        track_service_call(&result, start, "profile");
-        result
+        monitor_service_call("profile", || self._get_profile(uuid)).await
     }
 
     async fn _get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
         // try to get from cache
-        let cached = self.cache.lock().await.get_profile_by_uuid(uuid).await?;
+        let cached = self.cache.get_profile_by_uuid(uuid).await?;
         let fallback = match cached {
             Hit(entry) => return Ok(entry),
             Expired(entry) => Some(entry),
@@ -204,8 +183,6 @@ impl Service {
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(NotFound) => {
                 self.cache
-                    .lock()
-                    .await
                     .set_profile_by_uuid(*uuid, ProfileEntry::new_empty())
                     .await?;
                 return Err(NotFound);
@@ -214,25 +191,18 @@ impl Service {
         };
 
         let entry = ProfileEntry::new(profile.into());
-        self.cache
-            .lock()
-            .await
-            .set_profile_by_uuid(*uuid, entry.clone())
-            .await?;
+        self.cache.set_profile_by_uuid(*uuid, entry.clone()).await?;
         Ok(entry)
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
-        let start = Instant::now();
-        let result = self._get_skin(uuid).await;
-        track_service_call(&result, start, "skin");
-        result
+        monitor_service_call("skin", || self._get_skin(uuid)).await
     }
 
     async fn _get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
         // try to get from cache
-        let cached = self.cache.lock().await.get_skin_by_uuid(uuid).await?;
+        let cached = self.cache.get_skin_by_uuid(uuid).await?;
         let fallback = match cached {
             Hit(entry) => return Ok(entry),
             Expired(entry) => Some(entry),
@@ -247,8 +217,6 @@ impl Service {
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Ok(_) | Err(NotFound) => {
                 self.cache
-                    .lock()
-                    .await
                     .set_skin_by_uuid(*uuid, SkinEntry::new_empty())
                     .await?;
                 return Err(NotFound);
@@ -267,8 +235,6 @@ impl Service {
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(NotFound) => {
                 self.cache
-                    .lock()
-                    .await
                     .set_skin_by_uuid(*uuid, SkinEntry::new_empty())
                     .await?;
                 return Err(NotFound);
@@ -276,29 +242,17 @@ impl Service {
             Err(err) => return Err(err),
         };
         let entry = SkinEntry::new(skin.to_vec());
-        self.cache
-            .lock()
-            .await
-            .set_skin_by_uuid(*uuid, entry.clone())
-            .await?;
+        self.cache.set_skin_by_uuid(*uuid, entry.clone()).await?;
         Ok(entry)
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
-        let start = Instant::now();
-        let result = self._get_head(uuid, overlay).await;
-        track_service_call(&result, start, "head");
-        result
+        monitor_service_call("head", || self._get_head(uuid, overlay)).await
     }
 
     async fn _get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
-        let cached = self
-            .cache
-            .lock()
-            .await
-            .get_head_by_uuid(uuid, overlay)
-            .await?;
+        let cached = self.cache.get_head_by_uuid(uuid, overlay).await?;
         let fallback = match cached {
             Hit(entry) => return Ok(entry),
             Expired(entry) => Some(entry),
@@ -312,8 +266,6 @@ impl Service {
             }) => skin_data,
             Ok(_) | Err(NotFound) => {
                 self.cache
-                    .lock()
-                    .await
                     .set_head_by_uuid(*uuid, HeadEntry::new_empty(), overlay)
                     .await?;
                 return Err(NotFound);
@@ -326,8 +278,6 @@ impl Service {
 
         let entry = HeadEntry::new(head_bytes);
         self.cache
-            .lock()
-            .await
             .set_head_by_uuid(*uuid, entry.clone(), overlay)
             .await?;
         Ok(entry)

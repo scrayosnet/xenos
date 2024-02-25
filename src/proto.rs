@@ -28,7 +28,7 @@ impl From<ProfileEntry> for ProfileResponse {
         if let Some(data) = value.data {
             return ProfileResponse {
                 timestamp: value.timestamp,
-                uuid: data.uuid.hyphenated().to_string(),
+                uuid: data.id.hyphenated().to_string(),
                 name: data.name,
                 properties: data
                     .properties

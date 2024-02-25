@@ -1,6 +1,6 @@
 use crate::error::XenosError;
 use crate::error::XenosError::{NotFound, NotRetrieved};
-use crate::mojang::{MojangApi, Profile, UsernameResolved};
+use crate::mojang::{Mojang, Profile, UsernameResolved};
 use async_trait::async_trait;
 use bytes::Bytes;
 use lazy_static::lazy_static;
@@ -29,9 +29,13 @@ lazy_static! {
     .unwrap();
 }
 
-pub struct Mojang;
+pub struct MojangApi;
 
-impl Mojang {
+impl MojangApi {
+    pub fn new() -> Self {
+        Self {}
+    }
+
     #[tracing::instrument(skip(self))]
     async fn fetch_uuids_chunk(
         &self,
@@ -64,7 +68,7 @@ impl Mojang {
 }
 
 #[async_trait]
-impl MojangApi for Mojang {
+impl Mojang for MojangApi {
     #[tracing::instrument(skip(self))]
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
         // split into requests with ten or fewer usernames

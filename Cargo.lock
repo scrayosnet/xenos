@@ -3769,6 +3769,7 @@ dependencies = [
  "hyper 1.1.0",
  "image",
  "lazy_static",
+ "parking_lot",
  "prometheus",
  "prost",
  "prost-types",

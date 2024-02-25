@@ -1,0 +1,164 @@
+use crate::error::XenosError;
+use crate::mojang::{
+    encode_texture_prop, Mojang, Profile, ProfileProperty, Texture, Textures, TexturesProperty,
+    UsernameResolved,
+};
+use async_trait::async_trait;
+use bytes::Bytes;
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+use uuid::{uuid, Uuid};
+
+lazy_static! {
+    /// The mojang profile of Hydrofin.
+    static ref HYDROFIN: TestingProfile = TestingProfile::new(
+        uuid!("09879557e47945a9b434a56377674627"),
+        "Hydrofin",
+        Bytes::new(), // TODO fill data
+        Bytes::new(), // TODO fill data
+    );
+
+    /// The mojang profile of Scrayos.
+    static ref SCRAYOS: TestingProfile = TestingProfile::new(
+        uuid!("9c09eef4f68d4387975172bbff53d5a0"),
+        "Scrayos",
+        Bytes::new(), // TODO fill data
+        Bytes::new(), // TODO fill data
+    );
+}
+
+/// A [TestingProfile] represents a mojang profile to be used for testing Xenos. It is used to fill
+/// the [MojangTestingApi] with valid data.
+#[derive(Debug)]
+pub struct TestingProfile {
+    profile: Profile,
+    skin: Bytes,
+    cape: Bytes,
+}
+
+impl TestingProfile {
+    /// Creates a new valid [TestingProfile] with minimal information.
+    pub fn new(id: Uuid, name: &str, skin: Bytes, cape: Bytes) -> Self {
+        let textures = TexturesProperty {
+            timestamp: 0,
+            profile_id: id.clone(),
+            profile_name: name.to_string(),
+            signature_required: None,
+            textures: Textures {
+                skin: Some(Texture {
+                    url: format!("skin_{}", id.hyphenated().to_string()),
+                    metadata: None,
+                }),
+                cape: Some(Texture {
+                    url: format!("cape_{}", id.hyphenated().to_string()),
+                    metadata: None,
+                }),
+            },
+        };
+        TestingProfile {
+            profile: Profile {
+                id,
+                name: name.to_string(),
+                properties: vec![ProfileProperty {
+                    name: "textures".to_string(),
+                    value: encode_texture_prop(&textures)
+                        .expect("expected textures to serializable"),
+                    signature: None,
+                }],
+                profile_actions: vec![],
+            },
+            skin,
+            cape,
+        }
+    }
+}
+
+/// The [MojangTestingApi] is a [mojang api](Mojang) implementation that uses predefined static data
+/// instead of actually accessing the mojang api. It is primarily used for in- and external **integration
+/// testing**. As such, **it should not be used in production**.
+#[derive(Default, Debug)]
+pub struct MojangTestingApi {
+    uuids: HashMap<String, UsernameResolved>,
+    profiles: HashMap<Uuid, Profile>,
+    images: HashMap<String, Bytes>,
+}
+
+impl MojangTestingApi {
+    /// Creates a new empty [MojangTestingApi].
+    pub fn new() -> Self {
+        MojangTestingApi {
+            uuids: Default::default(),
+            profiles: Default::default(),
+            images: Default::default(),
+        }
+    }
+
+    /// Adds a profile to the [api](MojangTestingApi) using a [TestingProfile]. The profile is expected
+    /// to a valid textures property.
+    pub fn add_profile(mut self, profile: TestingProfile) -> Self {
+        let textures = profile
+            .profile
+            .get_textures()
+            .expect("expected testing profile to provide textures");
+        self.uuids.insert(
+            profile.profile.name.to_lowercase(),
+            UsernameResolved {
+                id: profile.profile.id.clone(),
+                name: profile.profile.name.clone(),
+            },
+        );
+        self.profiles
+            .insert(profile.profile.id.clone(), profile.profile);
+        if let Some(skin) = textures.textures.skin {
+            self.images.insert(skin.url, profile.skin);
+        }
+        if let Some(cape) = textures.textures.cape {
+            self.images.insert(cape.url, profile.cape);
+        }
+        self
+    }
+}
+
+#[async_trait]
+impl Mojang for MojangTestingApi {
+    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
+        let uuids = usernames
+            .iter()
+            .filter_map(|username| self.uuids.get(&username.to_lowercase()))
+            .cloned()
+            .collect();
+        Ok(uuids)
+    }
+
+    async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
+        self.profiles.get(uuid).cloned().ok_or(XenosError::NotFound)
+    }
+
+    async fn fetch_image_bytes(&self, url: String, _: &str) -> Result<Bytes, XenosError> {
+        self.images.get(&url).cloned().ok_or(XenosError::NotFound)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn new_empty() {
+        // given
+        let api = MojangTestingApi::new();
+
+        // when
+        let result = api
+            .fetch_uuids(&[
+                "Hydrofin".to_string(),
+                "scrayos".to_string(),
+                "xXSlayer42Xx".to_string(),
+            ])
+            .await;
+
+        // then
+        assert!(result.is_ok());
+        assert!(result.is_ok_and(|res| res.is_empty()));
+    }
+}

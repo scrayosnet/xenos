@@ -1,3 +1,5 @@
+// TODO add documentation
+
 #[derive(thiserror::Error, Debug)]
 pub enum XenosError {
     #[error(transparent)]

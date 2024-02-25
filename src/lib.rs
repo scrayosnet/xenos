@@ -5,7 +5,7 @@
 //! # Usage
 //!
 //! At the center of the application is the [xenos service](service::Service). It encapsulates an implementation
-//! of a [cache](cache::XenosCache) and a [Mojang api](mojang::MojangApi). Currently, the library supports
+//! of a [cache](cache::XenosCache) and a [Mojang api](mojang::Mojang). Currently, the library supports
 //! [redis](cache::redis::RedisCache) and [in-memory](cache::memory::MemoryCache) caching.
 //! The service is intended to be shared by the exposing servers. Currently, the library supports
 //! [grpc](grpc_services) and [rest](http_services).
@@ -34,7 +34,7 @@
 //!
 //! # Data Formats
 //!
-//! The library uses three distinct data formats. Firstly, the data format provided by the [Mojang api](mojang::MojangApi).
+//! The library uses three distinct data formats. Firstly, the data format provided by the [Mojang api](mojang::Mojang).
 //! Secondly, the format used by the [cache](cache::XenosCache). This format is used for all internal data handling.
 //! And lastly, the data transfer format used by the exposing servers. This format is defined in the
 //! `.proto` files and exported into the [proto module](proto).

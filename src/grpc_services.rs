@@ -9,6 +9,8 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
+// TODO add documentation
+
 type GrpcResult<T> = Result<Response<T>, Status>;
 
 impl From<XenosError> for Status {

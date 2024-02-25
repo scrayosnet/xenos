@@ -4,6 +4,8 @@ use std::env;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 
+// TODO update settings structure
+
 /// `Redis` hold the redis cache configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisCache {
@@ -131,6 +133,9 @@ pub struct Settings {
     /// Whether the application should be in debug mode. Application components may provide additional
     /// functionalities or outputs in debug mode.
     pub debug: bool,
+    /// Whether the application should be in testing mode. This enables the testing api. The application
+    /// will no longer call the mojang api and will instead provide static content.
+    pub testing: bool,
     /// The service cache configuration.
     pub cache: Cache,
     /// The metrics configuration. The metrics service is part of the [`http_server`](HttpServer).
