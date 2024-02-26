@@ -21,17 +21,25 @@ use uuid::Uuid;
 use XenosError::NotFound;
 
 lazy_static! {
+    /// The username regex is used to check if a given username could be a valid username.
+    /// If a string does not match the regex, the mojang API will never find a matching user id.
     static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
 }
 
+// TODO update buckets
 lazy_static! {
+    /// A histogram for the age in seconds of cache results. Use the [monitor_service_call]
+    /// utility for ease of use.
     pub static ref PROFILE_REQ_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_profile_age_seconds",
         "The grpc profile response age in seconds.",
-        &["request_type", "status"],
+        &["request_type"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
+
+    /// A histogram for the service call latency in seconds with response status. Use the
+    /// [monitor_service_call] utility for ease of use.
     pub static ref PROFILE_REQ_LAT_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_profile_latency_seconds",
         "The grpc profile request latency in seconds.",
@@ -55,7 +63,7 @@ where
     let status = match &result {
         Ok(entry) => {
             PROFILE_REQ_AGE_HISTOGRAM
-                .with_label_values(&[request_type, "ok"])
+                .with_label_values(&[request_type])
                 .observe((get_epoch_seconds() - entry.timestamp) as f64);
             "ok"
         }

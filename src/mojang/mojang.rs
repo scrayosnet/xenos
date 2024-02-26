@@ -13,6 +13,7 @@ lazy_static! {
     static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder().build().unwrap();
 }
 
+// TODO update buckets
 lazy_static! {
     static ref MOJANG_REQ_TOTAL: IntCounterVec = register_int_counter_vec!(
         "xenos_mojang_requests_total",
