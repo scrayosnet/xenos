@@ -8,7 +8,9 @@ use async_trait::async_trait;
 use moka::future::Cache;
 use uuid::Uuid;
 
-// TODO add docu
+/// [Moka Cache](MokaCache) is a [cache](XenosCache) implementation using moka. It is a thread-safe,
+/// futures-aware concurrent in-memory cache. The cache has a configurable maximum capacity and additional
+/// expiration (delete) policies with time-to-live and time-to-idle.
 #[derive(Debug)]
 pub struct MokaCache {
     settings: settings::MokaCache,
@@ -26,22 +28,22 @@ impl MokaCache {
         Self {
             settings: settings.clone(),
             uuids: Cache::builder()
-                .max_capacity(settings.entries.uuid.max_capacity)
+                .max_capacity(settings.entries.uuid.cap)
                 .time_to_live(settings.entries.uuid.ttl)
                 .time_to_idle(settings.entries.uuid.tti)
                 .build(),
             profiles: Cache::builder()
-                .max_capacity(settings.entries.profile.max_capacity)
+                .max_capacity(settings.entries.profile.cap)
                 .time_to_live(settings.entries.profile.ttl)
                 .time_to_idle(settings.entries.profile.tti)
                 .build(),
             skins: Cache::builder()
-                .max_capacity(settings.entries.skin.max_capacity)
+                .max_capacity(settings.entries.skin.cap)
                 .time_to_live(settings.entries.skin.ttl)
                 .time_to_idle(settings.entries.skin.tti)
                 .build(),
             heads: Cache::builder()
-                .max_capacity(settings.entries.head.max_capacity)
+                .max_capacity(settings.entries.head.cap)
                 .time_to_live(settings.entries.head.ttl)
                 .time_to_idle(settings.entries.head.tti)
                 .build(),
@@ -56,8 +58,8 @@ impl XenosCache for MokaCache {
         monitor_cache_get("moka", "uuid", || async {
             let entry = self.uuids.get(username).await;
             let cached = entry.into_cached(
-                &self.settings.entries.uuid.expiry,
-                &self.settings.entries.uuid.expiry_missing,
+                &self.settings.entries.uuid.exp,
+                &self.settings.entries.uuid.exp_na,
             );
             Ok(cached)
         })
@@ -82,8 +84,8 @@ impl XenosCache for MokaCache {
         monitor_cache_get("moka", "profile", || async {
             let entry = self.profiles.get(uuid).await;
             let cached = entry.into_cached(
-                &self.settings.entries.profile.expiry,
-                &self.settings.entries.profile.expiry_missing,
+                &self.settings.entries.profile.exp,
+                &self.settings.entries.profile.exp_na,
             );
             Ok(cached)
         })
@@ -104,8 +106,8 @@ impl XenosCache for MokaCache {
         monitor_cache_get("moka", "skin", || async {
             let entry = self.skins.get(uuid).await;
             let cached = entry.into_cached(
-                &self.settings.entries.skin.expiry,
-                &self.settings.entries.skin.expiry_missing,
+                &self.settings.entries.skin.exp,
+                &self.settings.entries.skin.exp_na,
             );
             Ok(cached)
         })
@@ -130,8 +132,8 @@ impl XenosCache for MokaCache {
         monitor_cache_get("moka", "head", || async {
             let entry = self.heads.get(&(*uuid, *overlay)).await;
             let cached = entry.into_cached(
-                &self.settings.entries.head.expiry,
-                &self.settings.entries.head.expiry_missing,
+                &self.settings.entries.head.exp,
+                &self.settings.entries.head.exp_na,
             );
             Ok(cached)
         })

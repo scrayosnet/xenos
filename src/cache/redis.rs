@@ -18,7 +18,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-// TODO add docu
+/// Builds a redis cache entry key. The ns (namespace) represents the resource type and sub identifies
+/// the resource from its peers.
+pub fn build_key(ns: &str, sub: &str) -> String {
+    format!("xenos.{ns}.{sub}")
+}
+
+/// [Redis Cache](RedisCache) is a [cache](XenosCache) implementation using redis. The cache has an
+/// additional expiration (delete) policies with time-to-live.
 pub struct RedisCache {
     settings: settings::RedisCache,
     redis_manager: Arc<Mutex<ConnectionManager>>,
@@ -44,11 +51,6 @@ impl Debug for RedisCache {
     }
 }
 
-// TODO add docu
-pub fn build_key(ns: &str, sub: &str) -> String {
-    format!("xenos.{ns}.{sub}")
-}
-
 #[async_trait]
 impl XenosCache for RedisCache {
     #[tracing::instrument(skip(self))]
@@ -61,8 +63,8 @@ impl XenosCache for RedisCache {
                 .get(build_key("uuid", username.to_lowercase().as_str()))
                 .await?;
             let cached = entry.into_cached(
-                &self.settings.entries.uuid.expiry,
-                &self.settings.entries.uuid.expiry_missing,
+                &self.settings.entries.uuid.exp,
+                &self.settings.entries.uuid.exp_na,
             );
             Ok(cached)
         })
@@ -102,8 +104,8 @@ impl XenosCache for RedisCache {
                 .get(build_key("profile", uuid.simple().to_string().as_str()))
                 .await?;
             let cached = entry.into_cached(
-                &self.settings.entries.profile.expiry,
-                &self.settings.entries.profile.expiry_missing,
+                &self.settings.entries.profile.exp,
+                &self.settings.entries.profile.exp_na,
             );
             Ok(cached)
         })
@@ -139,8 +141,8 @@ impl XenosCache for RedisCache {
                 .get(build_key("skin", uuid.simple().to_string().as_str()))
                 .await?;
             let cached = entry.into_cached(
-                &self.settings.entries.skin.expiry,
-                &self.settings.entries.skin.expiry_missing,
+                &self.settings.entries.skin.exp,
+                &self.settings.entries.skin.exp_na,
             );
             Ok(cached)
         })
@@ -181,8 +183,8 @@ impl XenosCache for RedisCache {
                 .get(build_key("head", &format!("{uuid_str}.{overlay}")))
                 .await?;
             let cached = entry.into_cached(
-                &self.settings.entries.head.expiry,
-                &self.settings.entries.head.expiry_missing,
+                &self.settings.entries.head.exp,
+                &self.settings.entries.head.exp_na,
             );
             Ok(cached)
         })
@@ -214,8 +216,6 @@ impl XenosCache for RedisCache {
         .await
     }
 }
-
-// type serialization
 
 impl<D> FromRedisValue for CacheEntry<D>
 where

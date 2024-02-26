@@ -70,10 +70,10 @@ use tracing::info;
 
 pub mod cache;
 pub mod error;
-pub mod grpc_services;
+mod grpc_services;
 pub mod mojang;
 pub mod proto;
-pub mod rest_services;
+mod rest_services;
 pub mod service;
 pub mod settings;
 
@@ -160,9 +160,9 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
 #[tracing::instrument(skip_all)]
 async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::error::Error>> {
     let settings = service.settings();
-    let address = settings.http_server.address;
+    let address = settings.rest_server.address;
     let metrics_enabled = settings.metrics.enabled;
-    let gateway_enabled = settings.http_server.rest_gateway;
+    let gateway_enabled = settings.rest_server.rest_gateway;
 
     // check if rest server should be started
     if !metrics_enabled && !gateway_enabled {
@@ -172,23 +172,29 @@ async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
 
     // build rest server
     let rest_app = Router::new()
-        .layer(Extension(Arc::clone(&service)))
         .optional_route(metrics_enabled, "/metrics", get(rest_services::metrics))
         .optional_route(gateway_enabled, "/uuids", post(rest_services::uuids))
         .optional_route(gateway_enabled, "/profile", post(rest_services::profile))
         .optional_route(gateway_enabled, "/skin", post(rest_services::skin))
         .optional_route(gateway_enabled, "/head", post(rest_services::head))
+        .layer(Extension(Arc::clone(&service)))
         .with_state(());
 
+    // register shutdown signal (as future)
+    let shutdown = tokio::signal::ctrl_c().map(|_| ());
+
     info!(
-        address = settings.http_server.address.to_string(),
+        address = address.to_string(),
         metrics = metrics_enabled,
         rest_gateway = gateway_enabled,
         "http server listening on {}",
-        settings.http_server.address
+        address
     );
     let listener = tokio::net::TcpListener::bind(address).await.unwrap();
-    axum::serve(listener, rest_app).await.unwrap();
+    axum::serve(listener, rest_app)
+        .with_graceful_shutdown(shutdown)
+        .await
+        .unwrap();
     info!("http server stopped successfully");
     Ok(())
 }

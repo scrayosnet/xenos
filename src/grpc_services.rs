@@ -1,5 +1,5 @@
 use crate::error::XenosError;
-use crate::error::XenosError::{NotFound, NotRetrieved, UuidParse};
+use crate::error::XenosError::{NotFound, NotRetrieved, UuidError};
 use crate::proto::{
     profile_server::Profile, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
     SkinRequest, SkinResponse, UuidRequest, UuidResponse,
@@ -16,7 +16,7 @@ type GrpcResult<T> = Result<Response<T>, Status>;
 impl From<XenosError> for Status {
     fn from(value: XenosError) -> Self {
         match value {
-            UuidParse(_) => Status::invalid_argument("invalid uuid"),
+            UuidError(_) => Status::invalid_argument("invalid uuid"),
             NotRetrieved => Status::unavailable("unable to retrieve"),
             NotFound => Status::not_found("resource not found"),
             err => Status::internal(err.to_string()),
@@ -46,7 +46,7 @@ impl Profile for GrpcProfileService {
         &self,
         request: Request<ProfileRequest>,
     ) -> Result<Response<ProfileResponse>, Status> {
-        let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidParse)?;
+        let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
         let profile = self.service.get_profile(&uuid).await?;
         Ok(Response::new(profile.into()))
     }
@@ -55,7 +55,7 @@ impl Profile for GrpcProfileService {
         &self,
         request: Request<SkinRequest>,
     ) -> Result<Response<SkinResponse>, Status> {
-        let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidParse)?;
+        let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
         let skin = self.service.get_skin(&uuid).await?;
         Ok(Response::new(skin.into()))
     }
@@ -66,7 +66,7 @@ impl Profile for GrpcProfileService {
     ) -> Result<Response<HeadResponse>, Status> {
         let req = request.into_inner();
         let overlay = &req.overlay;
-        let uuid = Uuid::try_parse(&req.uuid).map_err(UuidParse)?;
+        let uuid = Uuid::try_parse(&req.uuid).map_err(UuidError)?;
         let head = self.service.get_head(&uuid, overlay).await?;
         Ok(Response::new(head.into()))
     }

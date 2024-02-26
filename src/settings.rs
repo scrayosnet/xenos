@@ -1,5 +1,5 @@
 use config::{Config, ConfigError, Environment, File};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::env;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -16,6 +16,24 @@ pub struct Cache {
     pub moka: MokaCache,
 }
 
+/// [MokaCache] hold the moka cache configuration. Moka supports [CacheEntry] `ttl` and `tti`.
+/// It also has a `cap` per cache entry type.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MokaCache {
+    pub enabled: bool,
+    pub entries: CacheEntries,
+}
+
+/// [RedisCache] hold the redis cache configuration. Redis supports [CacheEntry] `ttl` but not `tti`.
+/// It does not support `cap`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RedisCache {
+    pub enabled: bool,
+    pub address: String,
+    pub entries: CacheEntries,
+}
+
+/// [CacheEntries] is a wrapper for configuring [CacheEntry] for all cache entry types.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CacheEntries {
     pub uuid: CacheEntry,
@@ -24,29 +42,23 @@ pub struct CacheEntries {
     pub head: CacheEntry,
 }
 
+/// [CacheEntry] holds configuration for `cap`, `exp`, `ttl`, `tti` and `..._na` for a
+/// single cache entry type.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CacheEntry {
-    pub max_capacity: u64,
-    pub expiry: Duration,
-    pub expiry_missing: Duration,
+    pub cap: u64,
+    #[serde(deserialize_with = "parse_duration")]
+    pub exp: Duration,
+    #[serde(deserialize_with = "parse_duration")]
+    pub exp_na: Duration,
+    #[serde(deserialize_with = "parse_duration")]
     pub ttl: Duration,
-    pub ttl_missing: Duration,
+    #[serde(deserialize_with = "parse_duration")]
+    pub ttl_na: Duration,
+    #[serde(deserialize_with = "parse_duration")]
     pub tti: Duration,
-    pub tti_missing: Duration,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct MokaCache {
-    pub enabled: bool,
-    pub entries: CacheEntries,
-}
-
-/// `Redis` hold the redis cache configuration.
-#[derive(Debug, Clone, Deserialize)]
-pub struct RedisCache {
-    pub enabled: bool,
-    pub address: String,
-    pub entries: CacheEntries,
+    #[serde(deserialize_with = "parse_duration")]
+    pub tti_na: Duration,
 }
 
 /// [RestServer] holds the http server configuration. The http server is implicitly enabled if either
@@ -125,8 +137,8 @@ pub struct Settings {
     pub metrics: Metrics,
     /// The sentry configuration.
     pub sentry: Sentry,
-    /// The http server configuration. The http server will be enabled if either the rest gateway is enabled or the metrics.
-    pub http_server: RestServer,
+    /// The rest server configuration. It will be enabled if either the rest gateway is enabled or the metrics.
+    pub rest_server: RestServer,
     /// The grpc server configuration.
     pub grpc_server: GrpcServer,
 }
@@ -160,4 +172,9 @@ impl Settings {
         // you can deserialize (and thus freeze) the entire configuration as
         s.try_deserialize()
     }
+}
+
+pub fn parse_duration<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Duration, D::Error> {
+    let iso: iso8601::Duration = Deserialize::deserialize(deserializer)?;
+    Ok(Duration::from(iso))
 }
