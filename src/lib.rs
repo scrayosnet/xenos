@@ -1,52 +1,13 @@
 //! Xenos is a Minecraft profile data proxy that can be used as an ultra-fast replacement for the official Mojang API.
 //!
-//! TODO uodate docu
-//! This library provides all components used to build the application.
-//!
-//!
-//!
 //! # Usage
 //!
-//! At the center of the application is the [xenos service](service::Service). It encapsulates an implementation
-//! of a [cache](cache::XenosCache) and a [Mojang api](mojang::Mojang). Currently, the library supports
-//! [redis](cache::redis::RedisCache) and [in-memory](cache::memory::MemoryCache) caching.
-//! The service is intended to be shared by the exposing servers. Currently, the library supports
-//! [grpc](grpc_services) and [rest](http_services).
-//!
-//! ```rs
-//! let cache = Box::new(Mutex::new(MemoryCache::with_cache_time(3000)))
-//! let mojang = Box::new(Mojang {});
-//! let service = Arc::new(Service { cache, mojang });
-//! ```
+//! Start the application by first initializing [sentry] and [tracing] and then calling [start] with
+//! the [application configuration](settings).
 //!
 //! # Configuration
 //!
-//! The application is configured with the [config crate](config). The config definition can be found
-//! in the [settings module](settings). Configurations can be provided with the configuration files (in order)
-//! `/config/[default|local]` and with environment variables.
-//! Nested settings like `redis_cache.enabled` can be overwritten by the environment variable `XENOS__REDIS_CACHE__ENABLED`.
-//! The env prefix `XENOS` can be altered by setting `ENV_PREFIX`.
-//!
-//! An additional, optional config file can be applied by setting the `CONFIG_FILE` environment variable.
-//! By default, it is set to `config/config`, loading any supported file type. It is intended to be supplied
-//! by the deployment.
-//!
-//! ```rs
-//! let settings = Setting::new()
-//! ```
-//!
-//! # Data Formats
-//!
-//! The library uses three distinct data formats. Firstly, the data format provided by the [Mojang api](mojang::Mojang).
-//! Secondly, the format used by the [cache](cache::XenosCache). This format is used for all internal data handling.
-//! And lastly, the data transfer format used by the exposing servers. This format is defined in the
-//! `.proto` files and exported into the [proto module](proto).
-//!
-//! # Errors
-//!
-//! Xenos provides its own [error type](error::XenosError). These errors are converted to appropriate
-//! external error responses (for http and grpc server). See [XenosError](error::XenosError) for detailed information.
-//!
+//! See [settings] for a description on how to create the application configuration.
 
 use crate::cache::chaining::ChainingCache;
 use crate::cache::moka::MokaCache;
@@ -100,10 +61,8 @@ where
     }
 }
 
-// TODO update docu
-/// Starts Xenos, should only be called once in `main` after sentry and logging have be initialized.
-/// It blocks until all started services complete (or after a graceful shutdown when a shutdown signal
-/// is received)
+/// Starts Xenos with the provided [application configuration](settings). It expects that [sentry] and
+/// [tracing] was configured beforehand. It blocks until a shutdown signal is received (graceful shutdown).
 #[tracing::instrument(skip(settings))]
 pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
     info!(debug = settings.debug, "starting Xenos...");
@@ -154,8 +113,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-// TODO update docu
-/// Tries to start the http server. The http server is started if either the rest gateway or the
+/// Tries to start the rest server. The rest server is started if either the rest gateway or the
 /// metrics service is enabled. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]
 async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::error::Error>> {
@@ -166,7 +124,7 @@ async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
 
     // check if rest server should be started
     if !metrics_enabled && !gateway_enabled {
-        info!("http server is disabled (enable either metrics or rest gateway)");
+        info!("rest server is disabled (enable either metrics or rest gateway)");
         return Ok(());
     }
 
@@ -187,7 +145,7 @@ async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
         address = address.to_string(),
         metrics = metrics_enabled,
         rest_gateway = gateway_enabled,
-        "http server listening on {}",
+        "rest server listening on {}",
         address
     );
     let listener = tokio::net::TcpListener::bind(address).await.unwrap();
@@ -195,11 +153,10 @@ async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
         .with_graceful_shutdown(shutdown)
         .await
         .unwrap();
-    info!("http server stopped successfully");
+    info!("rest server stopped successfully");
     Ok(())
 }
 
-// TODO update docu
 /// Tries to start the grpc server. The grpc server is started if it is enabled. It also starts the
 /// health reporter. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]

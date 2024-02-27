@@ -235,7 +235,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// Creates a new application configuration as described in the [module documentation](settings).
+    /// Creates a new application configuration as described in the [module documentation](crate::settings).
     pub fn new() -> Result<Self, ConfigError> {
         // the environment prefix for all `Settings` fields
         let env_prefix = env::var("ENV_PREFIX").unwrap_or_else(|_| "xenos".into());
