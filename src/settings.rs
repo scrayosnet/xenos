@@ -139,8 +139,8 @@ pub struct CacheEntry {
     pub tti_na: Duration,
 }
 
-/// [RestServer] holds the http server configuration. The http server is implicitly enabled if either
-/// the rest gateway of the metrics service is enabled. If enabled, the http server also exposes the
+/// [RestServer] holds the rest server configuration. The rest server is implicitly enabled if either
+/// the rest gateway of the metrics service is enabled. If enabled, the rest server also exposes the
 /// metrics service at `/metrics`.
 ///
 /// The rest gateway exposes the grpc service api over rest.
@@ -149,13 +149,13 @@ pub struct RestServer {
     /// Whether the rest gateway should be enabled.
     pub rest_gateway: bool,
 
-    /// The address of the http server. E.g. `0.0.0.0:9990` for running with an exposed port.
+    /// The address of the rest server. E.g. `0.0.0.0:9990` for running with an exposed port.
     pub address: SocketAddr,
 }
 
-/// [Metrics] holds the metrics service configuration. The metrics service is part of the http server.
-/// The http server will be, if not already so, implicitly enabled if the metrics service is enabled.
-/// If enabled, it is exposed at the http server at `/metrics`.
+/// [Metrics] holds the metrics service configuration. The metrics service is part of the rest server.
+/// The rest server will be, if not already so, implicitly enabled if the metrics service is enabled.
+/// If enabled, it is exposed at the rest server at `/metrics`.
 ///
 /// Metrics will always be aggregated by the application. This option is only used to expose the metrics
 /// service. The service supports basic auth that can be enabled. Make sure to override the default
@@ -206,7 +206,7 @@ pub struct Sentry {
 /// [Settings] holds all configuration for the application. I.g. one immutable instance is created
 /// on startup and then shared among the application components.
 ///
-/// If both the grpc and http server are disabled, the application will exit immediately after startup
+/// If both the grpc and rest server are disabled, the application will exit immediately after startup
 /// with status ok.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
