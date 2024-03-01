@@ -1,3 +1,6 @@
+//! The [internal error definition](XenosError) and global [conversions](From). Other modules may
+//! provide additional [conversions](From) that are used (solely) by that module.
+
 /// [XenosError] is the internal error type for xenos. Other crates might implement conversion traits
 /// for these errors.
 #[derive(thiserror::Error, Debug)]

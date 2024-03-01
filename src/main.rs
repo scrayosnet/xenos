@@ -5,6 +5,8 @@ use tracing::info;
 use tracing_subscriber::prelude::*;
 use xenos::settings::Settings;
 
+/// Starts the Xenos application. It reads the application [Settings], initializes [sentry] and [tracing]
+/// and starts the Xenos service.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read settings from config files and environment variables
     let settings = Arc::new(Settings::new()?);

@@ -30,13 +30,17 @@ lazy_static! {
     .unwrap();
 }
 
+/// [MojangApi] is stateless a wrapper for the official mojang api.
 pub struct MojangApi;
 
 impl MojangApi {
+    /// Creates a new [MojangApi].
     pub fn new() -> Self {
         Self {}
     }
 
+    /// Implements [Mojang::fetch_uuids] but with the constraint that the usernames slice may not be
+    /// larger than the mojang api allows (currently this constraint is ten).
     #[tracing::instrument(skip(self))]
     async fn fetch_uuids_chunk(
         &self,

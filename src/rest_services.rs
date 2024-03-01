@@ -15,7 +15,8 @@ use prometheus::{Encoder, TextEncoder};
 use std::sync::Arc;
 use uuid::Uuid;
 
-// TODO add documentation
+/// [RestResult] is an alias for a rest [Json] result with [XenosError]
+type RestResult<T> = Result<Json<T>, XenosError>;
 
 // implement automatic XenosError to response conversion
 // with that, XenosError can be returned in a result
@@ -31,6 +32,8 @@ impl IntoResponse for XenosError {
     }
 }
 
+/// An [axum] handler for providing [prometheus] metrics. If enabled by the service, it validates
+/// basic auth.
 pub async fn metrics(
     auth: Option<AuthBasic>,
     Extension(service): Extension<Arc<Service>>,
@@ -59,34 +62,38 @@ pub async fn metrics(
         .expect("failed to build metrics response")
 }
 
+/// An [axum] handler for [UuidRequest] rest gateway.
 pub async fn uuids(
     Extension(service): Extension<Arc<Service>>,
     Json(payload): Json<UuidRequest>,
-) -> Result<Json<UuidResponse>, XenosError> {
+) -> RestResult<UuidResponse> {
     let usernames = &payload.usernames;
     Ok(Json(service.get_uuids(usernames).await?.into()))
 }
 
+/// An [axum] handler for [ProfileRequest] rest gateway.
 pub async fn profile(
     Extension(service): Extension<Arc<Service>>,
     Json(payload): Json<ProfileRequest>,
-) -> Result<Json<ProfileResponse>, XenosError> {
+) -> RestResult<ProfileResponse> {
     let uuid = Uuid::try_parse(&payload.uuid)?;
     Ok(Json(service.get_profile(&uuid).await?.into()))
 }
 
+/// An [axum] handler for [SkinRequest] rest gateway.
 pub async fn skin(
     Extension(service): Extension<Arc<Service>>,
     Json(payload): Json<SkinRequest>,
-) -> Result<Json<SkinResponse>, XenosError> {
+) -> RestResult<SkinResponse> {
     let uuid = Uuid::try_parse(&payload.uuid)?;
     Ok(Json(service.get_skin(&uuid).await?.into()))
 }
 
+/// An [axum] handler for [HeadRequest] rest gateway.
 pub async fn head(
     Extension(service): Extension<Arc<Service>>,
     Json(payload): Json<HeadRequest>,
-) -> Result<Json<HeadResponse>, XenosError> {
+) -> RestResult<HeadResponse> {
     let uuid = Uuid::try_parse(&payload.uuid)?;
     let overlay = &payload.overlay;
     Ok(Json(service.get_head(&uuid, overlay).await?.into()))

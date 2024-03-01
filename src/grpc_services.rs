@@ -9,10 +9,10 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-// TODO add documentation
-
+/// [GrpcResult] is an alias for grpc result [Response] and [Status].
 type GrpcResult<T> = Result<Response<T>, Status>;
 
+// utility that allows the usage of XenosError in result with auto conversion to (tonic) response status
 impl From<XenosError> for Status {
     fn from(value: XenosError) -> Self {
         match value {
@@ -24,11 +24,13 @@ impl From<XenosError> for Status {
     }
 }
 
+/// A [GrpcProfileService] wraps [Service] and implements the grpc [Profile] service.
 pub struct GrpcProfileService {
     service: Arc<Service>,
 }
 
 impl GrpcProfileService {
+    /// Creates a new [GrpcProfileService] wrapping the provided [Service] reference.
     pub fn new(service: Arc<Service>) -> Self {
         Self { service }
     }
@@ -42,28 +44,19 @@ impl Profile for GrpcProfileService {
         Ok(Response::new(uuids.into()))
     }
 
-    async fn get_profile(
-        &self,
-        request: Request<ProfileRequest>,
-    ) -> Result<Response<ProfileResponse>, Status> {
+    async fn get_profile(&self, request: Request<ProfileRequest>) -> GrpcResult<ProfileResponse> {
         let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
         let profile = self.service.get_profile(&uuid).await?;
         Ok(Response::new(profile.into()))
     }
 
-    async fn get_skin(
-        &self,
-        request: Request<SkinRequest>,
-    ) -> Result<Response<SkinResponse>, Status> {
+    async fn get_skin(&self, request: Request<SkinRequest>) -> GrpcResult<SkinResponse> {
         let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
         let skin = self.service.get_skin(&uuid).await?;
         Ok(Response::new(skin.into()))
     }
 
-    async fn get_head(
-        &self,
-        request: Request<HeadRequest>,
-    ) -> Result<Response<HeadResponse>, Status> {
+    async fn get_head(&self, request: Request<HeadRequest>) -> GrpcResult<HeadResponse> {
         let req = request.into_inner();
         let overlay = &req.overlay;
         let uuid = Uuid::try_parse(&req.uuid).map_err(UuidError)?;
