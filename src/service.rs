@@ -4,7 +4,7 @@ use crate::cache::{
     XenosCache,
 };
 use crate::error::XenosError;
-use crate::error::XenosError::{InvalidTextures, NotRetrieved};
+use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
 use crate::mojang::Mojang;
 use crate::settings::Settings;
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
@@ -18,7 +18,6 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
-use XenosError::NotFound;
 
 lazy_static! {
     /// The username regex is used to check if a given username could be a valid username.
@@ -28,7 +27,7 @@ lazy_static! {
 
 // TODO update buckets
 lazy_static! {
-    /// A histogram for the age in seconds of cache results. Use the [monitor_service_call]
+    /// A histogram for the age in seconds of cache results. Use the [monitor_service_call_with_age]
     /// utility for ease of use.
     pub static ref PROFILE_REQ_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_profile_age_seconds",
@@ -49,7 +48,10 @@ lazy_static! {
     .unwrap();
 }
 
-async fn monitor_service_call<F, Fut, D>(
+/// A utility that wraps a [Service] call, monitoring its runtime, response status and [CacheEntry]
+/// age for [prometheus]. The age of a [CacheEntry] is the relative time from which the cache entry
+/// was created until now.
+async fn monitor_service_call_with_age<F, Fut, D>(
     request_type: &str,
     f: F,
 ) -> Result<CacheEntry<D>, XenosError>
@@ -58,15 +60,30 @@ where
     Fut: Future<Output = Result<CacheEntry<D>, XenosError>>,
     D: Debug + Clone + Eq,
 {
-    let start = Instant::now();
-    let result = f().await;
-    let status = match &result {
+    let result = monitor_service_call(request_type, f).await;
+    match &result {
         Ok(entry) => {
+            // if cache entry found, monitor its age
             PROFILE_REQ_AGE_HISTOGRAM
                 .with_label_values(&[request_type])
                 .observe((get_epoch_seconds() - entry.timestamp) as f64);
-            "ok"
         }
+        _ => {}
+    };
+    result
+}
+
+/// A utility that wraps a [Service] call, monitoring its runtime and response status.
+async fn monitor_service_call<F, Fut, D>(request_type: &str, f: F) -> Result<D, XenosError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<D, XenosError>>,
+    D: Debug + Clone + Eq,
+{
+    let start = Instant::now();
+    let result = f().await;
+    let status = match &result {
+        Ok(_) => "ok",
         Err(NotRetrieved) => "not_retrieved",
         Err(NotFound) => "not_found",
         Err(_) => "error",
@@ -77,15 +94,19 @@ where
     result
 }
 
+/// The [Service] is the backbone of Xenos. All exposed services (gRPC/REST) use a shared instance of
+/// this service. The [Service] incorporates a [cache](XenosCache) and [mojang api](Mojang) implementations
+/// as well as a clone of the [application settings](Settings). It is expected, that the settings
+/// match the settings used to construct the cache and api.
 pub struct Service {
     settings: Arc<Settings>,
     cache: Box<dyn XenosCache>,
     mojang: Box<dyn Mojang>,
 }
 
-// service api
 impl Service {
-    /// Builds a new [Service] with selected cache and mojang api implementation.
+    /// Builds a new [Service] with provided cache and mojang api implementation. It is expected, that
+    /// the provided settings match the settings used to construct the cache and api.
     pub fn new(
         settings: Arc<Settings>,
         cache: Box<dyn XenosCache>,
@@ -98,16 +119,21 @@ impl Service {
         }
     }
 
+    /// Returns the [application settings](Settings) that were used to construct the [Service].
     pub fn settings(&self) -> &Settings {
         &self.settings
     }
 
+    /// Builds the head image bytes from a skin. Expects a valid skin.
     #[tracing::instrument(skip(skin_bytes))]
-    fn build_skin_head(skin_bytes: &[u8]) -> Result<Vec<u8>, XenosError> {
+    fn build_skin_head(skin_bytes: &[u8], overlay: &bool) -> Result<Vec<u8>, XenosError> {
         let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
         let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
-        let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
-        imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
+
+        if *overlay {
+            let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
+            imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
+        }
 
         let mut head_bytes: Vec<u8> = Vec::new();
         let mut cur = Cursor::new(&mut head_bytes);
@@ -122,12 +148,23 @@ impl Service {
         Ok(head_bytes)
     }
 
+    /// Resolves the provided (case-insensitive) usernames to their (case-sensitive) username and uuid
+    /// from cache or mojang.
     #[tracing::instrument(skip(self))]
     pub async fn get_uuids(
         &self,
         usernames: &[String],
     ) -> Result<HashMap<String, UuidEntry>, XenosError> {
+        monitor_service_call("uuids", || self._get_uuids(usernames)).await
+    }
+
+    pub async fn _get_uuids(
+        &self,
+        usernames: &[String],
+    ) -> Result<HashMap<String, UuidEntry>, XenosError> {
         // 1. initialize with uuid not found
+        // contrary to the mojang api, we want all requested usernames to map to something instead of
+        // being omitted in case the username is invalid/unused
         let mut uuids: HashMap<String, UuidEntry> = HashMap::from_iter(
             usernames
                 .iter()
@@ -136,11 +173,13 @@ impl Service {
 
         let mut cache_misses = vec![];
         for (username, uuid) in uuids.iter_mut() {
-            // 2. filter invalid (regex)
+            // 2. filter invalid usernames (regex)
+            // evidently unused (invalid) usernames should not clutter the cache nor should they fill
+            // to the mojang request rate limit. As such, they are excluded beforehand
             if !USERNAME_REGEX.is_match(username.as_str()) {
                 continue;
             }
-            // 3. get from cache; if elapsed, try to refresh
+            // 3. get from cache; if cache result is expired, try to refresh cache
             let cached = self.cache.get_uuid_by_username(username).await?;
             match cached {
                 Hit(entry) => {
@@ -160,7 +199,7 @@ impl Service {
         if !cache_misses.is_empty() {
             let response = match self.mojang.fetch_uuids(&cache_misses).await {
                 Ok(r) => r,
-                Err(NotRetrieved) => return Ok(uuids),
+                // currently, partial responses are not supported
                 Err(err) => return Err(err),
             };
             let found: HashMap<_, _> = response
@@ -186,9 +225,10 @@ impl Service {
         Ok(uuids)
     }
 
+    /// Gets the profile for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
     pub async fn get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
-        monitor_service_call("profile", || self._get_profile(uuid)).await
+        monitor_service_call_with_age("profile", || self._get_profile(uuid)).await
     }
 
     async fn _get_profile(&self, uuid: &Uuid) -> Result<ProfileEntry, XenosError> {
@@ -218,9 +258,10 @@ impl Service {
         Ok(entry)
     }
 
+    /// Gets the profile skin for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
     pub async fn get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
-        monitor_service_call("skin", || self._get_skin(uuid)).await
+        monitor_service_call_with_age("skin", || self._get_skin(uuid)).await
     }
 
     async fn _get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
@@ -269,9 +310,10 @@ impl Service {
         Ok(entry)
     }
 
+    /// Gets the profile head for an uuid from cache or mojang. The head may include the head overlay.
     #[tracing::instrument(skip(self))]
     pub async fn get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
-        monitor_service_call("head", || self._get_head(uuid, overlay)).await
+        monitor_service_call_with_age("head", || self._get_head(uuid, overlay)).await
     }
 
     async fn _get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
@@ -297,7 +339,7 @@ impl Service {
             Err(err) => return Err(err),
         };
 
-        let head_bytes = Self::build_skin_head(&skin_data)?;
+        let head_bytes = Self::build_skin_head(&skin_data, overlay)?;
 
         let entry = HeadEntry::new(head_bytes);
         self.cache
