@@ -14,16 +14,16 @@ lazy_static! {
     pub static ref HYDROFIN: TestingProfile = TestingProfile::new(
         uuid!("09879557e47945a9b434a56377674627"),
         "Hydrofin",
-        Bytes::new(), // TODO fill data
-        Bytes::new(), // TODO fill data
+        Bytes::from_static(include_bytes!("../../resources/profiles/hydrofin_skin.png")),
+        Bytes::new(),
     );
 
     /// The mojang profile of Scrayos.
     pub static ref SCRAYOS: TestingProfile = TestingProfile::new(
         uuid!("9c09eef4f68d4387975172bbff53d5a0"),
         "Scrayos",
-        Bytes::new(), // TODO fill data
-        Bytes::new(), // TODO fill data
+        Bytes::from_static(include_bytes!("../../resources/profiles/scrayos_skin.png")),
+        Bytes::new(),
     );
 }
 
@@ -80,7 +80,7 @@ impl TestingProfile {
 pub struct MojangTestingApi {
     uuids: HashMap<String, UsernameResolved>,
     profiles: HashMap<Uuid, Profile>,
-    images: HashMap<String, Bytes>,
+    images: HashMap<String, &'static Bytes>,
 }
 
 impl MojangTestingApi {
@@ -91,11 +91,13 @@ impl MojangTestingApi {
             profiles: Default::default(),
             images: Default::default(),
         }
+        .add_profile(&HYDROFIN)
+        .add_profile(&SCRAYOS)
     }
 
     /// Adds a profile to the [api](MojangTestingApi) using a [TestingProfile]. The profile is expected
     /// to a valid textures property.
-    pub fn add_profile(mut self, profile: TestingProfile) -> Self {
+    pub fn add_profile(mut self, profile: &'static TestingProfile) -> Self {
         let textures = profile
             .profile
             .get_textures()
@@ -108,12 +110,12 @@ impl MojangTestingApi {
             },
         );
         self.profiles
-            .insert(profile.profile.id.clone(), profile.profile);
+            .insert(profile.profile.id.clone(), profile.profile.clone());
         if let Some(skin) = textures.textures.skin {
-            self.images.insert(skin.url, profile.skin);
+            self.images.insert(skin.url, &profile.skin);
         }
         if let Some(cape) = textures.textures.cape {
-            self.images.insert(cape.url, profile.cape);
+            self.images.insert(cape.url, &profile.cape);
         }
         self
     }
@@ -135,7 +137,11 @@ impl Mojang for MojangTestingApi {
     }
 
     async fn fetch_image_bytes(&self, url: String, _: &str) -> Result<Bytes, XenosError> {
-        self.images.get(&url).cloned().ok_or(XenosError::NotFound)
+        self.images
+            .get(&url)
+            .cloned()
+            .map(|bytes| bytes.clone())
+            .ok_or(XenosError::NotFound)
     }
 }
 

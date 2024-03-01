@@ -1,4 +1,5 @@
 pub mod mojang;
+#[cfg(feature = "mojang-testing")]
 pub mod testing;
 
 use crate::error::XenosError;

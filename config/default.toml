@@ -1,8 +1,4 @@
-# Whether the application should be in debug mode.
 debug = false
-
-# Whether the application should be in testing mode.
-testing = false
 
 [cache.redis]
 enabled = false

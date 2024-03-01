@@ -14,7 +14,9 @@ use crate::cache::moka::MokaCache;
 use crate::cache::redis::RedisCache;
 use crate::cache::XenosCache;
 use crate::grpc_services::GrpcProfileService;
+#[cfg(not(feature = "mojang-testing"))]
 use crate::mojang::mojang::MojangApi;
+#[cfg(feature = "mojang-testing")]
 use crate::mojang::testing::MojangTestingApi;
 use crate::mojang::Mojang;
 use crate::proto::profile_server::ProfileServer;
@@ -94,11 +96,10 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
     // build mojang api
     // it is either the actual mojang api or a testing api for integration tests
     info!("building mojang api");
-    let mut mojang: Box<dyn Mojang> = Box::new(MojangApi::new());
-    if settings.testing {
-        info!("replacing mojang api with testing api, DISABLE IN PRODUCTION!");
-        mojang = Box::new(MojangTestingApi::new())
-    }
+    #[cfg(not(feature = "mojang-testing"))]
+    let mojang: Box<dyn Mojang> = Box::new(MojangApi::new());
+    #[cfg(feature = "mojang-testing")]
+    let mojang: Box<dyn Mojang> = Box::new(MojangTestingApi::new());
 
     // build xenos service from cache and mojang api
     // the service is then shared by the grpc and rest servers

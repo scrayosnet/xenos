@@ -214,10 +214,6 @@ pub struct Settings {
     /// functionalities or outputs in debug mode.
     pub debug: bool,
 
-    /// Whether the application should be in testing mode. This enables the testing api. The application
-    /// will no longer call the mojang api and will instead provide static content.
-    pub testing: bool,
-
     /// The service cache configuration.
     pub cache: Cache,
 
