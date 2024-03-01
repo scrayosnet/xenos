@@ -1,3 +1,5 @@
+//! The cache module provides multiple [cache](XenosCache) implementations for the xenos service.
+
 pub mod chaining;
 pub mod moka;
 mod monitor;
@@ -51,7 +53,8 @@ where
         }
     }
 
-    /// Creates a new filled instance of [CacheEntry] with the provided data.
+    /// Creates a new filled instance of [CacheEntry] with the provided data. The creation time
+    /// is set to the current time.
     pub fn new(data: D) -> Self {
         Self {
             timestamp: get_epoch_seconds(),
@@ -62,6 +65,17 @@ where
     /// Checks if the instance has data or is empty.
     pub fn is_empty(&self) -> bool {
         self.data.is_none()
+    }
+
+    /// Gets the age of the [CacheEntry]. The age of a [CacheEntry] is the relative time from which
+    /// the cache entry was created until now.
+    pub fn current_age(&self) -> u64 {
+        get_epoch_seconds() - self.timestamp
+    }
+
+    /// Checks if the [CacheEntry] age is larger than the provided expiry.
+    pub fn is_expired_after(&self, expiry: &Duration) -> bool {
+        self.current_age() > expiry.as_secs()
     }
 }
 
@@ -77,8 +91,8 @@ where
     fn into_cached(self, expiry: &Duration, expiry_missing: &Duration) -> Cached<CacheEntry<D>> {
         match self {
             None => Miss,
-            Some(v) if v.is_empty() && has_elapsed(&v.timestamp, expiry_missing) => Expired(v),
-            Some(v) if has_elapsed(&v.timestamp, expiry) => Expired(v),
+            Some(v) if v.is_empty() && v.is_expired_after(expiry_missing) => Expired(v),
+            Some(v) if v.is_expired_after(expiry) => Expired(v),
             Some(v) => Hit(v),
         }
     }
@@ -144,11 +158,7 @@ pub trait XenosCache: Debug + Send + Sync {
     ) -> Result<(), XenosError>;
 }
 
+/// Gets the current time in seconds.
 pub fn get_epoch_seconds() -> u64 {
     u64::try_from(Utc::now().timestamp()).unwrap()
-}
-
-pub fn has_elapsed(time: &u64, dur: &Duration) -> bool {
-    let now = get_epoch_seconds();
-    time + dur.as_secs() < now
 }
