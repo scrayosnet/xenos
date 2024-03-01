@@ -99,7 +99,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
     #[cfg(not(feature = "mojang-testing"))]
     let mojang: Box<dyn Mojang> = Box::new(MojangApi::new());
     #[cfg(feature = "mojang-testing")]
-    let mojang: Box<dyn Mojang> = Box::new(MojangTestingApi::new());
+    let mojang: Box<dyn Mojang> = Box::new(MojangTestingApi::with_profiles());
 
     // build xenos service from cache and mojang api
     // the service is then shared by the grpc and rest servers

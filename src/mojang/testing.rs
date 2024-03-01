@@ -91,8 +91,11 @@ impl MojangTestingApi {
             profiles: Default::default(),
             images: Default::default(),
         }
-        .add_profile(&HYDROFIN)
-        .add_profile(&SCRAYOS)
+    }
+
+    /// Creates a new [MojangTestingApi] with default profiles.
+    pub fn with_profiles() -> Self {
+        Self::new().add_profile(&HYDROFIN).add_profile(&SCRAYOS)
     }
 
     /// Adds a profile to the [api](MojangTestingApi) using a [TestingProfile]. The profile is expected
@@ -166,5 +169,38 @@ mod test {
         // then
         assert!(result.is_ok());
         assert!(result.is_ok_and(|res| res.is_empty()));
+    }
+
+    #[tokio::test]
+    async fn with_profiles() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+
+        // then
+        assert_eq!(2, api.uuids.len());
+        assert_eq!(2, api.profiles.len());
+        assert_eq!(2 * 2, api.images.len());
+    }
+
+    #[tokio::test]
+    async fn resolve_hydrofin_uuid() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuids(&[HYDROFIN.profile.name.to_lowercase()])
+            .await;
+
+        // then
+        match resolved {
+            Ok(resolved) => {
+                assert_eq!(1, resolved.len());
+                assert_eq!(&HYDROFIN.profile.id, &resolved[0].id);
+            }
+            Err(_) => panic!("failed to resolve hydrofin uuid"),
+        }
     }
 }
