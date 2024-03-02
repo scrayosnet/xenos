@@ -1,5 +1,5 @@
 pub mod api;
-#[cfg(feature = "mojang-testing")]
+#[cfg(feature = "static-testing")]
 pub mod testing;
 
 use crate::error::XenosError;
