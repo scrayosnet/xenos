@@ -41,16 +41,16 @@ impl TestingProfile {
     pub fn new(id: Uuid, name: &str, skin: Bytes, cape: Bytes) -> Self {
         let textures = TexturesProperty {
             timestamp: 0,
-            profile_id: id.clone(),
+            profile_id: id,
             profile_name: name.to_string(),
             signature_required: None,
             textures: Textures {
                 skin: Some(Texture {
-                    url: format!("skin_{}", id.hyphenated().to_string()),
+                    url: format!("skin_{}", id.hyphenated()),
                     metadata: None,
                 }),
                 cape: Some(Texture {
-                    url: format!("cape_{}", id.hyphenated().to_string()),
+                    url: format!("cape_{}", id.hyphenated()),
                     metadata: None,
                 }),
             },
@@ -108,12 +108,12 @@ impl MojangTestingApi {
         self.uuids.insert(
             profile.profile.name.to_lowercase(),
             UsernameResolved {
-                id: profile.profile.id.clone(),
+                id: profile.profile.id,
                 name: profile.profile.name.clone(),
             },
         );
         self.profiles
-            .insert(profile.profile.id.clone(), profile.profile.clone());
+            .insert(profile.profile.id, profile.profile.clone());
         if let Some(skin) = textures.textures.skin {
             self.images.insert(skin.url, &profile.skin);
         }
@@ -143,7 +143,7 @@ impl Mojang for MojangTestingApi {
         self.images
             .get(&url)
             .cloned()
-            .map(|bytes| bytes.clone())
+            .cloned()
             .ok_or(XenosError::NotFound)
     }
 }

@@ -15,7 +15,7 @@ use crate::cache::redis::RedisCache;
 use crate::cache::XenosCache;
 use crate::grpc_services::GrpcProfileService;
 #[cfg(not(feature = "mojang-testing"))]
-use crate::mojang::mojang::MojangApi;
+use crate::mojang::api::MojangApi;
 #[cfg(feature = "mojang-testing")]
 use crate::mojang::testing::MojangTestingApi;
 use crate::mojang::Mojang;

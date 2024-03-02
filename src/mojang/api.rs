@@ -50,6 +50,12 @@ where
 /// [MojangApi] is stateless a wrapper for the official mojang api.
 pub struct MojangApi;
 
+impl Default for MojangApi {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MojangApi {
     /// Creates a new [MojangApi].
     pub fn new() -> Self {

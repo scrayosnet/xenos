@@ -39,6 +39,12 @@ pub struct ChainingCache {
     caches: Vec<Box<dyn XenosCache>>,
 }
 
+impl Default for ChainingCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChainingCache {
     /// Creates a new [Chaining Cache](ChainingCache) with no inner caches.
     pub fn new() -> Self {
@@ -162,7 +168,7 @@ impl XenosCache for ChainingCache {
     async fn set_profile_by_uuid(&self, uuid: Uuid, entry: ProfileEntry) -> Result<(), XenosError> {
         monitor_cache_set("chaining", "uuid", || {
             self.set(entry, |cache, entry| {
-                cache.set_profile_by_uuid(uuid.clone(), entry)
+                cache.set_profile_by_uuid(uuid, entry)
             })
         })
         .await
@@ -183,7 +189,7 @@ impl XenosCache for ChainingCache {
     async fn set_skin_by_uuid(&self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
         monitor_cache_set("chaining", "uuid", || {
             self.set(entry, |cache, entry| {
-                cache.set_skin_by_uuid(uuid.clone(), entry)
+                cache.set_skin_by_uuid(uuid, entry)
             })
         })
         .await
@@ -213,7 +219,7 @@ impl XenosCache for ChainingCache {
     ) -> Result<(), XenosError> {
         monitor_cache_set("chaining", "uuid", || {
             self.set(entry, |cache, entry| {
-                cache.set_head_by_uuid(uuid.clone(), entry, overlay)
+                cache.set_head_by_uuid(uuid, entry, overlay)
             })
         })
         .await

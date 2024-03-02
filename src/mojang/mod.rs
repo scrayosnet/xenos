@@ -1,4 +1,4 @@
-pub mod mojang;
+pub mod api;
 #[cfg(feature = "mojang-testing")]
 pub mod testing;
 

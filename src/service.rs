@@ -59,15 +59,11 @@ where
     D: Debug + Clone + Eq,
 {
     let result = monitor_service_call(request_type, f).await;
-    match &result {
-        Ok(entry) => {
-            // if cache entry found, monitor its age
-            PROFILE_REQ_AGE_HISTOGRAM
-                .with_label_values(&[request_type])
-                .observe((get_epoch_seconds() - entry.timestamp) as f64);
-        }
-        _ => {}
-    };
+    if let Ok(entry) = &result {
+        PROFILE_REQ_AGE_HISTOGRAM
+            .with_label_values(&[request_type])
+            .observe((get_epoch_seconds() - entry.timestamp) as f64);
+    }
     result
 }
 
@@ -251,7 +247,7 @@ impl Service {
             Err(err) => return Err(err),
         };
 
-        let entry = ProfileEntry::new(profile.into());
+        let entry = ProfileEntry::new(profile);
         self.cache.set_profile_by_uuid(*uuid, entry.clone()).await?;
         Ok(entry)
     }
