@@ -1,8 +1,14 @@
+//! The proto module [includes](tonic::include_proto!) the rust protobuf definition for both the gRPC
+//! and REST services. It also provides implementations for converting into these definitions from
+//! internal result formats.
+
 use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry};
 use std::collections::HashMap;
 
+// includes the rust protobuf definitions
 tonic::include_proto!("scrayosnet.xenos");
 
+// conversion utility for converting service results into response data
 impl From<HashMap<String, UuidEntry>> for UuidResponse {
     fn from(value: HashMap<String, UuidEntry>) -> Self {
         UuidResponse {
@@ -11,6 +17,7 @@ impl From<HashMap<String, UuidEntry>> for UuidResponse {
     }
 }
 
+// conversion utility for converting service results into response data
 impl From<UuidEntry> for UuidResult {
     fn from(value: UuidEntry) -> Self {
         UuidResult {
@@ -23,12 +30,13 @@ impl From<UuidEntry> for UuidResult {
     }
 }
 
+// conversion utility for converting service results into response data
 impl From<ProfileEntry> for ProfileResponse {
     fn from(value: ProfileEntry) -> Self {
         if let Some(data) = value.data {
             return ProfileResponse {
                 timestamp: value.timestamp,
-                uuid: data.uuid.hyphenated().to_string(),
+                uuid: data.id.hyphenated().to_string(),
                 name: data.name,
                 properties: data
                     .properties
@@ -52,6 +60,7 @@ impl From<ProfileEntry> for ProfileResponse {
     }
 }
 
+// conversion utility for converting service results into response data
 impl From<SkinEntry> for SkinResponse {
     fn from(value: SkinEntry) -> Self {
         SkinResponse {
@@ -61,6 +70,7 @@ impl From<SkinEntry> for SkinResponse {
     }
 }
 
+// conversion utility for converting service results into response data
 impl From<HeadEntry> for HeadResponse {
     fn from(value: HeadEntry) -> Self {
         HeadResponse {

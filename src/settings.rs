@@ -1,85 +1,161 @@
+//! The settings module defines the application configuration. It is based on [config], a layered
+//! configuration system for Rust applications (with strong support for 12-factor applications).
+//!
+//! # Layers
+//!
+//! The configuration consists of up to four layers. Upper layers overwrite lower layer configurations.
+//!
+//! ## Layer 1 (Environment variables) \[optional\]
+//!
+//! The environment variables are the top most layer. They can be used to overwrite any previous configuration.
+//! Environment variables have the format `[ENV_PREFIX]__[field]__[sub_field]` where `ENV_PREFIX` is
+//! an environment variable defaulting to `XENOS`. That means, the nested settings field `cache.redis.enabled`
+//! can be overwritten by the environment variable `XENOS__CACHE__REDIS__ENABLED`.
+//!
+//! ## Layer 2 (Deployment configuration) \[optional\]
+//!
+//! The next layer is an optional configuration file intended to be used by deployments. The file
+//! location can be configured using the `CONFIG_FILE` environment variable, defaulting to `config/config`.
+//! The file can be any file type supported by [config] (e.g. `config/config.toml`).
+//!
+//! ## Layer 3 (Local configuration)  \[optional\]
+//!
+//! The next layer is an optional configuration file intended to be used for local testing. The file
+//! is expected to be at `config/local` and can be any file type supported by [config] (e.g. `config/local.toml`).
+//! This configuration file SHOULD NOT be published by git, as it could contain secrets (e.g. redis credentials).
+//!
+//! ## Layer 4 (Default configuration)
+//!
+//! The base layer is a configuration file confining the default configuration. The file is expected
+//! to be at `config/default` and can be any file type supported by [config] (e.g. `config/default.toml`).
+//! This file gives a default value for all settings fields. It is published by git and SHOULD NEVER
+//! contain secrets.
+//!
+//! # Usage
+//!
+//! The application configuration can be created by using [Settings::new]. This loads/overrides the
+//! configuration fields layer-by-layer.
+//!
+//! ```rs
+//! let settings: Settings = Settings::new()?;
+//! ```
+
 use config::{Config, ConfigError, Environment, File};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::env;
-use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
+use std::time::Duration;
 
-/// `Redis` hold the redis cache configuration.
-#[derive(Debug, Clone, Deserialize)]
-pub struct RedisCache {
-    /// The redis instance address. If redis is not selected, this field can be any value.
-    pub address: String,
-    /// The time-to-live for cache entries. This should be set higher than the expiry. It is used to
-    /// "limit" the number of cache entries.
-    pub ttl: Option<usize>,
-}
-
-/// The different supported cache variants.
-#[derive(Debug, Clone, Deserialize)]
-pub enum CacheVariant {
-    /// Use redis caching.
-    Redis,
-    /// Store cache entries in-memory. Useful for testing and if no persistent storage can be used.
-    /// To get the most out of Xenos, a persistent storage option should be chosen.
-    Memory,
-    /// Disable caching. This variant is primarily intended for local testing. It may be useful if
-    /// Xenos is oly used to provide a consistent api interface for the mojang api. But generally
-    /// this variant should be avoided.
-    None,
-}
-
-impl Display for CacheVariant {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-/// `Cache` hold the service cache configuration. The service supports multiple cache variants tht can
-/// be selected with `variant`. The cache considers entry's to be expired if they reach a configured age.
-/// The expiry can be configured for each cache resource type and if the cache entry indicates that,
-/// for example, an uuid or name is not a valid profile id.
+/// [Cache] hold the service cache configurations. The different caches are accumulated by the
+/// [ChainingCache](crate::cache::chaining::ChainingCache). If no cache is `enabled`, caching is
+/// effectively disabled.
 ///
-/// Nested fields are used for cache variant specific configuration.
+/// In general, there should always be a local cache (e.g. [moka](MokaCache)) enabled and optionally
+/// a remote cache (e.g. [redis](RedisCache)).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Cache {
-    /// The variant of the cache that should be used.
-    pub variant: CacheVariant,
-    /// Redis specific configuration.
+    /// The [redis] cache configuration.
     pub redis: RedisCache,
-    /// The expiry for username to uuid cache entries.
-    pub expiry_uuid: u64,
-    /// The expiry for not awarded username cache entries.
-    pub expiry_uuid_missing: u64,
-    /// The expiry for uuid to profile cache entries.
-    pub expiry_profile: u64,
-    /// The expiry for not awarded uuid cache entries.
-    pub expiry_profile_missing: u64,
-    /// The expiry for uuid to skin cache entries.
-    pub expiry_skin: u64,
-    /// The expiry for not awarded uuid cache entries.
-    pub expiry_skin_missing: u64,
-    /// The expiry for uuid to head cache entries.
-    pub expiry_head: u64,
-    /// The expiry for not awarded uuid cache entries.
-    pub expiry_head_missing: u64,
+
+    /// The [moka] cache configuration.
+    pub moka: MokaCache,
 }
 
-/// `HttpServer` holds the http server configuration. The http server is implicitly enabled if either
-/// the rest gateway of the metrics service is enabled. If enabled, the http server also exposes the
+/// [MokaCache] hold the [moka] cache configuration. Moka is a fast in-memory (local) cache. It
+/// supports [CacheEntry] `ttl` and `tti` and `cap` per cache entry type.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MokaCache {
+    /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
+    pub enabled: bool,
+
+    /// The cache entries configuration (e.g. expiry, ...).
+    pub entries: CacheEntries,
+}
+
+/// [RedisCache] hold the [redis] cache configuration. Redis is a fast remote cache. It supports
+/// [CacheEntry] `ttl` per cache entry type but not `tti` and `cap`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RedisCache {
+    /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
+    pub enabled: bool,
+
+    /// The address of the redis instance (e.g. `redis://username:password@example.com/0`). Only used
+    /// if redis is enabled.
+    pub address: String,
+
+    /// The cache entries configuration (e.g. expiry, ...).
+    pub entries: CacheEntries,
+}
+
+/// [CacheEntries] is a wrapper for configuring [CacheEntry] for all cache entry types.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CacheEntries {
+    /// The cache entry type for username to uuid resolve.
+    pub uuid: CacheEntry,
+
+    /// The cache entry type for uuid to profile resolve.
+    pub profile: CacheEntry,
+
+    /// The cache entry type for uuid to skin resolve.
+    pub skin: CacheEntry,
+
+    /// The cache entry type for uuid to head resolve.
+    pub head: CacheEntry,
+}
+
+/// [CacheEntry] holds configuration for `cap`, `exp`, `ttl`, `tti` and `..._na` for a
+/// single cache entry type.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CacheEntry {
+    /// The cache max capacity. May be supported by cache.
+    pub cap: u64,
+
+    /// The cache entry expiration duration. If elapsed, then the cache entry is marked as expired,
+    /// but not deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub exp: Duration,
+
+    /// The cache entry expiration duration for empty cache entries (e.g. username not found). If
+    /// elapsed, then the cache entry is marked as expired, but not deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub exp_na: Duration,
+
+    /// The cache entry time-to-life. If elapsed, then the cache entry is deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub ttl: Duration,
+
+    /// The cache entry time-to-life for empty cache entries (e.g. username not found). If elapsed,
+    /// then the cache entry is deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub ttl_na: Duration,
+
+    /// The cache entry time-to-idle. If elapsed, then the cache entry is deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub tti: Duration,
+
+    /// The cache entry time-to-idle for empty cache entries (e.g. username not found). If elapsed,
+    /// then the cache entry is deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub tti_na: Duration,
+}
+
+/// [RestServer] holds the rest server configuration. The rest server is implicitly enabled if either
+/// the rest gateway of the metrics service is enabled. If enabled, the rest server also exposes the
 /// metrics service at `/metrics`.
 ///
 /// The rest gateway exposes the grpc service api over rest.
 #[derive(Debug, Clone, Deserialize)]
-pub struct HttpServer {
+pub struct RestServer {
     /// Whether the rest gateway should be enabled.
     pub rest_gateway: bool,
-    /// The address of the http server. E.g. `0.0.0.0:9990` for running with an exposed port.
+
+    /// The address of the rest server. E.g. `0.0.0.0:9990` for running with an exposed port.
     pub address: SocketAddr,
 }
 
-/// `Metrics` holds the metrics service configuration. The metrics service is part of the http server.
-/// The http server will be, if not already so, implicitly enabled if the metrics service is enabled.
-/// If enabled, it is exposed at the http server at `/metrics`.
+/// [Metrics] holds the metrics service configuration. The metrics service is part of the rest server.
+/// The rest server will be, if not already so, implicitly enabled if the metrics service is enabled.
+/// If enabled, it is exposed at the rest server at `/metrics`.
 ///
 /// Metrics will always be aggregated by the application. This option is only used to expose the metrics
 /// service. The service supports basic auth that can be enabled. Make sure to override the default
@@ -88,65 +164,74 @@ pub struct HttpServer {
 pub struct Metrics {
     /// Whether the metrics service should be enabled.
     pub enabled: bool,
+
     /// Whether the metrics service should use basic auth.
     pub auth_enabled: bool,
+
     /// The basic auth username. Override default configuration if basic auth is enabled.
     pub username: String,
+
     /// The basic auth password. Override default configuration if basic auth is enabled.
     pub password: String,
 }
 
-/// `GrpcServer` holds the grpc server configuration. The grpc server is implicitly enabled if either
+/// [GrpcServer] holds the grpc server configuration. The grpc server is implicitly enabled if either
 /// the health reports or the profile api is enabled.
 #[derive(Debug, Clone, Deserialize)]
 pub struct GrpcServer {
     /// Whether grpc health service should be enabled.
     pub health_enabled: bool,
+
     /// Whether grpc profile api service should be enabled.
     pub profile_enabled: bool,
+
     /// The address of the grpc server. E.g. `0.0.0.0:50051` for running with an exposed port.
     pub address: SocketAddr,
 }
 
-/// `Sentry` hold the sentry configuration. The release is automatically inferred from cargo.
+/// [Sentry] hold the sentry configuration. The release is automatically inferred from cargo.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Sentry {
     /// Whether sentry should be enabled.
     pub enabled: bool,
+
     /// The address of the sentry instance. This can either be the official sentry or a self-hosted instance.
     /// The address has to bes event if sentry is disabled. In that case, the address can be any non-nil value.
     pub address: String,
+
     /// The environment of the application that should be communicated to sentry.
     pub environment: String,
 }
 
-/// `Settings` holds all configuration for the application. I.g. one immutable instance is created
+/// [Settings] holds all configuration for the application. I.g. one immutable instance is created
 /// on startup and then shared among the application components.
 ///
-/// If both the grpc and http server are disabled, the application will exit immediately after startup
+/// If both the grpc and rest server are disabled, the application will exit immediately after startup
 /// with status ok.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(unused)]
 pub struct Settings {
     /// Whether the application should be in debug mode. Application components may provide additional
     /// functionalities or outputs in debug mode.
     pub debug: bool,
+
     /// The service cache configuration.
     pub cache: Cache,
-    /// The metrics configuration. The metrics service is part of the [`http_server`](HttpServer).
+
+    /// The metrics configuration. The metrics service is part of the [RestServer].
     pub metrics: Metrics,
+
     /// The sentry configuration.
     pub sentry: Sentry,
-    /// The http server configuration. The http server will be enabled if either the rest gateway is enabled or the metrics.
-    pub http_server: HttpServer,
+
+    /// The rest server configuration. It will be enabled if either the rest gateway is enabled or the metrics.
+    pub rest_server: RestServer,
+
     /// The grpc server configuration.
     pub grpc_server: GrpcServer,
 }
 
 impl Settings {
-    /// Loads and creates a new instance of the application settings.
-    /// The settings are composed of the `config/default`, the `config/local`, the environment variables,
-    /// and an optional configuration file at `CONFIG_FILE` (default: `config/config`).
+    /// Creates a new application configuration as described in the [module documentation](crate::settings).
     pub fn new() -> Result<Self, ConfigError> {
         // the environment prefix for all `Settings` fields
         let env_prefix = env::var("ENV_PREFIX").unwrap_or_else(|_| "xenos".into());
@@ -165,11 +250,18 @@ impl Settings {
             .add_source(File::with_name(&config_file).required(false))
             // add in settings from the environment (with a prefix of APP)
             // e.g. `XENOS__DEBUG=1` would set the `debug` key, on the other hand,
-            // `XENOS__CACHE__VARIANT=redis` would enable the redis cache.
+            // `XENOS__CACHE__REDIS__ENABLED=1` would enable the redis cache.
             .add_source(Environment::with_prefix(&env_prefix).separator("__"))
             .build()?;
 
         // you can deserialize (and thus freeze) the entire configuration as
         s.try_deserialize()
     }
+}
+
+/// Deserializer that parses an [iso8601] duration string to a [Duration]. E.g. `PT1M` is a duration
+/// of one minute.
+pub fn parse_duration<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Duration, D::Error> {
+    let iso: iso8601::Duration = Deserialize::deserialize(deserializer)?;
+    Ok(Duration::from(iso))
 }

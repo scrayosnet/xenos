@@ -1,7 +1,11 @@
 pub mod api;
+#[cfg(feature = "static-testing")]
+pub mod testing;
 
 use crate::error::XenosError;
 use async_trait::async_trait;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -88,8 +92,37 @@ pub struct UsernameResolved {
     pub name: String,
 }
 
+impl Profile {
+    /// Gets the [texture property](TexturesProperty) of the [profile](Profile). It is expected, that
+    /// the property exists on the [profile](Profile) and is valid.
+    pub fn get_textures(&self) -> Result<TexturesProperty, XenosError> {
+        let prop = self
+            .properties
+            .iter()
+            .find(|prop| prop.name == *"textures")
+            .ok_or(XenosError::InvalidTextures("missing".to_string()))?;
+        decode_texture_prop(prop.value.clone())
+    }
+}
+
+/// Decodes a base64 encoded [texture property](TexturesProperty).
+pub fn decode_texture_prop(b64: String) -> Result<TexturesProperty, XenosError> {
+    let json = BASE64_STANDARD
+        .decode(b64)
+        .map_err(|_err| XenosError::InvalidTextures("base64 decode failed".to_string()))?;
+    serde_json::from_slice::<TexturesProperty>(&json)
+        .map_err(|_err| XenosError::InvalidTextures("json decode failed".to_string()))
+}
+
+/// Encodes [texture property](TexturesProperty) to base64.
+pub fn encode_texture_prop(prop: &TexturesProperty) -> Result<String, XenosError> {
+    let vec = serde_json::to_vec(prop)
+        .map_err(|_err| XenosError::InvalidTextures("json encode failed".to_string()))?;
+    Ok(BASE64_STANDARD.encode(vec))
+}
+
 #[async_trait]
-pub trait MojangApi: Send + Sync {
+pub trait Mojang: Send + Sync {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError>;
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError>;
     async fn fetch_image_bytes(&self, url: String, resource_tag: &str)
