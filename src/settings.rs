@@ -14,7 +14,7 @@
 //!
 //! ## Layer 2 (Deployment configuration) \[optional\]
 //!
-//! The next layer is an optional configuration file intended to be used be deployments. The file
+//! The next layer is an optional configuration file intended to be used by deployments. The file
 //! location can be configured using the `CONFIG_FILE` environment variable, defaulting to `config/config`.
 //! The file can be any file type supported by [config] (e.g. `config/config.toml`).
 //!
@@ -250,7 +250,7 @@ impl Settings {
             .add_source(File::with_name(&config_file).required(false))
             // add in settings from the environment (with a prefix of APP)
             // e.g. `XENOS__DEBUG=1` would set the `debug` key, on the other hand,
-            // `XENOS__CACHE__REDIS__ENABLED=redis` would enable the redis cache.
+            // `XENOS__CACHE__REDIS__ENABLED=1` would enable the redis cache.
             .add_source(Environment::with_prefix(&env_prefix).separator("__"))
             .build()?;
 
