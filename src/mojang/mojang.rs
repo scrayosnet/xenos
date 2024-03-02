@@ -4,8 +4,10 @@ use crate::mojang::{Mojang, Profile, UsernameResolved};
 use async_trait::async_trait;
 use bytes::Bytes;
 use lazy_static::lazy_static;
-use prometheus::{register_histogram_vec, register_int_counter_vec, HistogramVec, IntCounterVec};
+use prometheus::{register_histogram_vec, HistogramVec};
 use reqwest::StatusCode;
+use std::future::Future;
+use std::time::Instant;
 use uuid::Uuid;
 
 lazy_static! {
@@ -15,19 +17,36 @@ lazy_static! {
 
 // TODO update buckets
 lazy_static! {
-    static ref MOJANG_REQ_TOTAL: IntCounterVec = register_int_counter_vec!(
-        "xenos_mojang_requests_total",
-        "Total number of requests to mojang.",
-        &["request_type", "status"],
-    )
-    .unwrap();
+    /// A histogram for the mojang request status and request latencies in seconds. Use the
+    /// [monitor_reqwest] utility for ease of use.
     static ref MOJANG_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_mojang_request_duration_seconds",
         "The mojang request latencies in seconds.",
-        &["request_type"],
+        &["request_type", "status"],
         vec![0.020, 0.030, 0.040, 0.050, 0.060, 0.070, 0.080, 0.090, 0.100, 0.150, 0.200]
     )
     .unwrap();
+}
+
+/// Monitors the inner [reqwest] request (to the mojang api).
+async fn monitor_reqwest<F, Fut>(
+    request_type: &str,
+    f: F,
+) -> Result<reqwest::Response, reqwest::Error>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<reqwest::Response, reqwest::Error>>,
+{
+    let start = Instant::now();
+    let response = f().await;
+    let status = match &response {
+        Ok(response) => response.status().to_string(),
+        Err(_) => "error".to_string(),
+    };
+    MOJANG_REQ_HISTOGRAM
+        .with_label_values(&[request_type, &status])
+        .observe(start.elapsed().as_secs_f64());
+    response
 }
 
 /// [MojangApi] is stateless a wrapper for the official mojang api.
@@ -46,20 +65,13 @@ impl MojangApi {
         &self,
         usernames: &[String],
     ) -> Result<Vec<UsernameResolved>, XenosError> {
-        let _timer = MOJANG_REQ_HISTOGRAM
-            .with_label_values(&["uuids"])
-            .start_timer();
-        // make request
-        let response = HTTP_CLIENT
-            .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
-            .json(usernames)
-            .send()
-            .await?;
-        // update metrics
-        MOJANG_REQ_TOTAL
-            .with_label_values(&["uuids", response.status().as_str()])
-            .inc();
-        // get response
+        let response = monitor_reqwest("uuids", || {
+            HTTP_CLIENT
+                .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
+                .json(usernames)
+                .send()
+        })
+        .await?;
         match response.status() {
             StatusCode::NOT_FOUND => Err(NotFound),
             StatusCode::NO_CONTENT => Ok(vec![]),
@@ -87,20 +99,15 @@ impl Mojang for MojangApi {
 
     #[tracing::instrument(skip(self))]
     async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
-        let url = format!(
-            "https://sessionserver.mojang.com/session/minecraft/profile/{}",
-            uuid.simple()
-        );
-        let _timer = MOJANG_REQ_HISTOGRAM
-            .with_label_values(&["profile"])
-            .start_timer();
-        // make request
-        let response = HTTP_CLIENT.get(url).send().await?;
-        // update metrics
-        MOJANG_REQ_TOTAL
-            .with_label_values(&["profile", response.status().as_str()])
-            .inc();
-        // get response
+        let response = monitor_reqwest("profile", || {
+            HTTP_CLIENT
+                .get(format!(
+                    "https://sessionserver.mojang.com/session/minecraft/profile/{}",
+                    uuid.simple()
+                ))
+                .send()
+        })
+        .await?;
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
             StatusCode::TOO_MANY_REQUESTS => Err(NotRetrieved),
@@ -117,19 +124,10 @@ impl Mojang for MojangApi {
         url: String,
         resource_tag: &str,
     ) -> Result<Bytes, XenosError> {
-        let _timer = MOJANG_REQ_HISTOGRAM
-            .with_label_values(&[&format!("texture_{resource_tag}")])
-            .start_timer();
-        // make request
-        let response = HTTP_CLIENT.get(url).send().await?;
-        // update metrics
-        MOJANG_REQ_TOTAL
-            .with_label_values(&[
-                &format!("texture_{resource_tag}"),
-                response.status().as_str(),
-            ])
-            .inc();
-        // get response
+        let response = monitor_reqwest(&format!("texture_{resource_tag}"), || {
+            HTTP_CLIENT.get(url).send()
+        })
+        .await?;
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
             StatusCode::TOO_MANY_REQUESTS => Err(NotRetrieved),

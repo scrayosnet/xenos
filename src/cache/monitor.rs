@@ -70,27 +70,14 @@ where
 {
     let start = Instant::now();
     let result = f().await;
-    match &result {
-        Ok(Expired(_)) => {
-            CACHE_GET_HISTOGRAM
-                .with_label_values(&[cache_variant, request_type, "expired"])
-                .observe(start.elapsed().as_secs_f64());
-        }
-        Ok(Hit(_)) => {
-            CACHE_GET_HISTOGRAM
-                .with_label_values(&[cache_variant, request_type, "hit"])
-                .observe(start.elapsed().as_secs_f64());
-        }
-        Ok(Miss) => {
-            CACHE_GET_HISTOGRAM
-                .with_label_values(&[cache_variant, request_type, "miss"])
-                .observe(start.elapsed().as_secs_f64());
-        }
-        Err(_) => {
-            CACHE_GET_HISTOGRAM
-                .with_label_values(&[cache_variant, request_type, "err"])
-                .observe(start.elapsed().as_secs_f64());
-        }
-    }
+    let cache_result = match &result {
+        Ok(Expired(_)) => "expired",
+        Ok(Hit(_)) => "hit",
+        Ok(Miss) => "miss",
+        Err(_) => "error",
+    };
+    CACHE_GET_HISTOGRAM
+        .with_label_values(&[cache_variant, request_type, cache_result])
+        .observe(start.elapsed().as_secs_f64());
     result
 }
