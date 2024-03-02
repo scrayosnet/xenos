@@ -10,13 +10,11 @@ use std::future::Future;
 use std::time::Instant;
 use uuid::Uuid;
 
-lazy_static! {
-    // shared http client with connection pool, uses arc internally
-    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder().build().unwrap();
-}
-
 // TODO update buckets
 lazy_static! {
+    /// The shared http client with connection pool, uses arc internally
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder().build().unwrap();
+
     /// A histogram for the mojang request status and request latencies in seconds. Use the
     /// [monitor_reqwest] utility for ease of use.
     static ref MOJANG_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(

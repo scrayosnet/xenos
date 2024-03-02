@@ -19,14 +19,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
+// TODO update buckets
 lazy_static! {
     /// The username regex is used to check if a given username could be a valid username.
     /// If a string does not match the regex, the mojang API will never find a matching user id.
     static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
-}
 
-// TODO update buckets
-lazy_static! {
     /// A histogram for the age in seconds of cache results. Use the [monitor_service_call_with_age]
     /// utility for ease of use.
     pub static ref PROFILE_REQ_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
