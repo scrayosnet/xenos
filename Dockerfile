@@ -1,4 +1,4 @@
-FROM rust:alpine@sha256:9af4ed962405e24b37240ce34a2272e40cff99b4f5150cc6a53b03f95d40e6e0 AS builder
+FROM rust:alpine@sha256:ec93a9ad3065df593645171a3aa6c47b55578914d2c232860260dbd27bb0cbc0 AS builder
 
 # specify our build directory
 WORKDIR /usr/src/xenos

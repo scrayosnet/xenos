@@ -53,24 +53,31 @@ jobs:
         images: |
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           scrayosug/xenos
+        tags: |
+          type=ref,event=tag
         flavor: |
           latest=false
           suffix=-static
         labels: |
           org.opencontainers.image.title=xenos
-          org.opencontainers.image.description=Xenos is a Minecraft profile data proxy that can be used as an ultra-fast replacement for the official Mojang API on Kubernetes.
+          org.opencontainers.image.description=Static Integration Test Image for Xenos
           org.opencontainers.image.vendor=Scrayos UG (haftungsbeschränkt)
+          org.opencontainers.image.authors=Joshua Dean Küpper <admin@joshua-kuepper.de>, Paul Wagner <github@paulwagner.dev>
+          org.opencontainers.image.url=https://github.com/scrayosnet/xenos
+          org.opencontainers.image.documentation=https://github.com/scrayosnet/xenos
+          org.opencontainers.image.source=https://github.com/scrayosnet/xenos
+          org.opencontainers.image.licenses=MIT
 
     - name: Build and push Docker image
       id: build-and-push
       uses: docker/build-push-action@v5
       with:
         context: .
+        platforms: linux/amd64,linux/arm64
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
+        annotations: ${{ steps.meta.outputs.annotations }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
 
     # https://github.com/docker/scout-action/issues/16
     - name: Workaround Docker Scout Bug
