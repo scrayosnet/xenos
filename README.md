@@ -32,10 +32,10 @@ Xenos will always try to return a value, even if only outdated data is available
 Therefore, Xenos is a reliable service, offering high-availability for Mojang API calls. It offers all the standard
 Mojang APIs and will even be able to proxy authentication requests in the future.
 
-## Major Features
+## Feature Highlights
 
 * Perform [gRPC][grpc-docs] and [HTTP REST][rest-docs] lookups for profile information.
-* Do not worry about rate limits or caching at all! [^1]
+* Make efficient use of your available IP addresses to not run into rate limits.
 * Get best-in-class caching inbuilt and always request Xenos with very low latency.
 * Set Xenos up with replication, to get high availability.
 * Supply data in any representation without converting it first (dashed vs non-dashed UUIDs).
@@ -92,6 +92,3 @@ on what that means.
 [contributing-guide]: CONTRIBUTING.md
 
 [mit-license-doc]: https://choosealicense.com/licenses/mit/
-
-[^1]: Provided you're attaching enough different IP addresses to Xenos to sustain lookup bursts. Xenos will distribute
-its requests with Round-Robin until it runs out of tickets. The API is currently limited to 600 requests per 10 minutes.
