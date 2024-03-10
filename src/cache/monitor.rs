@@ -86,7 +86,6 @@ where
 mod test {
     use super::*;
     use crate::cache::CacheEntry;
-    use std::assert_matches::assert_matches;
 
     type VoidEntry = CacheEntry<()>;
 
@@ -99,7 +98,7 @@ mod test {
             monitor_cache_get("", "", || async { Err(XenosError::NotFound) }).await;
 
         // then
-        assert_matches!(monitored, Err(XenosError::NotFound));
+        assert!(matches!(monitored, Err(XenosError::NotFound)));
     }
 
     #[tokio::test]
@@ -111,7 +110,7 @@ mod test {
         let monitored = monitor_cache_get("test", "test", || async { Ok(entry.clone()) }).await;
 
         // then
-        assert_matches!(monitored, Ok(e) if e == entry);
+        assert!(matches!(monitored, Ok(e) if e == entry));
     }
 
     #[tokio::test]
@@ -123,7 +122,7 @@ mod test {
         let monitored = monitor_cache_get("test", "test", || async { Ok(entry.clone()) }).await;
 
         // then
-        assert_matches!(monitored, Ok(e) if e == entry);
+        assert!(matches!(monitored, Ok(e) if e == entry));
     }
 
     #[tokio::test]
@@ -135,7 +134,7 @@ mod test {
         let monitored = monitor_cache_get("test", "test", || async { Ok(entry.clone()) }).await;
 
         // then
-        assert_matches!(monitored, Ok(e) if e == entry);
+        assert!(matches!(monitored, Ok(e) if e == entry));
     }
 
     #[tokio::test]
@@ -147,6 +146,6 @@ mod test {
             monitor_cache_set("test", "test", || async { Err(XenosError::NotFound) }).await;
 
         // then
-        assert_matches!(monitored, Err(XenosError::NotFound));
+        assert!(matches!(monitored, Err(XenosError::NotFound)));
     }
 }

@@ -1,5 +1,3 @@
-#![feature(assert_matches)]
-
 //! Xenos is a Minecraft profile data proxy that can be used as an ultra-fast replacement for the official Mojang API.
 //!
 //! # Usage

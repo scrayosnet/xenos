@@ -175,8 +175,6 @@ pub fn get_epoch_seconds() -> u64 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::assert_matches::assert_matches;
-
     type VoidEntry = CacheEntry<()>;
 
     #[test]
@@ -224,7 +222,7 @@ mod test {
         let entry = val.into_cached(&Duration::from_secs(0), &Duration::from_secs(0));
 
         // then
-        assert_matches!(entry, Miss);
+        assert!(matches!(entry, Miss));
     }
 
     #[test]
@@ -236,7 +234,7 @@ mod test {
         let entry = val.into_cached(&Duration::from_secs(0), &Duration::from_secs(0));
 
         // then
-        assert_matches!(entry, Expired(_));
+        assert!(matches!(entry, Expired(_)));
     }
 
     #[test]
@@ -248,6 +246,6 @@ mod test {
         let entry = val.into_cached(&Duration::from_secs(10), &Duration::from_secs(10));
 
         // then
-        assert_matches!(entry, Hit(_));
+        assert!(matches!(entry, Hit(_)));
     }
 }
