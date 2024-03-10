@@ -154,3 +154,123 @@ impl XenosCache for MokaCache {
         .await
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::cache::Cached::{Expired, Hit, Miss};
+    use crate::cache::UuidData;
+    use crate::settings::{CacheEntries, CacheEntry};
+    use std::time::Duration;
+
+    fn build_moka_settings() -> settings::MokaCache {
+        let cache_entry = CacheEntry {
+            cap: 100,
+            exp: Duration::from_secs(120),
+            exp_na: Duration::from_secs(120),
+            ttl: Duration::from_secs(120),
+            ttl_na: Duration::from_secs(120),
+            tti: Duration::from_secs(120),
+            tti_na: Duration::from_secs(120),
+        };
+        settings::MokaCache {
+            enabled: true,
+            entries: CacheEntries {
+                uuid: cache_entry.clone(),
+                profile: cache_entry.clone(),
+                skin: cache_entry.clone(),
+                head: cache_entry,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_cache() {
+        // given
+        let settings = build_moka_settings();
+        let cache = MokaCache::new(&settings);
+
+        // when
+        let cached = cache
+            .get_uuid_by_username("hydrofin")
+            .await
+            .expect("expected get request to succeed");
+
+        // then
+        assert_eq!(cached, Miss)
+    }
+
+    #[tokio::test]
+    async fn get_uuid_hit() {
+        // given
+        let settings = build_moka_settings();
+        let cache = MokaCache::new(&settings);
+
+        // when
+        let entry = UuidEntry::new(UuidData {
+            username: "Hydrofin".to_string(),
+            uuid: Uuid::new_v4(),
+        });
+        cache
+            .set_uuid_by_username("hydrofin", entry.clone())
+            .await
+            .expect("expected set request to succeed");
+        let cached = cache
+            .get_uuid_by_username("hydrofin")
+            .await
+            .expect("expected get request to succeed");
+
+        // then
+        assert_eq!(cached, Hit(entry))
+    }
+
+    #[tokio::test]
+    async fn get_uuid_expired() {
+        // given
+        let mut settings = build_moka_settings();
+        settings.entries.uuid.exp = Duration::from_nanos(0);
+        let cache = MokaCache::new(&settings);
+
+        // when
+        let entry = UuidEntry::new(UuidData {
+            username: "Hydrofin".to_string(),
+            uuid: Uuid::new_v4(),
+        });
+        cache
+            .set_uuid_by_username("hydrofin", entry.clone())
+            .await
+            .expect("expected set request to succeed");
+
+        let cached = cache
+            .get_uuid_by_username("hydrofin")
+            .await
+            .expect("expected get request to succeed");
+
+        // then
+        assert_eq!(cached, Expired(entry))
+    }
+
+    #[tokio::test]
+    async fn get_uuid_miss() {
+        // given
+        let settings = build_moka_settings();
+        let cache = MokaCache::new(&settings);
+
+        // when
+        let entry = UuidEntry::new(UuidData {
+            username: "Hydrofin".to_string(),
+            uuid: Uuid::new_v4(),
+        });
+        cache
+            .set_uuid_by_username("hydrofin", entry.clone())
+            .await
+            .expect("expected set request to succeed");
+        let cached = cache
+            .get_uuid_by_username("scrayos")
+            .await
+            .expect("expected get request to succeed");
+
+        // then
+        assert_eq!(cached, Miss)
+    }
+}
