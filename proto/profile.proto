@@ -5,6 +5,9 @@ package scrayosnet.xenos;
 // Profile is the service responsible for profile information lookup. It also contains information about the player skin
 // and other properties of the profile.
 service Profile {
+    // Get the Minecraft UUIDs for a specific username.
+    rpc GetUuid(UuidRequest) returns (UuidResponse);
+
     // Get the Minecraft UUIDs for specific usernames.
     rpc GetUuids(UuidsRequest) returns (UuidsResponse);
 
@@ -16,6 +19,12 @@ service Profile {
 
     // Get the Minecraft Head for a specific UUID.
     rpc GetHead(HeadRequest) returns (HeadResponse);
+}
+
+// UuidRequest is a request of the Minecraft UUID of a specific, case-insensitive username.
+message UuidRequest {
+    // The individual, case-insensitive username whose UUIDs should be queried.
+    string username = 1;
 }
 
 // UuidsRequest is a request of the Minecraft UUIDs of specific, case-insensitive usernames.
