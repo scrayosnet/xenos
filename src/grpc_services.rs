@@ -2,7 +2,7 @@ use crate::error::XenosError;
 use crate::error::XenosError::{NotFound, NotRetrieved, UuidError};
 use crate::proto::{
     profile_server::Profile, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
-    SkinRequest, SkinResponse, UuidRequest, UuidResponse,
+    SkinRequest, SkinResponse, UuidsRequest, UuidsResponse,
 };
 use crate::service::Service;
 use std::sync::Arc;
@@ -38,7 +38,7 @@ impl GrpcProfileService {
 
 #[tonic::async_trait]
 impl Profile for GrpcProfileService {
-    async fn get_uuids(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
+    async fn get_uuids(&self, request: Request<UuidsRequest>) -> GrpcResult<UuidsResponse> {
         let usernames = request.into_inner().usernames;
         let uuids = self.service.get_uuids(&usernames).await?;
         Ok(Response::new(uuids.into()))

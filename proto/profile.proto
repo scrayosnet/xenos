@@ -6,7 +6,7 @@ package scrayosnet.xenos;
 // and other properties of the profile.
 service Profile {
     // Get the Minecraft UUIDs for specific usernames.
-    rpc GetUuids(UuidRequest) returns (UuidResponse);
+    rpc GetUuids(UuidsRequest) returns (UuidsResponse);
 
     // Get the Minecraft Profile for a specific UUID.
     rpc GetProfile(ProfileRequest) returns (ProfileResponse);
@@ -18,32 +18,27 @@ service Profile {
     rpc GetHead(HeadRequest) returns (HeadResponse);
 }
 
-// UuidRequest is a request of the Minecraft UUIDs of specific, case-insensitive usernames.
-message UuidRequest {
+// UuidsRequest is a request of the Minecraft UUIDs of specific, case-insensitive usernames.
+message UuidsRequest {
     // The individual, case-insensitive usernames whose UUIDs should be queried.
     repeated string usernames = 1;
 }
 
-// UuidResult is an individual result of the Minecraft UUID resolution at a specific timestamp.
-message UuidResult {
+// UuidResponse is an individual result of the Minecraft UUID resolution at a specific timestamp.
+message UuidResponse {
     // The unix timestamp (in seconds) at which the returned data was last updated.
     uint64 timestamp = 1;
-    // The resolved uuid data (username and uuid).
-    optional UuidData data = 2;
-}
-
-// UuidData is an individual result of the Minecraft UUID resolution.
-message UuidData {
     // The username with correct capitalization.
     string username = 2;
     // The UUID in hyphenated form.
     string uuid = 3;
 }
 
-// UuidResponse is a response with the Minecraft UUIDs of the requested usernames.
-message UuidResponse {
-    // The individual results of the requested usernames. The keys are the requested usernames in lowercase.
-    map<string, UuidResult> resolved = 1;
+// UuidsResponse is a response with the Minecraft UUIDs of the requested usernames.
+message UuidsResponse {
+    // The individual responses of the requested usernames. The keys are the requested usernames in lowercase.
+    // Usernames that weren't found, aren't included.
+    map<string, UuidResponse> resolved = 1;
 }
 
 // ProfileRequest is a request of the Minecraft Profile of a specific UUID.
