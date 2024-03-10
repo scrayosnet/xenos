@@ -75,11 +75,13 @@ impl From<SkinEntry> for SkinResponse {
         match value.data {
             None => SkinResponse {
                 timestamp: value.timestamp,
+                model: "".to_string(),
                 bytes: vec![],
             },
             Some(data) => SkinResponse {
                 timestamp: value.timestamp,
-                bytes: data,
+                model: data.model,
+                bytes: data.bytes,
             },
         }
     }
@@ -95,7 +97,7 @@ impl From<HeadEntry> for HeadResponse {
             },
             Some(data) => HeadResponse {
                 timestamp: value.timestamp,
-                bytes: data,
+                bytes: data.bytes,
             },
         }
     }

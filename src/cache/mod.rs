@@ -114,6 +114,19 @@ pub struct UuidData {
     pub uuid: Uuid,
 }
 
+/// A [SkinData] is a profile skin with metadata.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkinData {
+    pub bytes: Vec<u8>,
+    pub model: String,
+}
+
+/// A [HeadData] is a profile skin's head.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HeadData {
+    pub bytes: Vec<u8>,
+}
+
 /// A [UuidEntry] is a [cache entry](CacheEntry) that encapsulates [uuid data](UuidData). It is used
 /// to cache username to uuid resolve results.
 pub type UuidEntry = CacheEntry<UuidData>;
@@ -122,13 +135,13 @@ pub type UuidEntry = CacheEntry<UuidData>;
 /// It is used to cache uuid to profile resolve results.
 pub type ProfileEntry = CacheEntry<Profile>;
 
-/// A [SkinEntry] is a [cache entry](CacheEntry) that encapsulates [skin data](Vec<u8>). It is used
+/// A [SkinEntry] is a [cache entry](CacheEntry) that encapsulates [skin data](SkinData). It is used
 /// to cache uuid to skin data resolve results.
-pub type SkinEntry = CacheEntry<Vec<u8>>;
+pub type SkinEntry = CacheEntry<SkinData>;
 
-/// A [HeadEntry] is a [cache entry](CacheEntry) that encapsulates [head data](Vec<u8>). It is used
+/// A [HeadEntry] is a [cache entry](CacheEntry) that encapsulates [head data](HeadData). It is used
 /// to cache uuid to head data resolve results.
-pub type HeadEntry = CacheEntry<Vec<u8>>;
+pub type HeadEntry = CacheEntry<HeadData>;
 
 /// A [Cache](XenosCache) represents any cache used by Xenos. [Cache entries](CacheEntry) are
 /// returned best-effort. That means .can be in

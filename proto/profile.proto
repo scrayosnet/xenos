@@ -90,8 +90,10 @@ message SkinRequest {
 message SkinResponse {
     // The unix timestamp (in seconds) at which the returned data was last updated.
     uint64 timestamp = 1;
+    // The model of the player's Ski (e.g. "slim").
+    string model = 2;
     // The binary data of the 64x64 PNG image of the player's Skin.
-    bytes bytes = 2;
+    bytes bytes = 3;
 }
 
 // HeadRequest is a request of the Head texture of a specific UUID.

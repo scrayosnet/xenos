@@ -1,7 +1,7 @@
 use crate::cache::Cached::*;
 use crate::cache::{
-    get_epoch_seconds, CacheEntry, HeadEntry, ProfileEntry, SkinEntry, UuidData, UuidEntry,
-    XenosCache,
+    get_epoch_seconds, CacheEntry, HeadData, HeadEntry, ProfileEntry, SkinData, SkinEntry,
+    UuidData, UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
 use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
@@ -296,13 +296,17 @@ impl Service {
             Err(err) => return Err(err),
         };
 
-        let skin_url = profile_data
+        let skin_texture = profile_data
             .get_textures()?
             .textures
             .skin
-            .ok_or(InvalidTextures("skin missing".to_string()))?
-            .url;
-        let skin = match self.mojang.fetch_image_bytes(skin_url, "skin").await {
+            // TODO get default skin (based on uuid)
+            .ok_or(InvalidTextures("skin missing".to_string()))?;
+        let skin = match self
+            .mojang
+            .fetch_image_bytes(skin_texture.url.clone(), "skin")
+            .await
+        {
             Ok(skin) => skin,
             Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
             Err(NotFound) => {
@@ -313,7 +317,13 @@ impl Service {
             }
             Err(err) => return Err(err),
         };
-        let entry = SkinEntry::new(skin.to_vec());
+        let entry = SkinEntry::new(SkinData {
+            bytes: skin.to_vec(),
+            model: skin_texture
+                .metadata
+                .map(|metadata| metadata.model.clone())
+                .unwrap_or("classic".to_string()),
+        });
         self.cache.set_skin_by_uuid(*uuid, entry.clone()).await?;
         Ok(entry)
     }
@@ -347,9 +357,9 @@ impl Service {
             Err(err) => return Err(err),
         };
 
-        let head_bytes = Self::build_skin_head(&skin_data, overlay)?;
+        let head_bytes = Self::build_skin_head(&skin_data.bytes, overlay)?;
 
-        let entry = HeadEntry::new(head_bytes);
+        let entry = HeadEntry::new(HeadData { bytes: head_bytes });
         self.cache
             .set_head_by_uuid(*uuid, entry.clone(), overlay)
             .await?;
