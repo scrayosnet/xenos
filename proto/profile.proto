@@ -17,6 +17,8 @@ service Profile {
     // Get the Minecraft Skin for a specific UUID.
     rpc GetSkin(SkinRequest) returns (SkinResponse);
 
+    // TODO get cape
+
     // Get the Minecraft Head for a specific UUID.
     rpc GetHead(HeadRequest) returns (HeadResponse);
 }

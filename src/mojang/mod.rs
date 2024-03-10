@@ -121,6 +121,20 @@ pub fn encode_texture_prop(prop: &TexturesProperty) -> Result<String, XenosError
     Ok(BASE64_STANDARD.encode(vec))
 }
 
+/// Calculates the java hashcode of a [Uuid].
+/// See https://hg.openjdk.org/jdk8/jdk8/jdk/file/687fd7c7986d/src/share/classes/java/util/UUID.java#l394
+pub fn uuid_java_hashcode(uuid: &Uuid) -> i32 {
+    let (most_sig_bits, least_sig_bits) = uuid.as_u64_pair();
+    let hilo = most_sig_bits ^ least_sig_bits;
+    ((hilo >> 32) ^ hilo) as i32
+}
+
+/// Checks if the default skin for a user is "Steve". Otherwise, it is "Alex".
+/// See https://wiki.vg/Mojang_API#UUID_to_Profile_and_Skin.2FCape
+pub fn is_steve(uuid: &Uuid) -> bool {
+    uuid_java_hashcode(uuid) % 2 == 0
+}
+
 #[async_trait]
 pub trait Mojang: Send + Sync {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError>;
