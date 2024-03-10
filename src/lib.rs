@@ -132,6 +132,7 @@ async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
     // build rest server
     let rest_app = Router::new()
         .optional_route(metrics_enabled, "/metrics", get(rest_services::metrics))
+        .optional_route(gateway_enabled, "/uuid", post(rest_services::uuid))
         .optional_route(gateway_enabled, "/uuids", post(rest_services::uuids))
         .optional_route(gateway_enabled, "/profile", post(rest_services::profile))
         .optional_route(gateway_enabled, "/skin", post(rest_services::skin))

@@ -142,6 +142,20 @@ impl Service {
         Ok(head_bytes)
     }
 
+    /// Resolves the provided (case-insensitive) username to its (case-sensitive) username and uuid
+    /// from cache or mojang.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_uuid(&self, username: &str) -> Result<UuidEntry, XenosError> {
+        monitor_service_call("uuid", || async {
+            let mut uuids = self._get_uuids(&[username.to_string()]).await?;
+            match uuids.remove(&username.to_lowercase()) {
+                Some(uuid) if uuid.data.is_some() => Ok(uuid),
+                _ => Err(NotFound),
+            }
+        })
+        .await
+    }
+
     /// Resolves the provided (case-insensitive) usernames to their (case-sensitive) username and uuid
     /// from cache or mojang.
     #[tracing::instrument(skip(self))]

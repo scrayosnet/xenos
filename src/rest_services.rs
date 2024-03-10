@@ -1,7 +1,7 @@
 use crate::error::XenosError;
 use crate::proto::{
     HeadRequest, HeadResponse, ProfileRequest, ProfileResponse, SkinRequest, SkinResponse,
-    UuidRequest, UuidResponse,
+    UuidRequest, UuidResponse, UuidsRequest, UuidsResponse,
 };
 use crate::service::Service;
 use axum::{
@@ -63,10 +63,19 @@ pub async fn metrics(
 }
 
 /// An [axum] handler for [UuidRequest] rest gateway.
-pub async fn uuids(
+pub async fn uuid(
     Extension(service): Extension<Arc<Service>>,
     Json(payload): Json<UuidRequest>,
 ) -> RestResult<UuidResponse> {
+    let username = &payload.username;
+    Ok(Json(service.get_uuid(username).await?.into()))
+}
+
+/// An [axum] handler for [UuidsRequest] rest gateway.
+pub async fn uuids(
+    Extension(service): Extension<Arc<Service>>,
+    Json(payload): Json<UuidsRequest>,
+) -> RestResult<UuidsResponse> {
     let usernames = &payload.usernames;
     Ok(Json(service.get_uuids(usernames).await?.into()))
 }

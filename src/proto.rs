@@ -9,23 +9,32 @@ use std::collections::HashMap;
 tonic::include_proto!("scrayosnet.xenos");
 
 // conversion utility for converting service results into response data
-impl From<HashMap<String, UuidEntry>> for UuidResponse {
+impl From<HashMap<String, UuidEntry>> for UuidsResponse {
     fn from(value: HashMap<String, UuidEntry>) -> Self {
-        UuidResponse {
-            resolved: value.into_iter().map(|(k, v)| (k, v.into())).collect(),
+        UuidsResponse {
+            resolved: value
+                .into_iter()
+                .filter(|(_, v)| v.data.is_some())
+                .map(|(k, v)| (k, v.into()))
+                .collect(),
         }
     }
 }
 
 // conversion utility for converting service results into response data
-impl From<UuidEntry> for UuidResult {
+impl From<UuidEntry> for UuidResponse {
     fn from(value: UuidEntry) -> Self {
-        UuidResult {
-            timestamp: value.timestamp,
-            data: value.data.map(|data| UuidData {
+        match value.data {
+            None => UuidResponse {
+                timestamp: value.timestamp,
+                username: "".to_string(),
+                uuid: "".to_string(),
+            },
+            Some(data) => UuidResponse {
+                timestamp: value.timestamp,
                 username: data.username,
                 uuid: data.uuid.hyphenated().to_string(),
-            }),
+            },
         }
     }
 }
@@ -33,8 +42,15 @@ impl From<UuidEntry> for UuidResult {
 // conversion utility for converting service results into response data
 impl From<ProfileEntry> for ProfileResponse {
     fn from(value: ProfileEntry) -> Self {
-        if let Some(data) = value.data {
-            return ProfileResponse {
+        match value.data {
+            None => ProfileResponse {
+                timestamp: value.timestamp,
+                uuid: "".to_string(),
+                name: "".to_string(),
+                properties: vec![],
+                profile_actions: vec![],
+            },
+            Some(data) => ProfileResponse {
                 timestamp: value.timestamp,
                 uuid: data.id.hyphenated().to_string(),
                 name: data.name,
@@ -48,14 +64,7 @@ impl From<ProfileEntry> for ProfileResponse {
                     })
                     .collect(),
                 profile_actions: data.profile_actions,
-            };
-        }
-        ProfileResponse {
-            timestamp: value.timestamp,
-            uuid: "".to_string(),
-            name: "".to_string(),
-            properties: vec![],
-            profile_actions: vec![],
+            },
         }
     }
 }
@@ -63,9 +72,15 @@ impl From<ProfileEntry> for ProfileResponse {
 // conversion utility for converting service results into response data
 impl From<SkinEntry> for SkinResponse {
     fn from(value: SkinEntry) -> Self {
-        SkinResponse {
-            timestamp: value.timestamp,
-            bytes: value.data.unwrap_or_default(),
+        match value.data {
+            None => SkinResponse {
+                timestamp: value.timestamp,
+                bytes: vec![],
+            },
+            Some(data) => SkinResponse {
+                timestamp: value.timestamp,
+                bytes: data,
+            },
         }
     }
 }
@@ -73,9 +88,15 @@ impl From<SkinEntry> for SkinResponse {
 // conversion utility for converting service results into response data
 impl From<HeadEntry> for HeadResponse {
     fn from(value: HeadEntry) -> Self {
-        HeadResponse {
-            timestamp: value.timestamp,
-            bytes: value.data.unwrap_or_default(),
+        match value.data {
+            None => HeadResponse {
+                timestamp: value.timestamp,
+                bytes: vec![],
+            },
+            Some(data) => HeadResponse {
+                timestamp: value.timestamp,
+                bytes: data,
+            },
         }
     }
 }
