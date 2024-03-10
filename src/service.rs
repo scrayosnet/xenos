@@ -149,8 +149,8 @@ impl Service {
         monitor_service_call("uuid", || async {
             let mut uuids = self._get_uuids(&[username.to_string()]).await?;
             match uuids.remove(&username.to_lowercase()) {
-                None => Err(NotFound),
-                Some(uuid) => Ok(uuid),
+                Some(uuid) if uuid.data.is_some() => Ok(uuid),
+                _ => Err(NotFound),
             }
         })
         .await
