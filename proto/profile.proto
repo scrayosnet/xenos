@@ -23,7 +23,7 @@ service Profile {
 
 // UuidRequest is a request of the Minecraft UUID of a specific, case-insensitive username.
 message UuidRequest {
-    // The individual, case-insensitive username whose UUIDs should be queried.
+    // The individual, case-insensitive username whose UUID should be queried.
     string username = 1;
 }
 
