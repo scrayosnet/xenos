@@ -16,15 +16,21 @@ use std::fmt::Debug;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// A [Cached] is a cache response wrapper. It is used to signal the state of the cache response.
-/// A cache response may be in one of three states (excluding error results).
-/// - [Hit] if a valid entry was found in the cache,
-/// - [Expired] if an entry was found, but it has expired, and
-/// - [Miss] if no entry was found.
+/// [Cached] is a utility wrapper for [CacheEntry]. Most caches respond with an [Option] for get requests.
+/// In the services we are interested not only if an entry was found but if the entry is considered
+/// [Expired] by the cache. By wrapping the [CacheEntry] in [Cached], the caches can communicate their
+/// intent while providing ease-of-use for the consumer with the match operator.
+///
+/// Additionally, the [CacheEntry] provides methods for checking its creation time and age.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Cached<T> {
+    /// Value was found.
     Hit(T),
+
+    /// Value was found but is flagged as expired by cache.
     Expired(T),
+
+    /// Value was not found.
     Miss,
 }
 
@@ -37,7 +43,10 @@ pub struct CacheEntry<D>
 where
     D: Debug + Clone + PartialEq + Eq,
 {
+    /// The entry creation time in seconds.
     pub timestamp: u64,
+
+    /// The inner data of the cache entry.
     pub data: Option<D>,
 }
 
@@ -73,9 +82,9 @@ where
         get_epoch_seconds() - self.timestamp
     }
 
-    /// Checks if the [CacheEntry] age is larger than the provided expiry.
-    pub fn is_expired_after(&self, expiry: &Duration) -> bool {
-        self.current_age() > expiry.as_secs()
+    /// Checks if the [CacheEntry] age is greater or equal than the provided expiry.
+    pub fn is_expired(&self, expiry: &Duration) -> bool {
+        self.current_age() >= expiry.as_secs()
     }
 }
 
@@ -91,8 +100,8 @@ where
     fn into_cached(self, expiry: &Duration, expiry_missing: &Duration) -> Cached<CacheEntry<D>> {
         match self {
             None => Miss,
-            Some(v) if v.is_empty() && v.is_expired_after(expiry_missing) => Expired(v),
-            Some(v) if v.is_expired_after(expiry) => Expired(v),
+            Some(v) if v.is_empty() && v.is_expired(expiry_missing) => Expired(v),
+            Some(v) if v.is_expired(expiry) => Expired(v),
             Some(v) => Hit(v),
         }
     }
@@ -161,4 +170,84 @@ pub trait XenosCache: Debug + Send + Sync {
 /// Gets the current time in seconds.
 pub fn get_epoch_seconds() -> u64 {
     u64::try_from(Utc::now().timestamp()).unwrap()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::assert_matches::assert_matches;
+
+    type VoidEntry = CacheEntry<()>;
+
+    #[test]
+    fn is_empty() {
+        // given
+        let entry = VoidEntry::new_empty();
+
+        // when
+
+        // then
+        assert!(entry.is_empty());
+    }
+
+    #[test]
+    fn is_not_empty() {
+        // given
+        let entry = VoidEntry::new(());
+
+        // when
+
+        // then
+        assert!(!entry.is_empty());
+    }
+
+    #[test]
+    fn expired() {
+        // given
+        let entry = VoidEntry::new_empty();
+
+        // when
+
+        // then
+        assert!(entry.is_expired(&Duration::from_secs(0)));
+        assert!(!entry.is_expired(&Duration::from_secs(1)));
+        assert!(!entry.is_expired(&Duration::from_secs(10)));
+        assert!(!entry.is_expired(&Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn into_cached_miss() {
+        // given
+        let val: Option<VoidEntry> = None;
+
+        // when
+        let entry = val.into_cached(&Duration::from_secs(0), &Duration::from_secs(0));
+
+        // then
+        assert_matches!(entry, Miss);
+    }
+
+    #[test]
+    fn into_cached_expired() {
+        // given
+        let val: Option<VoidEntry> = Some(VoidEntry::new_empty());
+
+        // when
+        let entry = val.into_cached(&Duration::from_secs(0), &Duration::from_secs(0));
+
+        // then
+        assert_matches!(entry, Expired(_));
+    }
+
+    #[test]
+    fn into_cached_hit() {
+        // given
+        let val: Option<VoidEntry> = Some(VoidEntry::new_empty());
+
+        // when
+        let entry = val.into_cached(&Duration::from_secs(10), &Duration::from_secs(10));
+
+        // then
+        assert_matches!(entry, Hit(_));
+    }
 }

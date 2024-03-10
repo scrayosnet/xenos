@@ -81,3 +81,72 @@ where
         .observe(start.elapsed().as_secs_f64());
     result
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::cache::CacheEntry;
+    use std::assert_matches::assert_matches;
+
+    type VoidEntry = CacheEntry<()>;
+
+    #[tokio::test]
+    async fn get_err() {
+        // given
+
+        // when
+        let monitored: Result<Cached<VoidEntry>, XenosError> =
+            monitor_cache_get("", "", || async { Err(XenosError::NotFound) }).await;
+
+        // then
+        assert_matches!(monitored, Err(XenosError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn get_expired() {
+        // given
+        let entry = Expired(VoidEntry::new_empty());
+
+        // when
+        let monitored = monitor_cache_get("test", "test", || async { Ok(entry.clone()) }).await;
+
+        // then
+        assert_matches!(monitored, Ok(e) if e == entry);
+    }
+
+    #[tokio::test]
+    async fn get_hit() {
+        // given
+        let entry = Hit(VoidEntry::new_empty());
+
+        // when
+        let monitored = monitor_cache_get("test", "test", || async { Ok(entry.clone()) }).await;
+
+        // then
+        assert_matches!(monitored, Ok(e) if e == entry);
+    }
+
+    #[tokio::test]
+    async fn get_miss() {
+        // given
+        let entry: Cached<VoidEntry> = Miss;
+
+        // when
+        let monitored = monitor_cache_get("test", "test", || async { Ok(entry.clone()) }).await;
+
+        // then
+        assert_matches!(monitored, Ok(e) if e == entry);
+    }
+
+    #[tokio::test]
+    async fn set_err() {
+        // given
+
+        // when
+        let monitored =
+            monitor_cache_set("test", "test", || async { Err(XenosError::NotFound) }).await;
+
+        // then
+        assert_matches!(monitored, Err(XenosError::NotFound));
+    }
+}
