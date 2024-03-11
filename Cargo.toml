@@ -35,7 +35,7 @@ tower = "0.4.13"
 hyper = "1.2"
 futures = "0.3.30"
 async-trait = "0.1.77"
-chrono = "0.4.34"
+chrono = "0.4.35"
 prometheus = { version = "0.13" }
 futures-util = "0.3.30"
 config = "0.14.0"
