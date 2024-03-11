@@ -192,9 +192,9 @@ mod test {
         // when
 
         // then
-        assert_eq!(2, api.uuids.len());
-        assert_eq!(2, api.profiles.len());
-        assert_eq!(2 * 2, api.images.len());
+        assert_eq!(3, api.uuids.len());
+        assert_eq!(3, api.profiles.len());
+        assert_eq!(2, api.images.len());
     }
 
     #[tokio::test]
