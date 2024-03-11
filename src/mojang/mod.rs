@@ -10,6 +10,22 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// The model key for the classic skin (e.g. "Steve")
+pub const CLASSIC_MODEL: &str = "classic";
+
+/// The model key for the slim skin (e.g. "Alex")
+pub const SLIM_MODEL: &str = "slim";
+
+// TODO use actual Steve/Alex skins
+
+/// The Steve skin.
+pub const STEVE_SKIN: Bytes =
+    Bytes::from_static(include_bytes!("../../resources/profiles/hydrofin_skin.png"));
+
+/// The Alex skin.
+pub const ALEX_SKIN: Bytes =
+    Bytes::from_static(include_bytes!("../../resources/profiles/hydrofin_skin.png"));
+
 /// Represents a single Minecraft user profile with all current properties.
 ///
 /// Each Minecraft account is associated with exactly one profile that reflects the visual and

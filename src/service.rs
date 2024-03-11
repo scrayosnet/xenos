@@ -4,8 +4,9 @@ use crate::cache::{
     UuidData, UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
-use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
-use crate::mojang::Mojang;
+use crate::error::XenosError::{NotFound, NotRetrieved};
+use crate::mojang;
+use crate::mojang::{Mojang, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_SKIN};
 use crate::settings::Settings;
 use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
@@ -281,51 +282,63 @@ impl Service {
             Miss => None,
         };
 
-        let profile_data = match self.get_profile(uuid).await {
-            Ok(ProfileEntry {
-                data: Some(profile_data),
-                ..
-            }) => profile_data,
-            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
-            Ok(_) | Err(NotFound) => {
-                self.cache
-                    .set_skin_by_uuid(*uuid, SkinEntry::new_empty())
-                    .await?;
-                return Err(NotFound);
+        // get the skin texture from the profile
+        match self.fetch_profile_skin(uuid).await {
+            // profile skin was successfully fetched from mojang (update cache)
+            Ok(Some(skin_data)) => {
+                let entry = SkinEntry::new(skin_data);
+                self.cache.set_skin_by_uuid(*uuid, entry.clone()).await?;
+                Ok(entry)
             }
-            Err(err) => return Err(err),
-        };
-
-        let skin_texture = profile_data
-            .get_textures()?
-            .textures
-            .skin
-            // TODO get default skin (based on uuid)
-            .ok_or(InvalidTextures("skin missing".to_string()))?;
-        let skin = match self
-            .mojang
-            .fetch_image_bytes(skin_texture.url.clone(), "skin")
-            .await
-        {
-            Ok(skin) => skin,
-            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
+            // profile has no skin specified (use default skin)
+            Ok(None) => match mojang::is_steve(uuid) {
+                true => Ok(SkinEntry::new(SkinData {
+                    bytes: STEVE_SKIN.to_vec(),
+                    model: CLASSIC_MODEL.to_string(),
+                })),
+                false => Ok(SkinEntry::new(SkinData {
+                    bytes: ALEX_SKIN.to_vec(),
+                    model: SLIM_MODEL.to_string(),
+                })),
+            },
+            // profile skin is specified but could not be retrieved, try to return fallback
+            Err(NotRetrieved) => fallback.ok_or(NotRetrieved),
+            // profile or profile skin was not found (update cache)
             Err(NotFound) => {
                 self.cache
                     .set_skin_by_uuid(*uuid, SkinEntry::new_empty())
                     .await?;
-                return Err(NotFound);
+                Err(NotFound)
             }
-            Err(err) => return Err(err),
+            // any other error that might have occurred
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Fetches the skin from a [Profile] by its [Uuid]. If no skin is specified in the [Profile],
+    /// [None] is returned. This method does NOT update the skin cache.
+    async fn fetch_profile_skin(&self, uuid: &Uuid) -> Result<Option<SkinData>, XenosError> {
+        let entry = self.get_profile(uuid).await?;
+        let Some(profile) = entry.data else {
+            return Err(NotFound);
         };
-        let entry = SkinEntry::new(SkinData {
+        let Some(skin_texture) = profile.get_textures()?.textures.skin else {
+            return Ok(None);
+        };
+
+        let skin = self
+            .mojang
+            .fetch_image_bytes(skin_texture.url, "skin")
+            .await?;
+
+        Ok(Some(SkinData {
             bytes: skin.to_vec(),
+            // if the player has the "Steve?" skin, "metadata" will be missing
             model: skin_texture
                 .metadata
-                .map(|metadata| metadata.model.clone())
-                .unwrap_or("classic".to_string()),
-        });
-        self.cache.set_skin_by_uuid(*uuid, entry.clone()).await?;
-        Ok(entry)
+                .map(|md| md.model)
+                .unwrap_or(CLASSIC_MODEL.to_string()),
+        }))
     }
 
     /// Gets the profile head for an uuid from cache or mojang. The head may include the head overlay.
