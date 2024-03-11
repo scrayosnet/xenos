@@ -17,7 +17,8 @@ service Profile {
     // Get the Minecraft Skin for a specific UUID.
     rpc GetSkin(SkinRequest) returns (SkinResponse);
 
-    // TODO get cape
+    // Get the Minecraft Cape for a specific UUID.
+    rpc GetCape(CapeRequest) returns (CapeResponse);
 
     // Get the Minecraft Head for a specific UUID.
     rpc GetHead(HeadRequest) returns (HeadResponse);
@@ -92,9 +93,23 @@ message SkinRequest {
 message SkinResponse {
     // The unix timestamp (in seconds) at which the returned data was last updated.
     uint64 timestamp = 1;
-    // The model of the player's Ski (e.g. "slim").
+    // The model of the player's Skin (e.g. "slim").
     string model = 2;
     // The binary data of the 64x64 PNG image of the player's Skin.
+    bytes bytes = 3;
+}
+
+// CapeRequest is a request of the Cape texture of a specific UUID.
+message CapeRequest {
+    // The UUID in simple or hyphenated form whose Minecraft Cape should be queried.
+    string uuid = 1;
+}
+
+// CapeResponse is a response with the Cape texture of the requested UUID.
+message CapeResponse {
+    // The unix timestamp (in seconds) at which the returned data was last updated.
+    uint64 timestamp = 1;
+    // The binary data of the PNG image of the player's Cape.
     bytes bytes = 3;
 }
 

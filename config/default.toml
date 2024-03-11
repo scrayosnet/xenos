@@ -9,6 +9,7 @@ address = "redis://username:password@example.com/0" # update if enabled
 uuid = {cap = 0, exp = "PT120M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
 profile = {cap = 0, exp = "PT10M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
 skin = {cap = 0, exp = "PT10M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
+cape = {cap = 0, exp = "PT10M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
 head = {cap = 0, exp = "PT10M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
 
 [cache.moka]
@@ -18,6 +19,7 @@ enabled = false
 uuid = {cap = 500, exp = "PT10M", exp_na = "PT1M", ttl = "PT1H", ttl_na = "PT30M", tti = "PT1H", tti_na = "PT30M"}
 profile = {cap = 300, exp = "PT1M", exp_na = "PT1M", ttl = "PT1H", ttl_na = "PT30M", tti = "PT1H", tti_na = "PT30M"}
 skin = {cap = 300, exp = "PT1M", exp_na = "PT1M", ttl = "PT1H", ttl_na = "PT30M", tti = "PT1H", tti_na = "PT30M"}
+cape = {cap = 300, exp = "PT1M", exp_na = "PT1M", ttl = "PT1H", ttl_na = "PT30M", tti = "PT1H", tti_na = "PT30M"}
 head = {cap = 300, exp = "PT1M", exp_na = "PT1M", ttl = "PT1H", ttl_na = "PT30M", tti = "PT1H", tti_na = "PT30M"}
 
 [sentry]

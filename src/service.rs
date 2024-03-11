@@ -1,7 +1,7 @@
 use crate::cache::Cached::*;
 use crate::cache::{
-    get_epoch_seconds, CacheEntry, HeadData, HeadEntry, ProfileEntry, SkinData, SkinEntry,
-    UuidData, UuidEntry, XenosCache,
+    get_epoch_seconds, CacheEntry, CapeData, CapeEntry, HeadData, HeadEntry, ProfileEntry,
+    SkinData, SkinEntry, UuidData, UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
 use crate::error::XenosError::{NotFound, NotRetrieved};
@@ -317,6 +317,7 @@ impl Service {
 
     /// Fetches the skin from a [Profile] by its [Uuid]. If no skin is specified in the [Profile],
     /// [None] is returned. This method does NOT update the skin cache.
+    #[tracing::instrument(skip(self))]
     async fn fetch_profile_skin(&self, uuid: &Uuid) -> Result<Option<SkinData>, XenosError> {
         let entry = self.get_profile(uuid).await?;
         let Some(profile) = entry.data else {
@@ -338,6 +339,65 @@ impl Service {
                 .metadata
                 .map(|md| md.model)
                 .unwrap_or(CLASSIC_MODEL.to_string()),
+        }))
+    }
+
+    /// Gets the profile cape for an uuid from cache or mojang.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_cape(&self, uuid: &Uuid) -> Result<CapeEntry, XenosError> {
+        monitor_service_call_with_age("cape", || self._get_cape(uuid)).await
+    }
+
+    async fn _get_cape(&self, uuid: &Uuid) -> Result<CapeEntry, XenosError> {
+        // try to get from cache
+        let cached = self.cache.get_cape_by_uuid(uuid).await?;
+        let fallback = match cached {
+            Hit(entry) => return Ok(entry),
+            Expired(entry) => Some(entry),
+            Miss => None,
+        };
+
+        // get the cape texture from the profile
+        match self.fetch_profile_cape(uuid).await {
+            // profile cape was successfully fetched from mojang (update cache)
+            Ok(Some(cape_data)) => {
+                let entry = CapeEntry::new(cape_data);
+                self.cache.set_cape_by_uuid(*uuid, entry.clone()).await?;
+                Ok(entry)
+            }
+            // profile cape is specified but could not be retrieved, try to return fallback
+            Err(NotRetrieved) => fallback.ok_or(NotRetrieved),
+            // profile or profile cape was not found (update cache)
+            Ok(None) | Err(NotFound) => {
+                self.cache
+                    .set_cape_by_uuid(*uuid, CapeEntry::new_empty())
+                    .await?;
+                Err(NotFound)
+            }
+            // any other error that might have occurred
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Fetches the cape from a [Profile] by its [Uuid]. If no cape is specified in the [Profile],
+    /// [None] is returned. This method does NOT update the cape cache.
+    #[tracing::instrument(skip(self))]
+    async fn fetch_profile_cape(&self, uuid: &Uuid) -> Result<Option<CapeData>, XenosError> {
+        let entry = self.get_profile(uuid).await?;
+        let Some(profile) = entry.data else {
+            return Err(NotFound);
+        };
+        let Some(cape_texture) = profile.get_textures()?.textures.cape else {
+            return Ok(None);
+        };
+
+        let cape = self
+            .mojang
+            .fetch_image_bytes(cape_texture.url, "cape")
+            .await?;
+
+        Ok(Some(CapeData {
+            bytes: cape.to_vec(),
         }))
     }
 

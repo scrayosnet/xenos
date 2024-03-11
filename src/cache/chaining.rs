@@ -1,7 +1,7 @@
 use crate::cache::Cached::Miss;
 use crate::cache::{
-    monitor_cache_get, monitor_cache_set, Cached, HeadEntry, ProfileEntry, SkinEntry, UuidEntry,
-    XenosCache,
+    monitor_cache_get, monitor_cache_set, Cached, CapeEntry, HeadEntry, ProfileEntry, SkinEntry,
+    UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
 use async_trait::async_trait;
@@ -155,7 +155,7 @@ impl XenosCache for ChainingCache {
 
     #[tracing::instrument(skip(self))]
     async fn get_profile_by_uuid(&self, uuid: &Uuid) -> Result<Cached<ProfileEntry>, XenosError> {
-        monitor_cache_get("chaining", "uuid", || {
+        monitor_cache_get("chaining", "profile", || {
             self.get(
                 |cache| cache.get_profile_by_uuid(uuid),
                 |cache, entry| cache.set_profile_by_uuid(*uuid, entry),
@@ -166,7 +166,7 @@ impl XenosCache for ChainingCache {
 
     #[tracing::instrument(skip(self))]
     async fn set_profile_by_uuid(&self, uuid: Uuid, entry: ProfileEntry) -> Result<(), XenosError> {
-        monitor_cache_set("chaining", "uuid", || {
+        monitor_cache_set("chaining", "profile", || {
             self.set(entry, |cache, entry| cache.set_profile_by_uuid(uuid, entry))
         })
         .await
@@ -174,7 +174,7 @@ impl XenosCache for ChainingCache {
 
     #[tracing::instrument(skip(self))]
     async fn get_skin_by_uuid(&self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError> {
-        monitor_cache_get("chaining", "uuid", || {
+        monitor_cache_get("chaining", "skin", || {
             self.get(
                 |cache| cache.get_skin_by_uuid(uuid),
                 |cache, entry| cache.set_skin_by_uuid(*uuid, entry),
@@ -185,8 +185,25 @@ impl XenosCache for ChainingCache {
 
     #[tracing::instrument(skip(self))]
     async fn set_skin_by_uuid(&self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError> {
-        monitor_cache_set("chaining", "uuid", || {
+        monitor_cache_set("chaining", "skin", || {
             self.set(entry, |cache, entry| cache.set_skin_by_uuid(uuid, entry))
+        })
+        .await
+    }
+
+    async fn get_cape_by_uuid(&self, uuid: &Uuid) -> Result<Cached<CapeEntry>, XenosError> {
+        monitor_cache_get("chaining", "cape", || {
+            self.get(
+                |cache| cache.get_cape_by_uuid(uuid),
+                |cache, entry| cache.set_cape_by_uuid(*uuid, entry),
+            )
+        })
+        .await
+    }
+
+    async fn set_cape_by_uuid(&self, uuid: Uuid, entry: CapeEntry) -> Result<(), XenosError> {
+        monitor_cache_set("chaining", "cape", || {
+            self.set(entry, |cache, entry| cache.set_cape_by_uuid(uuid, entry))
         })
         .await
     }
@@ -197,7 +214,7 @@ impl XenosCache for ChainingCache {
         uuid: &Uuid,
         overlay: &bool,
     ) -> Result<Cached<HeadEntry>, XenosError> {
-        monitor_cache_get("chaining", "uuid", || {
+        monitor_cache_get("chaining", "head", || {
             self.get(
                 |cache| cache.get_head_by_uuid(uuid, overlay),
                 |cache, entry| cache.set_head_by_uuid(*uuid, entry, overlay),
@@ -213,7 +230,7 @@ impl XenosCache for ChainingCache {
         entry: HeadEntry,
         overlay: &bool,
     ) -> Result<(), XenosError> {
-        monitor_cache_set("chaining", "uuid", || {
+        monitor_cache_set("chaining", "head", || {
             self.set(entry, |cache, entry| {
                 cache.set_head_by_uuid(uuid, entry, overlay)
             })

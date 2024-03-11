@@ -1,8 +1,9 @@
 use crate::error::XenosError;
 use crate::error::XenosError::{NotFound, NotRetrieved, UuidError};
 use crate::proto::{
-    profile_server::Profile, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
-    SkinRequest, SkinResponse, UuidRequest, UuidResponse, UuidsRequest, UuidsResponse,
+    profile_server::Profile, CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest,
+    ProfileResponse, SkinRequest, SkinResponse, UuidRequest, UuidResponse, UuidsRequest,
+    UuidsResponse,
 };
 use crate::service::Service;
 use std::sync::Arc;
@@ -60,6 +61,12 @@ impl Profile for GrpcProfileService {
         let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
         let skin = self.service.get_skin(&uuid).await?;
         Ok(Response::new(skin.into()))
+    }
+
+    async fn get_cape(&self, request: Request<CapeRequest>) -> GrpcResult<CapeResponse> {
+        let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
+        let cape = self.service.get_cape(&uuid).await?;
+        Ok(Response::new(cape.into()))
     }
 
     async fn get_head(&self, request: Request<HeadRequest>) -> GrpcResult<HeadResponse> {
