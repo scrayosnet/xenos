@@ -16,15 +16,15 @@ pub const CLASSIC_MODEL: &str = "classic";
 /// The model key for the slim skin (e.g. "Alex")
 pub const SLIM_MODEL: &str = "slim";
 
-// TODO use actual Steve/Alex skins
-
-/// The Steve skin.
+/// The official mojang Steve skin (not approved by mojang).
+/// See https://assets.mojang.com/SkinTemplates/steve.png
 pub const STEVE_SKIN: Bytes =
-    Bytes::from_static(include_bytes!("../../resources/profiles/hydrofin_skin.png"));
+    Bytes::from_static(include_bytes!("../../resources/profiles/steve_skin.png"));
 
-/// The Alex skin.
+/// The official mojang Alex skin (not approved by mojang).
+/// See https://assets.mojang.com/SkinTemplates/alex.png
 pub const ALEX_SKIN: Bytes =
-    Bytes::from_static(include_bytes!("../../resources/profiles/hydrofin_skin.png"));
+    Bytes::from_static(include_bytes!("../../resources/profiles/alex_skin.png"));
 
 /// Represents a single Minecraft user profile with all current properties.
 ///
