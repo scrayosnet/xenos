@@ -6,16 +6,17 @@ use crate::cache::{
 use crate::error::XenosError;
 use crate::error::XenosError::{NotFound, NotRetrieved};
 use crate::mojang;
-use crate::mojang::{Mojang, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_SKIN};
+use crate::mojang::{
+    build_skin_head, Mojang, ALEX_HEAD, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_HEAD,
+    STEVE_SKIN,
+};
 use crate::settings::Settings;
-use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
@@ -117,30 +118,6 @@ impl Service {
     /// Returns the [application settings](Settings) that were used to construct the [Service].
     pub fn settings(&self) -> &Settings {
         &self.settings
-    }
-
-    /// Builds the head image bytes from a skin. Expects a valid skin.
-    #[tracing::instrument(skip(skin_bytes))]
-    fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, XenosError> {
-        let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
-        let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
-
-        if overlay {
-            let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
-            imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
-        }
-
-        let mut head_bytes: Vec<u8> = Vec::new();
-        let mut cur = Cursor::new(&mut head_bytes);
-        image::write_buffer_with_format(
-            &mut cur,
-            &head_img,
-            8,
-            8,
-            ColorType::Rgba8,
-            ImageOutputFormat::Png,
-        )?;
-        Ok(head_bytes)
     }
 
     /// Resolves the provided (case-insensitive) username to its (case-sensitive) username and uuid
@@ -435,8 +412,21 @@ impl Service {
             Err(err) => return Err(err),
         };
 
-        let head_bytes = Self::build_skin_head(&skin_data.bytes, overlay)?;
+        // handle default skins
+        if skin_data.default {
+            return match mojang::is_steve(uuid) {
+                true => Ok(HeadEntry::new(HeadData {
+                    bytes: STEVE_HEAD.to_vec(),
+                    default: true,
+                })),
+                false => Ok(HeadEntry::new(HeadData {
+                    bytes: ALEX_HEAD.to_vec(),
+                    default: true,
+                })),
+            };
+        }
 
+        let head_bytes = build_skin_head(&skin_data.bytes, overlay)?;
         let entry = HeadEntry::new(HeadData {
             bytes: head_bytes,
             default: skin_data.default,
