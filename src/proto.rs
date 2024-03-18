@@ -83,7 +83,7 @@ impl From<SkinEntry> for SkinResponse {
                 timestamp: value.timestamp,
                 model: data.model,
                 bytes: data.bytes,
-                default: false,
+                default: data.default,
             },
         }
     }
@@ -117,7 +117,7 @@ impl From<HeadEntry> for HeadResponse {
             Some(data) => HeadResponse {
                 timestamp: value.timestamp,
                 bytes: data.bytes,
-                default: false,
+                default: data.default,
             },
         }
     }
