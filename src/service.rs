@@ -1,20 +1,22 @@
 use crate::cache::Cached::*;
 use crate::cache::{
-    get_epoch_seconds, CacheEntry, HeadEntry, ProfileEntry, SkinEntry, UuidData, UuidEntry,
-    XenosCache,
+    get_epoch_seconds, CacheEntry, CapeData, CapeEntry, HeadData, HeadEntry, ProfileEntry,
+    SkinData, SkinEntry, UuidData, UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
-use crate::error::XenosError::{InvalidTextures, NotFound, NotRetrieved};
-use crate::mojang::Mojang;
+use crate::error::XenosError::{NotFound, NotRetrieved};
+use crate::mojang;
+use crate::mojang::{
+    build_skin_head, Mojang, ALEX_HEAD, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_HEAD,
+    STEVE_SKIN,
+};
 use crate::settings::Settings;
-use image::{imageops, ColorType, GenericImageView, ImageOutputFormat};
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
@@ -116,30 +118,6 @@ impl Service {
     /// Returns the [application settings](Settings) that were used to construct the [Service].
     pub fn settings(&self) -> &Settings {
         &self.settings
-    }
-
-    /// Builds the head image bytes from a skin. Expects a valid skin.
-    #[tracing::instrument(skip(skin_bytes))]
-    fn build_skin_head(skin_bytes: &[u8], overlay: &bool) -> Result<Vec<u8>, XenosError> {
-        let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
-        let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
-
-        if *overlay {
-            let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
-            imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
-        }
-
-        let mut head_bytes: Vec<u8> = Vec::new();
-        let mut cur = Cursor::new(&mut head_bytes);
-        image::write_buffer_with_format(
-            &mut cur,
-            &head_img,
-            8,
-            8,
-            ColorType::Rgba8,
-            ImageOutputFormat::Png,
-        )?;
-        Ok(head_bytes)
     }
 
     /// Resolves the provided (case-insensitive) username to its (case-sensitive) username and uuid
@@ -281,50 +259,137 @@ impl Service {
             Miss => None,
         };
 
-        let profile_data = match self.get_profile(uuid).await {
-            Ok(ProfileEntry {
-                data: Some(profile_data),
-                ..
-            }) => profile_data,
-            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
-            Ok(_) | Err(NotFound) => {
-                self.cache
-                    .set_skin_by_uuid(*uuid, SkinEntry::new_empty())
-                    .await?;
-                return Err(NotFound);
+        // get the skin texture from the profile
+        match self.fetch_profile_skin(uuid).await {
+            // profile skin was successfully fetched from mojang (update cache)
+            Ok(Some(skin_data)) => {
+                let entry = SkinEntry::new(skin_data);
+                self.cache.set_skin_by_uuid(*uuid, entry.clone()).await?;
+                Ok(entry)
             }
-            Err(err) => return Err(err),
-        };
-
-        let skin_url = profile_data
-            .get_textures()?
-            .textures
-            .skin
-            .ok_or(InvalidTextures("skin missing".to_string()))?
-            .url;
-        let skin = match self.mojang.fetch_image_bytes(skin_url, "skin").await {
-            Ok(skin) => skin,
-            Err(NotRetrieved) => return fallback.ok_or(NotRetrieved),
+            // profile has no skin specified (use default skin if enabled)
+            // default skins are not cached
+            Ok(None) => match mojang::is_steve(uuid) {
+                true => Ok(SkinEntry::new(SkinData {
+                    bytes: STEVE_SKIN.to_vec(),
+                    model: CLASSIC_MODEL.to_string(),
+                    default: true,
+                })),
+                false => Ok(SkinEntry::new(SkinData {
+                    bytes: ALEX_SKIN.to_vec(),
+                    model: SLIM_MODEL.to_string(),
+                    default: true,
+                })),
+            },
+            // profile skin is specified but could not be retrieved, try to return fallback
+            Err(NotRetrieved) => fallback.ok_or(NotRetrieved),
+            // profile or profile skin was not found (update cache)
             Err(NotFound) => {
                 self.cache
                     .set_skin_by_uuid(*uuid, SkinEntry::new_empty())
                     .await?;
-                return Err(NotFound);
+                Err(NotFound)
             }
-            Err(err) => return Err(err),
+            // any other error that might have occurred
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Fetches the skin from a [Profile] by its [Uuid]. If no skin is specified in the [Profile],
+    /// [None] is returned. This method does NOT update the skin cache.
+    #[tracing::instrument(skip(self))]
+    async fn fetch_profile_skin(&self, uuid: &Uuid) -> Result<Option<SkinData>, XenosError> {
+        let entry = self.get_profile(uuid).await?;
+        let Some(profile) = entry.data else {
+            return Err(NotFound);
         };
-        let entry = SkinEntry::new(skin.to_vec());
-        self.cache.set_skin_by_uuid(*uuid, entry.clone()).await?;
-        Ok(entry)
+        let Some(skin_texture) = profile.get_textures()?.textures.skin else {
+            return Ok(None);
+        };
+
+        let skin = self
+            .mojang
+            .fetch_image_bytes(skin_texture.url, "skin")
+            .await?;
+
+        Ok(Some(SkinData {
+            bytes: skin.to_vec(),
+            // if the player has the "Steve?" skin, "metadata" will be missing
+            model: skin_texture
+                .metadata
+                .map(|md| md.model)
+                .unwrap_or(CLASSIC_MODEL.to_string()),
+            default: false,
+        }))
+    }
+
+    /// Gets the profile cape for an uuid from cache or mojang.
+    #[tracing::instrument(skip(self))]
+    pub async fn get_cape(&self, uuid: &Uuid) -> Result<CapeEntry, XenosError> {
+        monitor_service_call_with_age("cape", || self._get_cape(uuid)).await
+    }
+
+    async fn _get_cape(&self, uuid: &Uuid) -> Result<CapeEntry, XenosError> {
+        // try to get from cache
+        let cached = self.cache.get_cape_by_uuid(uuid).await?;
+        let fallback = match cached {
+            Hit(entry) => return Ok(entry),
+            Expired(entry) => Some(entry),
+            Miss => None,
+        };
+
+        // get the cape texture from the profile
+        match self.fetch_profile_cape(uuid).await {
+            // profile cape was successfully fetched from mojang (update cache)
+            Ok(Some(cape_data)) => {
+                let entry = CapeEntry::new(cape_data);
+                self.cache.set_cape_by_uuid(*uuid, entry.clone()).await?;
+                Ok(entry)
+            }
+            // profile cape is specified but could not be retrieved, try to return fallback
+            Err(NotRetrieved) => fallback.ok_or(NotRetrieved),
+            // profile or profile cape was not found (update cache)
+            Ok(None) | Err(NotFound) => {
+                self.cache
+                    .set_cape_by_uuid(*uuid, CapeEntry::new_empty())
+                    .await?;
+                Err(NotFound)
+            }
+            // any other error that might have occurred
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Fetches the cape from a [Profile] by its [Uuid]. If no cape is specified in the [Profile],
+    /// [None] is returned. This method does NOT update the cape cache.
+    #[tracing::instrument(skip(self))]
+    async fn fetch_profile_cape(&self, uuid: &Uuid) -> Result<Option<CapeData>, XenosError> {
+        let entry = self.get_profile(uuid).await?;
+        let Some(profile) = entry.data else {
+            return Err(NotFound);
+        };
+        let Some(cape_texture) = profile.get_textures()?.textures.cape else {
+            return Ok(None);
+        };
+
+        let cape = self
+            .mojang
+            .fetch_image_bytes(cape_texture.url, "cape")
+            .await?;
+
+        Ok(Some(CapeData {
+            bytes: cape.to_vec(),
+        }))
     }
 
     /// Gets the profile head for an uuid from cache or mojang. The head may include the head overlay.
     #[tracing::instrument(skip(self))]
-    pub async fn get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
+    pub async fn get_head(&self, uuid: &Uuid, overlay: bool) -> Result<HeadEntry, XenosError> {
         monitor_service_call_with_age("head", || self._get_head(uuid, overlay)).await
     }
 
-    async fn _get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
+    async fn _get_head(&self, uuid: &Uuid, overlay: bool) -> Result<HeadEntry, XenosError> {
+        // the cache also includes the head of default skins as they have to be constructed
         let cached = self.cache.get_head_by_uuid(uuid, overlay).await?;
         let fallback = match cached {
             Hit(entry) => return Ok(entry),
@@ -347,9 +412,25 @@ impl Service {
             Err(err) => return Err(err),
         };
 
-        let head_bytes = Self::build_skin_head(&skin_data, overlay)?;
+        // handle default skins
+        if skin_data.default {
+            return match mojang::is_steve(uuid) {
+                true => Ok(HeadEntry::new(HeadData {
+                    bytes: STEVE_HEAD.to_vec(),
+                    default: true,
+                })),
+                false => Ok(HeadEntry::new(HeadData {
+                    bytes: ALEX_HEAD.to_vec(),
+                    default: true,
+                })),
+            };
+        }
 
-        let entry = HeadEntry::new(head_bytes);
+        let head_bytes = build_skin_head(&skin_data.bytes, overlay)?;
+        let entry = HeadEntry::new(HeadData {
+            bytes: head_bytes,
+            default: skin_data.default,
+        });
         self.cache
             .set_head_by_uuid(*uuid, entry.clone(), overlay)
             .await?;

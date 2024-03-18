@@ -64,6 +64,12 @@ Thanks for considering contributing to this project! In order to submit a Pull R
 our [contributing][contributing-guide] guide. This project is in active development, and we're always happy to receive
 new contributions!
 
+## Resources
+
+The project includes the official Mojang skins for [Steve][steve-mojang] and [Alex][alex-mojang].
+We do NOT own them, and it is NOT officially approved by Mojang.
+They are only present in the source code to speed up the request time.
+
 ## License
 
 This project is developed and distributed under the MIT License. See [this explanation][mit-license-doc] for a rundown
@@ -84,6 +90,10 @@ on what that means.
 [rest-docs]: https://en.wikipedia.org/wiki/Representational_state_transfer
 
 [semver-docs]: https://semver.org/lang/de/
+
+[steve-mojang]: https://assets.mojang.com/SkinTemplates/steve.png
+
+[alex-mojang]: https://assets.mojang.com/SkinTemplates/alex.png
 
 [security-policy]: SECURITY.md
 

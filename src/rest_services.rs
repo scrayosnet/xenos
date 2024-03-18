@@ -1,7 +1,7 @@
 use crate::error::XenosError;
 use crate::proto::{
-    HeadRequest, HeadResponse, ProfileRequest, ProfileResponse, SkinRequest, SkinResponse,
-    UuidRequest, UuidResponse, UuidsRequest, UuidsResponse,
+    CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
+    SkinRequest, SkinResponse, UuidRequest, UuidResponse, UuidsRequest, UuidsResponse,
 };
 use crate::service::Service;
 use axum::{
@@ -98,12 +98,21 @@ pub async fn skin(
     Ok(Json(service.get_skin(&uuid).await?.into()))
 }
 
+/// An [axum] handler for [CapeRequest] rest gateway.
+pub async fn cape(
+    Extension(service): Extension<Arc<Service>>,
+    Json(payload): Json<CapeRequest>,
+) -> RestResult<CapeResponse> {
+    let uuid = Uuid::try_parse(&payload.uuid)?;
+    Ok(Json(service.get_cape(&uuid).await?.into()))
+}
+
 /// An [axum] handler for [HeadRequest] rest gateway.
 pub async fn head(
     Extension(service): Extension<Arc<Service>>,
     Json(payload): Json<HeadRequest>,
 ) -> RestResult<HeadResponse> {
     let uuid = Uuid::try_parse(&payload.uuid)?;
-    let overlay = &payload.overlay;
+    let overlay = payload.overlay;
     Ok(Json(service.get_head(&uuid, overlay).await?.into()))
 }

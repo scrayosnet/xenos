@@ -1,6 +1,6 @@
 use crate::cache::{
-    monitor_cache_get, monitor_cache_set, CacheEntry, Cached, HeadEntry, IntoCached, ProfileEntry,
-    SkinEntry, UuidEntry, XenosCache,
+    monitor_cache_get, monitor_cache_set, CacheEntry, Cached, CapeEntry, HeadEntry, IntoCached,
+    ProfileEntry, SkinEntry, UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
 use crate::settings;
@@ -169,10 +169,47 @@ impl XenosCache for RedisCache {
     }
 
     #[tracing::instrument(skip(self))]
+    async fn get_cape_by_uuid(&self, uuid: &Uuid) -> Result<Cached<CapeEntry>, XenosError> {
+        monitor_cache_get("redis", "cape", || async {
+            let entry: Option<CapeEntry> = self
+                .redis_manager
+                .lock()
+                .await
+                .get(build_key("cape", uuid.simple().to_string().as_str()))
+                .await?;
+            let cached = entry.into_cached(
+                &self.settings.entries.cape.exp,
+                &self.settings.entries.cape.exp_na,
+            );
+            Ok(cached)
+        })
+        .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn set_cape_by_uuid(&self, uuid: Uuid, entry: CapeEntry) -> Result<(), XenosError> {
+        monitor_cache_set("redis", "cape", || async {
+            self.redis_manager
+                .lock()
+                .await
+                .set_options(
+                    build_key("cape", uuid.simple().to_string().as_str()),
+                    entry,
+                    SetOptions::default().with_expiration(SetExpiry::EX(
+                        self.settings.entries.cape.ttl.as_secs() as usize,
+                    )),
+                )
+                .await?;
+            Ok(())
+        })
+        .await
+    }
+
+    #[tracing::instrument(skip(self))]
     async fn get_head_by_uuid(
         &self,
         uuid: &Uuid,
-        overlay: &bool,
+        overlay: bool,
     ) -> Result<Cached<HeadEntry>, XenosError> {
         monitor_cache_get("redis", "head", || async {
             let uuid_str = uuid.simple().to_string();
@@ -196,7 +233,7 @@ impl XenosCache for RedisCache {
         &self,
         uuid: Uuid,
         entry: HeadEntry,
-        overlay: &bool,
+        overlay: bool,
     ) -> Result<(), XenosError> {
         monitor_cache_set("redis", "head", || async {
             let uuid_str = uuid.simple().to_string();

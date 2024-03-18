@@ -2,7 +2,7 @@
 //! and REST services. It also provides implementations for converting into these definitions from
 //! internal result formats.
 
-use crate::cache::{HeadEntry, ProfileEntry, SkinEntry, UuidEntry};
+use crate::cache::{CapeEntry, HeadEntry, ProfileEntry, SkinEntry, UuidEntry};
 use std::collections::HashMap;
 
 // includes the rust protobuf definitions
@@ -75,11 +75,31 @@ impl From<SkinEntry> for SkinResponse {
         match value.data {
             None => SkinResponse {
                 timestamp: value.timestamp,
+                model: "".to_string(),
                 bytes: vec![],
+                default: false,
             },
             Some(data) => SkinResponse {
                 timestamp: value.timestamp,
-                bytes: data,
+                model: data.model,
+                bytes: data.bytes,
+                default: data.default,
+            },
+        }
+    }
+}
+
+// conversion utility for converting service results into response data
+impl From<CapeEntry> for CapeResponse {
+    fn from(value: CapeEntry) -> Self {
+        match value.data {
+            None => CapeResponse {
+                timestamp: value.timestamp,
+                bytes: vec![],
+            },
+            Some(data) => CapeResponse {
+                timestamp: value.timestamp,
+                bytes: data.bytes,
             },
         }
     }
@@ -92,10 +112,12 @@ impl From<HeadEntry> for HeadResponse {
             None => HeadResponse {
                 timestamp: value.timestamp,
                 bytes: vec![],
+                default: false,
             },
             Some(data) => HeadResponse {
                 timestamp: value.timestamp,
-                bytes: data,
+                bytes: data.bytes,
+                default: data.default,
             },
         }
     }

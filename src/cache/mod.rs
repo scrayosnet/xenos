@@ -114,6 +114,27 @@ pub struct UuidData {
     pub uuid: Uuid,
 }
 
+/// A [SkinData] is a profile skin with metadata.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkinData {
+    pub bytes: Vec<u8>,
+    pub model: String,
+    pub default: bool,
+}
+
+/// A [CapeData] is a profile cape.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CapeData {
+    pub bytes: Vec<u8>,
+}
+
+/// A [HeadData] is a profile skin's head.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HeadData {
+    pub bytes: Vec<u8>,
+    pub default: bool,
+}
+
 /// A [UuidEntry] is a [cache entry](CacheEntry) that encapsulates [uuid data](UuidData). It is used
 /// to cache username to uuid resolve results.
 pub type UuidEntry = CacheEntry<UuidData>;
@@ -122,13 +143,17 @@ pub type UuidEntry = CacheEntry<UuidData>;
 /// It is used to cache uuid to profile resolve results.
 pub type ProfileEntry = CacheEntry<Profile>;
 
-/// A [SkinEntry] is a [cache entry](CacheEntry) that encapsulates [skin data](Vec<u8>). It is used
+/// A [SkinEntry] is a [cache entry](CacheEntry) that encapsulates [skin data](SkinData). It is used
 /// to cache uuid to skin data resolve results.
-pub type SkinEntry = CacheEntry<Vec<u8>>;
+pub type SkinEntry = CacheEntry<SkinData>;
 
-/// A [HeadEntry] is a [cache entry](CacheEntry) that encapsulates [head data](Vec<u8>). It is used
+/// A [CapeEntry] is a [cache entry](CacheEntry) that encapsulates [cape data](CapeData). It is used
+/// to cache uuid to skin data resolve results.
+pub type CapeEntry = CacheEntry<CapeData>;
+
+/// A [HeadEntry] is a [cache entry](CacheEntry) that encapsulates [head data](HeadData). It is used
 /// to cache uuid to head data resolve results.
-pub type HeadEntry = CacheEntry<Vec<u8>>;
+pub type HeadEntry = CacheEntry<HeadData>;
 
 /// A [Cache](XenosCache) represents any cache used by Xenos. [Cache entries](CacheEntry) are
 /// returned best-effort. That means .can be in
@@ -154,16 +179,18 @@ pub trait XenosCache: Debug + Send + Sync {
     async fn set_profile_by_uuid(&self, uuid: Uuid, entry: ProfileEntry) -> Result<(), XenosError>;
     async fn get_skin_by_uuid(&self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError>;
     async fn set_skin_by_uuid(&self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError>;
+    async fn get_cape_by_uuid(&self, uuid: &Uuid) -> Result<Cached<CapeEntry>, XenosError>;
+    async fn set_cape_by_uuid(&self, uuid: Uuid, entry: CapeEntry) -> Result<(), XenosError>;
     async fn get_head_by_uuid(
         &self,
         uuid: &Uuid,
-        overlay: &bool,
+        overlay: bool,
     ) -> Result<Cached<HeadEntry>, XenosError>;
     async fn set_head_by_uuid(
         &self,
         uuid: Uuid,
         entry: HeadEntry,
-        overlay: &bool,
+        overlay: bool,
     ) -> Result<(), XenosError>;
 }
 

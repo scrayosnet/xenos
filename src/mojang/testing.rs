@@ -14,16 +14,24 @@ lazy_static! {
     pub static ref HYDROFIN: TestingProfile = TestingProfile::new(
         uuid!("09879557e47945a9b434a56377674627"),
         "Hydrofin",
-        Bytes::from_static(include_bytes!("../../resources/profiles/hydrofin_skin.png")),
-        Bytes::new(),
+        Some(Bytes::from_static(include_bytes!("../../resources/profiles/hydrofin_skin.png"))),
+        None,
     );
 
     /// The mojang profile of Scrayos.
     pub static ref SCRAYOS: TestingProfile = TestingProfile::new(
         uuid!("9c09eef4f68d4387975172bbff53d5a0"),
         "Scrayos",
-        Bytes::from_static(include_bytes!("../../resources/profiles/scrayos_skin.png")),
-        Bytes::new(),
+        Some(Bytes::from_static(include_bytes!("../../resources/profiles/scrayos_skin.png"))),
+        None,
+    );
+
+    /// The mojang profile of Herbert. He is oldschool and has no custom skin.
+    pub static ref HERBERT: TestingProfile = TestingProfile::new(
+        uuid!("1119fff4f68d4388875172bbff53d5a0"),
+        "Herbert",
+        None,
+        None,
     );
 }
 
@@ -32,24 +40,24 @@ lazy_static! {
 #[derive(Debug)]
 pub struct TestingProfile {
     pub profile: Profile,
-    pub skin: Bytes,
-    pub cape: Bytes,
+    pub skin: Option<Bytes>,
+    pub cape: Option<Bytes>,
 }
 
 impl TestingProfile {
     /// Creates a new valid [TestingProfile] with minimal information.
-    pub fn new(id: Uuid, name: &str, skin: Bytes, cape: Bytes) -> Self {
+    pub fn new(id: Uuid, name: &str, skin: Option<Bytes>, cape: Option<Bytes>) -> Self {
         let textures = TexturesProperty {
             timestamp: 0,
             profile_id: id,
             profile_name: name.to_string(),
             signature_required: None,
             textures: Textures {
-                skin: Some(Texture {
+                skin: skin.is_some().then(|| Texture {
                     url: format!("skin_{}", id.hyphenated()),
                     metadata: None,
                 }),
-                cape: Some(Texture {
+                cape: cape.is_some().then(|| Texture {
                     url: format!("cape_{}", id.hyphenated()),
                     metadata: None,
                 }),
@@ -77,13 +85,13 @@ impl TestingProfile {
 /// instead of actually accessing the mojang api. It is primarily used for in- and external **integration
 /// testing**. As such, **it should not be used in production**.
 #[derive(Default, Debug)]
-pub struct MojangTestingApi {
+pub struct MojangTestingApi<'a> {
     uuids: HashMap<String, UsernameResolved>,
     profiles: HashMap<Uuid, Profile>,
-    images: HashMap<String, &'static Bytes>,
+    images: HashMap<String, &'a Bytes>,
 }
 
-impl MojangTestingApi {
+impl<'a> MojangTestingApi<'a> {
     /// Creates a new empty [MojangTestingApi].
     pub fn new() -> Self {
         MojangTestingApi {
@@ -95,12 +103,15 @@ impl MojangTestingApi {
 
     /// Creates a new [MojangTestingApi] with default profiles.
     pub fn with_profiles() -> Self {
-        Self::new().add_profile(&HYDROFIN).add_profile(&SCRAYOS)
+        Self::new()
+            .add_profile(&HYDROFIN)
+            .add_profile(&SCRAYOS)
+            .add_profile(&HERBERT)
     }
 
     /// Adds a profile to the [api](MojangTestingApi) using a [TestingProfile]. The profile is expected
     /// to a valid textures property.
-    pub fn add_profile(mut self, profile: &'static TestingProfile) -> Self {
+    pub fn add_profile(mut self, profile: &'a TestingProfile) -> Self {
         let textures = profile
             .profile
             .get_textures()
@@ -114,18 +125,20 @@ impl MojangTestingApi {
         );
         self.profiles
             .insert(profile.profile.id, profile.profile.clone());
-        if let Some(skin) = textures.textures.skin {
-            self.images.insert(skin.url, &profile.skin);
+        if let Some(skin) = &profile.skin {
+            self.images
+                .insert(textures.textures.skin.unwrap().url, skin);
         }
-        if let Some(cape) = textures.textures.cape {
-            self.images.insert(cape.url, &profile.cape);
+        if let Some(cape) = &profile.cape {
+            self.images
+                .insert(textures.textures.cape.unwrap().url, cape);
         }
         self
     }
 }
 
 #[async_trait]
-impl Mojang for MojangTestingApi {
+impl<'a> Mojang for MojangTestingApi<'a> {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
         let uuids = usernames
             .iter()
@@ -179,9 +192,9 @@ mod test {
         // when
 
         // then
-        assert_eq!(2, api.uuids.len());
-        assert_eq!(2, api.profiles.len());
-        assert_eq!(2 * 2, api.images.len());
+        assert_eq!(3, api.uuids.len());
+        assert_eq!(3, api.profiles.len());
+        assert_eq!(2, api.images.len());
     }
 
     #[tokio::test]

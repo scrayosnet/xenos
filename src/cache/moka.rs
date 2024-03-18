@@ -1,6 +1,6 @@
 use crate::cache::{
-    monitor_cache_get, monitor_cache_set, Cached, HeadEntry, IntoCached, ProfileEntry, SkinEntry,
-    UuidEntry, XenosCache,
+    monitor_cache_get, monitor_cache_set, Cached, CapeEntry, HeadEntry, IntoCached, ProfileEntry,
+    SkinEntry, UuidEntry, XenosCache,
 };
 use crate::error::XenosError;
 use crate::settings;
@@ -18,6 +18,7 @@ pub struct MokaCache {
     uuids: Cache<String, UuidEntry>,
     profiles: Cache<Uuid, ProfileEntry>,
     skins: Cache<Uuid, SkinEntry>,
+    capes: Cache<Uuid, CapeEntry>,
     heads: Cache<(Uuid, bool), HeadEntry>,
 }
 
@@ -41,6 +42,11 @@ impl MokaCache {
                 .max_capacity(settings.entries.skin.cap)
                 .time_to_live(settings.entries.skin.ttl)
                 .time_to_idle(settings.entries.skin.tti)
+                .build(),
+            capes: Cache::builder()
+                .max_capacity(settings.entries.cape.cap)
+                .time_to_live(settings.entries.cape.ttl)
+                .time_to_idle(settings.entries.cape.tti)
                 .build(),
             heads: Cache::builder()
                 .max_capacity(settings.entries.head.cap)
@@ -123,14 +129,34 @@ impl XenosCache for MokaCache {
         .await
     }
 
+    async fn get_cape_by_uuid(&self, uuid: &Uuid) -> Result<Cached<CapeEntry>, XenosError> {
+        monitor_cache_get("moka", "cape", || async {
+            let entry = self.capes.get(uuid).await;
+            let cached = entry.into_cached(
+                &self.settings.entries.cape.exp,
+                &self.settings.entries.cape.exp_na,
+            );
+            Ok(cached)
+        })
+        .await
+    }
+
+    async fn set_cape_by_uuid(&self, uuid: Uuid, entry: CapeEntry) -> Result<(), XenosError> {
+        monitor_cache_set("moka", "cape", || async {
+            self.capes.insert(uuid, entry).await;
+            Ok(())
+        })
+        .await
+    }
+
     #[tracing::instrument(skip(self))]
     async fn get_head_by_uuid(
         &self,
         uuid: &Uuid,
-        overlay: &bool,
+        overlay: bool,
     ) -> Result<Cached<HeadEntry>, XenosError> {
         monitor_cache_get("moka", "head", || async {
-            let entry = self.heads.get(&(*uuid, *overlay)).await;
+            let entry = self.heads.get(&(*uuid, overlay)).await;
             let cached = entry.into_cached(
                 &self.settings.entries.head.exp,
                 &self.settings.entries.head.exp_na,
@@ -145,10 +171,10 @@ impl XenosCache for MokaCache {
         &self,
         uuid: Uuid,
         entry: HeadEntry,
-        overlay: &bool,
+        overlay: bool,
     ) -> Result<(), XenosError> {
         monitor_cache_set("moka", "head", || async {
-            self.heads.insert((uuid, *overlay), entry).await;
+            self.heads.insert((uuid, overlay), entry).await;
             Ok(())
         })
         .await
@@ -179,6 +205,7 @@ mod test {
                 uuid: cache_entry.clone(),
                 profile: cache_entry.clone(),
                 skin: cache_entry.clone(),
+                cape: cache_entry.clone(),
                 head: cache_entry,
             },
         }

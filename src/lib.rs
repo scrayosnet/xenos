@@ -136,6 +136,7 @@ async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
         .optional_route(gateway_enabled, "/uuids", post(rest_services::uuids))
         .optional_route(gateway_enabled, "/profile", post(rest_services::profile))
         .optional_route(gateway_enabled, "/skin", post(rest_services::skin))
+        .optional_route(gateway_enabled, "/cape", post(rest_services::cape))
         .optional_route(gateway_enabled, "/head", post(rest_services::head))
         .layer(Extension(Arc::clone(&service)))
         .with_state(());

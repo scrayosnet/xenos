@@ -7,8 +7,39 @@ use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bytes::Bytes;
+use image::{imageops, ColorType, GenericImageView, ImageError, ImageOutputFormat};
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use std::io::Cursor;
 use uuid::Uuid;
+
+/// The model key for the classic skin (e.g. "Steve")
+pub const CLASSIC_MODEL: &str = "classic";
+
+/// The model key for the slim skin (e.g. "Alex")
+pub const SLIM_MODEL: &str = "slim";
+
+/// The official mojang Steve skin (not approved by mojang).
+/// See https://assets.mojang.com/SkinTemplates/steve.png
+pub const STEVE_SKIN: Bytes =
+    Bytes::from_static(include_bytes!("../../resources/profiles/steve_skin.png"));
+
+/// The official mojang Alex skin (not approved by mojang).
+/// See https://assets.mojang.com/SkinTemplates/alex.png
+pub const ALEX_SKIN: Bytes =
+    Bytes::from_static(include_bytes!("../../resources/profiles/alex_skin.png"));
+
+lazy_static! {
+    /// The head bytes of the official mojang Steve skin.
+    pub static ref STEVE_HEAD: Bytes = Bytes::from(
+        build_skin_head(&STEVE_SKIN, false).expect("expect Steve head to be build successfully"),
+    );
+
+    /// The head bytes of the official mojang Alex skin.
+    pub static ref ALEX_HEAD: Bytes = Bytes::from(
+        build_skin_head(&ALEX_SKIN, false).expect("expect Alex head to be build successfully"),
+    );
+}
 
 /// Represents a single Minecraft user profile with all current properties.
 ///
@@ -119,6 +150,44 @@ pub fn encode_texture_prop(prop: &TexturesProperty) -> Result<String, XenosError
     let vec = serde_json::to_vec(prop)
         .map_err(|_err| XenosError::InvalidTextures("json encode failed".to_string()))?;
     Ok(BASE64_STANDARD.encode(vec))
+}
+
+/// Calculates the java hashcode of a [Uuid].
+/// See https://hg.openjdk.org/jdk8/jdk8/jdk/file/687fd7c7986d/src/share/classes/java/util/UUID.java#l394
+pub fn uuid_java_hashcode(uuid: &Uuid) -> i32 {
+    let (most_sig_bits, least_sig_bits) = uuid.as_u64_pair();
+    let hilo = most_sig_bits ^ least_sig_bits;
+    ((hilo >> 32) ^ hilo) as i32
+}
+
+/// Checks if the default skin for a user is "Steve". Otherwise, it is "Alex".
+/// See https://wiki.vg/Mojang_API#UUID_to_Profile_and_Skin.2FCape
+pub fn is_steve(uuid: &Uuid) -> bool {
+    uuid_java_hashcode(uuid) % 2 == 0
+}
+
+/// Builds the head image bytes from a skin. Expects a valid skin.
+#[tracing::instrument(skip(skin_bytes))]
+pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, ImageError> {
+    let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
+    let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
+
+    if overlay {
+        let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
+        imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
+    }
+
+    let mut head_bytes: Vec<u8> = Vec::new();
+    let mut cur = Cursor::new(&mut head_bytes);
+    image::write_buffer_with_format(
+        &mut cur,
+        &head_img,
+        8,
+        8,
+        ColorType::Rgba8,
+        ImageOutputFormat::Png,
+    )?;
+    Ok(head_bytes)
 }
 
 #[async_trait]

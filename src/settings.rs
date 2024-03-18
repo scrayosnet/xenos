@@ -99,6 +99,9 @@ pub struct CacheEntries {
     /// The cache entry type for uuid to skin resolve.
     pub skin: CacheEntry,
 
+    /// The cache entry type for uuid to cape resolve.
+    pub cape: CacheEntry,
+
     /// The cache entry type for uuid to head resolve.
     pub head: CacheEntry,
 }
