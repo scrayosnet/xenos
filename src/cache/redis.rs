@@ -210,7 +210,6 @@ impl XenosCache for RedisCache {
         &self,
         uuid: &Uuid,
         overlay: bool,
-        include_default: bool,
     ) -> Result<Cached<HeadEntry>, XenosError> {
         monitor_cache_get("redis", "head", || async {
             let uuid_str = uuid.simple().to_string();
@@ -218,10 +217,7 @@ impl XenosCache for RedisCache {
                 .redis_manager
                 .lock()
                 .await
-                .get(build_key(
-                    "head",
-                    &format!("{uuid_str}.over_{overlay}.def_{include_default}"),
-                ))
+                .get(build_key("head", &format!("{uuid_str}.{overlay}")))
                 .await?;
             let cached = entry.into_cached(
                 &self.settings.entries.head.exp,
@@ -238,7 +234,6 @@ impl XenosCache for RedisCache {
         uuid: Uuid,
         entry: HeadEntry,
         overlay: bool,
-        include_default: bool,
     ) -> Result<(), XenosError> {
         monitor_cache_set("redis", "head", || async {
             let uuid_str = uuid.simple().to_string();
@@ -246,10 +241,7 @@ impl XenosCache for RedisCache {
                 .lock()
                 .await
                 .set_options(
-                    build_key(
-                        "head",
-                        &format!("{uuid_str}.over_{overlay}.def_{include_default}"),
-                    ),
+                    build_key("head", &format!("{uuid_str}.{overlay}")),
                     entry,
                     SetOptions::default().with_expiration(SetExpiry::EX(
                         self.settings.entries.head.ttl.as_secs() as usize,

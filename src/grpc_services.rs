@@ -60,8 +60,7 @@ impl Profile for GrpcProfileService {
     async fn get_skin(&self, request: Request<SkinRequest>) -> GrpcResult<SkinResponse> {
         let req = request.into_inner();
         let uuid = Uuid::try_parse(&req.uuid).map_err(UuidError)?;
-        let include_default = req.include_default;
-        let skin = self.service.get_skin(&uuid, include_default).await?;
+        let skin = self.service.get_skin(&uuid).await?;
         Ok(Response::new(skin.into()))
     }
 
@@ -74,12 +73,8 @@ impl Profile for GrpcProfileService {
     async fn get_head(&self, request: Request<HeadRequest>) -> GrpcResult<HeadResponse> {
         let req = request.into_inner();
         let overlay = req.overlay;
-        let include_default = req.include_default;
         let uuid = Uuid::try_parse(&req.uuid).map_err(UuidError)?;
-        let head = self
-            .service
-            .get_head(&uuid, overlay, include_default)
-            .await?;
+        let head = self.service.get_head(&uuid, overlay).await?;
         Ok(Response::new(head.into()))
     }
 }

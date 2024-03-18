@@ -19,7 +19,7 @@ pub struct MokaCache {
     profiles: Cache<Uuid, ProfileEntry>,
     skins: Cache<Uuid, SkinEntry>,
     capes: Cache<Uuid, CapeEntry>,
-    heads: Cache<(Uuid, bool, bool), HeadEntry>,
+    heads: Cache<(Uuid, bool), HeadEntry>,
 }
 
 impl MokaCache {
@@ -154,10 +154,9 @@ impl XenosCache for MokaCache {
         &self,
         uuid: &Uuid,
         overlay: bool,
-        include_default: bool,
     ) -> Result<Cached<HeadEntry>, XenosError> {
         monitor_cache_get("moka", "head", || async {
-            let entry = self.heads.get(&(*uuid, overlay, include_default)).await;
+            let entry = self.heads.get(&(*uuid, overlay)).await;
             let cached = entry.into_cached(
                 &self.settings.entries.head.exp,
                 &self.settings.entries.head.exp_na,
@@ -173,12 +172,9 @@ impl XenosCache for MokaCache {
         uuid: Uuid,
         entry: HeadEntry,
         overlay: bool,
-        include_default: bool,
     ) -> Result<(), XenosError> {
         monitor_cache_set("moka", "head", || async {
-            self.heads
-                .insert((uuid, overlay, include_default), entry)
-                .await;
+            self.heads.insert((uuid, overlay), entry).await;
             Ok(())
         })
         .await

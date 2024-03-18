@@ -95,8 +95,7 @@ pub async fn skin(
     Json(payload): Json<SkinRequest>,
 ) -> RestResult<SkinResponse> {
     let uuid = Uuid::try_parse(&payload.uuid)?;
-    let include_default = payload.include_default;
-    Ok(Json(service.get_skin(&uuid, include_default).await?.into()))
+    Ok(Json(service.get_skin(&uuid).await?.into()))
 }
 
 /// An [axum] handler for [CapeRequest] rest gateway.
@@ -115,11 +114,5 @@ pub async fn head(
 ) -> RestResult<HeadResponse> {
     let uuid = Uuid::try_parse(&payload.uuid)?;
     let overlay = payload.overlay;
-    let include_default = payload.include_default;
-    Ok(Json(
-        service
-            .get_head(&uuid, overlay, include_default)
-            .await?
-            .into(),
-    ))
+    Ok(Json(service.get_head(&uuid, overlay).await?.into()))
 }

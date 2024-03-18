@@ -77,11 +77,13 @@ impl From<SkinEntry> for SkinResponse {
                 timestamp: value.timestamp,
                 model: "".to_string(),
                 bytes: vec![],
+                default: false,
             },
             Some(data) => SkinResponse {
                 timestamp: value.timestamp,
                 model: data.model,
                 bytes: data.bytes,
+                default: false,
             },
         }
     }
@@ -110,10 +112,12 @@ impl From<HeadEntry> for HeadResponse {
             None => HeadResponse {
                 timestamp: value.timestamp,
                 bytes: vec![],
+                default: false,
             },
             Some(data) => HeadResponse {
                 timestamp: value.timestamp,
                 bytes: data.bytes,
+                default: false,
             },
         }
     }

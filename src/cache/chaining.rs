@@ -213,12 +213,11 @@ impl XenosCache for ChainingCache {
         &self,
         uuid: &Uuid,
         overlay: bool,
-        include_default: bool,
     ) -> Result<Cached<HeadEntry>, XenosError> {
         monitor_cache_get("chaining", "head", || {
             self.get(
-                |cache| cache.get_head_by_uuid(uuid, overlay, include_default),
-                |cache, entry| cache.set_head_by_uuid(*uuid, entry, overlay, include_default),
+                |cache| cache.get_head_by_uuid(uuid, overlay),
+                |cache, entry| cache.set_head_by_uuid(*uuid, entry, overlay),
             )
         })
         .await
@@ -230,11 +229,10 @@ impl XenosCache for ChainingCache {
         uuid: Uuid,
         entry: HeadEntry,
         overlay: bool,
-        include_default: bool,
     ) -> Result<(), XenosError> {
         monitor_cache_set("chaining", "head", || {
             self.set(entry, |cache, entry| {
-                cache.set_head_by_uuid(uuid, entry, overlay, include_default)
+                cache.set_head_by_uuid(uuid, entry, overlay)
             })
         })
         .await

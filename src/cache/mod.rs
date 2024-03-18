@@ -119,6 +119,7 @@ pub struct UuidData {
 pub struct SkinData {
     pub bytes: Vec<u8>,
     pub model: String,
+    pub default: bool,
 }
 
 /// A [CapeData] is a profile cape.
@@ -131,6 +132,7 @@ pub struct CapeData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HeadData {
     pub bytes: Vec<u8>,
+    pub default: bool,
 }
 
 /// A [UuidEntry] is a [cache entry](CacheEntry) that encapsulates [uuid data](UuidData). It is used
@@ -183,14 +185,12 @@ pub trait XenosCache: Debug + Send + Sync {
         &self,
         uuid: &Uuid,
         overlay: bool,
-        include_default: bool,
     ) -> Result<Cached<HeadEntry>, XenosError>;
     async fn set_head_by_uuid(
         &self,
         uuid: Uuid,
         entry: HeadEntry,
         overlay: bool,
-        include_default: bool,
     ) -> Result<(), XenosError>;
 }
 

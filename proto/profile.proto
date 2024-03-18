@@ -87,8 +87,6 @@ message ProfileResponse {
 message SkinRequest {
     // The UUID in simple or hyphenated form whose Minecraft Skin should be queried.
     string uuid = 1;
-    // Whether the default skins should be used if the player has no custom skin.
-    bool include_default = 2;
 }
 
 // SkinResponse is a response with the Skin texture of the requested UUID.
@@ -99,6 +97,8 @@ message SkinResponse {
     bytes bytes = 2;
     // The model of the player's Skin (e.g. "slim").
     string model = 3;
+    // Whether the skin is the player default skin.
+    bool default = 4;
 }
 
 // CapeRequest is a request of the Cape texture of a specific UUID.
@@ -121,8 +121,6 @@ message HeadRequest {
     string uuid = 1;
     // Whether the overlay layer should be added to the texture.
     bool overlay = 2;
-    // Whether the default skins should be used if the player has no custom skin.
-    bool include_default = 3;
 }
 
 // HeadResponse is a response with the Head texture of the requested UUID.
@@ -131,4 +129,6 @@ message HeadResponse {
     uint64 timestamp = 1;
     // The binary data of the 8x8 PNG image of the player's Head.
     bytes bytes = 2;
+    // Whether the head was generated from the player default skin.
+    bool default = 3;
 }
