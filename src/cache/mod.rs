@@ -182,13 +182,15 @@ pub trait XenosCache: Debug + Send + Sync {
     async fn get_head_by_uuid(
         &self,
         uuid: &Uuid,
-        overlay: &bool,
+        overlay: bool,
+        include_default: bool,
     ) -> Result<Cached<HeadEntry>, XenosError>;
     async fn set_head_by_uuid(
         &self,
         uuid: Uuid,
         entry: HeadEntry,
-        overlay: &bool,
+        overlay: bool,
+        include_default: bool,
     ) -> Result<(), XenosError>;
 }
 

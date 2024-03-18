@@ -121,11 +121,11 @@ impl Service {
 
     /// Builds the head image bytes from a skin. Expects a valid skin.
     #[tracing::instrument(skip(skin_bytes))]
-    fn build_skin_head(skin_bytes: &[u8], overlay: &bool) -> Result<Vec<u8>, XenosError> {
+    fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, XenosError> {
         let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
         let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
 
-        if *overlay {
+        if overlay {
             let overlay_head_img = skin_img.view(40, 8, 8, 8).to_image();
             imageops::overlay(&mut head_img, &overlay_head_img, 0, 0);
         }
@@ -269,11 +269,15 @@ impl Service {
 
     /// Gets the profile skin for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
-    pub async fn get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
-        monitor_service_call_with_age("skin", || self._get_skin(uuid)).await
+    pub async fn get_skin(
+        &self,
+        uuid: &Uuid,
+        include_default: bool,
+    ) -> Result<SkinEntry, XenosError> {
+        monitor_service_call_with_age("skin", || self._get_skin(uuid, include_default)).await
     }
 
-    async fn _get_skin(&self, uuid: &Uuid) -> Result<SkinEntry, XenosError> {
+    async fn _get_skin(&self, uuid: &Uuid, include_default: bool) -> Result<SkinEntry, XenosError> {
         // try to get from cache
         let cached = self.cache.get_skin_by_uuid(uuid).await?;
         let fallback = match cached {
@@ -290,8 +294,9 @@ impl Service {
                 self.cache.set_skin_by_uuid(*uuid, entry.clone()).await?;
                 Ok(entry)
             }
-            // profile has no skin specified (use default skin)
-            Ok(None) => match mojang::is_steve(uuid) {
+            // profile has no skin specified (use default skin if enabled)
+            // default skins are not cached
+            Ok(None) if { include_default } => match mojang::is_steve(uuid) {
                 true => Ok(SkinEntry::new(SkinData {
                     bytes: STEVE_SKIN.to_vec(),
                     model: CLASSIC_MODEL.to_string(),
@@ -301,6 +306,7 @@ impl Service {
                     model: SLIM_MODEL.to_string(),
                 })),
             },
+            Ok(None) => Err(NotFound),
             // profile skin is specified but could not be retrieved, try to return fallback
             Err(NotRetrieved) => fallback.ok_or(NotRetrieved),
             // profile or profile skin was not found (update cache)
@@ -403,26 +409,41 @@ impl Service {
 
     /// Gets the profile head for an uuid from cache or mojang. The head may include the head overlay.
     #[tracing::instrument(skip(self))]
-    pub async fn get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
-        monitor_service_call_with_age("head", || self._get_head(uuid, overlay)).await
+    pub async fn get_head(
+        &self,
+        uuid: &Uuid,
+        overlay: bool,
+        include_default: bool,
+    ) -> Result<HeadEntry, XenosError> {
+        monitor_service_call_with_age("head", || self._get_head(uuid, overlay, include_default))
+            .await
     }
 
-    async fn _get_head(&self, uuid: &Uuid, overlay: &bool) -> Result<HeadEntry, XenosError> {
-        let cached = self.cache.get_head_by_uuid(uuid, overlay).await?;
+    async fn _get_head(
+        &self,
+        uuid: &Uuid,
+        overlay: bool,
+        include_default: bool,
+    ) -> Result<HeadEntry, XenosError> {
+        // the cache also includes the head of default skins as they have to be constructed
+        let cached = self
+            .cache
+            .get_head_by_uuid(uuid, overlay, include_default)
+            .await?;
         let fallback = match cached {
             Hit(entry) => return Ok(entry),
             Expired(entry) => Some(entry),
             Miss => None,
         };
 
-        let skin_data = match self.get_skin(uuid).await {
+        let skin_data = match self.get_skin(uuid, include_default).await {
             Ok(SkinEntry {
                 data: Some(skin_data),
                 ..
             }) => skin_data,
             Ok(_) | Err(NotFound) => {
                 self.cache
-                    .set_head_by_uuid(*uuid, HeadEntry::new_empty(), overlay)
+                    .set_head_by_uuid(*uuid, HeadEntry::new_empty(), overlay, include_default)
                     .await?;
                 return Err(NotFound);
             }
@@ -434,7 +455,7 @@ impl Service {
 
         let entry = HeadEntry::new(HeadData { bytes: head_bytes });
         self.cache
-            .set_head_by_uuid(*uuid, entry.clone(), overlay)
+            .set_head_by_uuid(*uuid, entry.clone(), overlay, include_default)
             .await?;
         Ok(entry)
     }
