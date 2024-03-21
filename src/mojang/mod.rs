@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bytes::Bytes;
-use image::{imageops, ColorType, GenericImageView, ImageError, ImageOutputFormat};
+use image::{imageops, ColorType, GenericImageView, ImageError, ImageFormat};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
@@ -185,7 +185,7 @@ pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, Imag
         8,
         8,
         ColorType::Rgba8,
-        ImageOutputFormat::Png,
+        ImageFormat::Png,
     )?;
     Ok(head_bytes)
 }
