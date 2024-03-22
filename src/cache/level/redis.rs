@@ -31,15 +31,19 @@ macro_rules! key {
     };
 }
 
-/// [Redis Cache](RedisCache) is a [cache](XenosCache) implementation using redis. The cache has an
+/// [Redis Cache](RedisCache) is a [CacheLevel] implementation using redis. The cache has an
 /// additional expiration (delete) policies with time-to-live.
+///
+/// Should redis encounter any error while getting or setting data, the errors are logged and default
+/// values are returned. This is done to prevent the application from "crashing" as soon as redis is,
+/// for example, temporarily unavailable.
 pub struct RedisCache {
     settings: settings::RedisCache,
     redis_manager: Arc<Mutex<ConnectionManager>>,
 }
 
 impl RedisCache {
-    /// Created a new empty [Redis Cache](RedisCache).
+    /// Created a new [Redis Cache](RedisCache).
     pub fn new(con: ConnectionManager, settings: &settings::RedisCache) -> Self {
         Self {
             settings: settings.clone(),
@@ -47,6 +51,7 @@ impl RedisCache {
         }
     }
 
+    /// Utility for getting some [Entry] from redis. Handles errors by logging them and returning `None`.
     #[tracing::instrument(skip(self))]
     async fn get<D>(&self, key: String) -> Option<Entry<D>>
     where
@@ -63,6 +68,7 @@ impl RedisCache {
             })
     }
 
+    /// Utility for setting some [Entry] to redis. Handles errors by logging them.
     #[tracing::instrument(skip(self))]
     async fn set<D>(&self, key: String, entry: Entry<D>, ttl: &Duration)
     where

@@ -40,21 +40,7 @@ lazy_static! {
     .unwrap();
 }
 
-async fn monitor_set<F, Fut, D>(request_type: &str, f: F) -> Entry<D>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = Entry<D>>,
-    D: Clone + Debug + Eq + PartialEq,
-{
-    let start = Instant::now();
-    let result = f().await;
-    // TODO monitor more?
-    CACHE_SET_HISTOGRAM
-        .with_label_values(&[request_type])
-        .observe(start.elapsed().as_secs_f64());
-    result
-}
-
+/// Monitors a cache get operation, tracking its runtime and response.
 async fn monitor_get<F, Fut, D>(request_type: &str, f: F) -> Cached<D>
 where
     F: FnOnce() -> Fut,
@@ -68,13 +54,46 @@ where
         Expired(_) => "expired",
         Miss => "miss",
     };
-    // TODO monitor more?
     CACHE_GET_HISTOGRAM
         .with_label_values(&[request_type, cache_result])
         .observe(start.elapsed().as_secs_f64());
     result
 }
 
+/// Monitors a cache set operation, tracking its runtime and response.
+async fn monitor_set<F, Fut, D>(request_type: &str, f: F) -> Entry<D>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Entry<D>>,
+    D: Clone + Debug + Eq + PartialEq,
+{
+    let start = Instant::now();
+    let result = f().await;
+    CACHE_SET_HISTOGRAM
+        .with_label_values(&[request_type])
+        .observe(start.elapsed().as_secs_f64());
+    result
+}
+
+/// A [Cache] is a thread-safe multi-level cache. [Levels](CacheLevel) are added to the end of the stack.
+/// That means that the last added level is the lowest level. In general, the lower level caches should be
+/// remote/persistent caches while the upper level caches should be fast in-memory caches. Also,
+/// upper level caches should be subsets of lower level caches.
+///
+/// - **Get operations** find the first [CacheLevel] that contains a some [Entry].
+/// When a [Hit] is found, all previous levels are updated with that [Entry]. Otherwise, it uses the
+/// last found [Expired] entry. If no [Entry] could be found. Nothing is updated.
+/// - **Set operations** update all levels, starting with the lowest level.
+///
+/// ```rs
+/// let cache = Cache::new(...)
+///   // add cache level 1
+///   .add_level(true, || async { ... }).await?
+///   // skip cache level 2 (disabled)
+///   .add_level(false, || async { ... }).await?
+///   // add cache level 3 (added as cache level 2)
+///   .add_level(true, || async { ... }).await?;
+/// ```
 pub struct Cache {
     expiry: settings::CacheEntries<Expiry>,
     levels: Vec<Box<dyn CacheLevel>>,
@@ -89,7 +108,7 @@ impl Cache {
         }
     }
 
-    /// Pushes an optional cache to the end of the inner caches (the last layer).
+    /// Pushes an optional cache level to the end of the cache levels (as the lowest level).
     pub async fn add_level<F, Fut, E>(mut self, enabled: bool, f: F) -> Result<Self, E>
     where
         F: Fn() -> Fut,
@@ -101,6 +120,7 @@ impl Cache {
         Ok(self)
     }
 
+    /// Utility for getting an [Entry] from the cache levels. Also updates cache levels appropriately.
     async fn get<'a, D, G, GF, S, SF>(&'a self, expiry: &Expiry, getter: G, setter: S) -> Cached<D>
     where
         G: Fn(&'a dyn CacheLevel) -> GF,
@@ -142,6 +162,7 @@ impl Cache {
         result
     }
 
+    /// Utility for settings an [Entry] to all cache levels.
     async fn set<'a, D, S, SF>(&'a self, data: Option<D>, setter: S) -> Entry<D>
     where
         S: Fn(&'a dyn CacheLevel, Entry<D>) -> SF,
@@ -158,6 +179,7 @@ impl Cache {
         entry
     }
 
+    /// Gets some [UuidData] from the [Cache] for a case-insensitive username.
     #[tracing::instrument(skip(self))]
     pub async fn get_uuid(&self, username: &str) -> Cached<UuidData> {
         monitor_get("uuid", || {
@@ -170,6 +192,7 @@ impl Cache {
         .await
     }
 
+    /// Sets some optional [UuidData] to the [Cache] for a case-insensitive username.
     #[tracing::instrument(skip(self))]
     pub async fn set_uuid(&self, username: &str, data: Option<UuidData>) -> Entry<UuidData> {
         monitor_set("uuid", || {
@@ -180,6 +203,7 @@ impl Cache {
         .await
     }
 
+    /// Gets some [ProfileData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn get_profile(&self, uuid: &Uuid) -> Cached<ProfileData> {
         monitor_get("profile", || {
@@ -192,6 +216,7 @@ impl Cache {
         .await
     }
 
+    /// Sets some optional [ProfileData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn set_profile(&self, uuid: Uuid, data: Option<ProfileData>) -> Entry<ProfileData> {
         monitor_set("profile", || {
@@ -200,6 +225,7 @@ impl Cache {
         .await
     }
 
+    /// Gets some [SkinData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn get_skin(&self, uuid: &Uuid) -> Cached<SkinData> {
         monitor_get("skin", || {
@@ -212,6 +238,7 @@ impl Cache {
         .await
     }
 
+    /// Sets some optional [SkinData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn set_skin(&self, uuid: Uuid, data: Option<SkinData>) -> Entry<SkinData> {
         monitor_set("skin", || {
@@ -220,6 +247,7 @@ impl Cache {
         .await
     }
 
+    /// Gets some [CapeData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn get_cape(&self, uuid: &Uuid) -> Cached<CapeData> {
         monitor_get("cape", || {
@@ -232,6 +260,7 @@ impl Cache {
         .await
     }
 
+    /// Sets some optional [CapeData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn set_cape(&self, uuid: Uuid, data: Option<CapeData>) -> Entry<CapeData> {
         monitor_set("cape", || {
@@ -240,6 +269,7 @@ impl Cache {
         .await
     }
 
+    /// Gets some [HeadData] from the [Cache] for a profile [Uuid] with or without its overlay.
     #[tracing::instrument(skip(self))]
     pub async fn get_head(&self, uuid: &Uuid, overlay: bool) -> Cached<HeadData> {
         monitor_get("head", || {
@@ -252,6 +282,7 @@ impl Cache {
         .await
     }
 
+    /// Sets some optional [HeadData] to the [Cache] for a profile [Uuid] with or without its overlay.
     #[tracing::instrument(skip(self))]
     pub async fn set_head(
         &self,
