@@ -6,7 +6,6 @@ pub mod level;
 use crate::cache::entry::Cached::{Expired, Hit, Miss};
 use crate::cache::entry::{Cached, CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::cache::level::CacheLevel;
-use crate::error::XenosError;
 use crate::settings;
 use crate::settings::Expiry;
 use lazy_static::lazy_static;
@@ -91,10 +90,10 @@ impl Cache {
     }
 
     /// Pushes an optional cache to the end of the inner caches (the last layer).
-    pub async fn add_level<F, Fut>(mut self, enabled: bool, f: F) -> Result<Self, XenosError>
+    pub async fn add_level<F, Fut, E>(mut self, enabled: bool, f: F) -> Result<Self, E>
     where
         F: Fn() -> Fut,
-        Fut: Future<Output = Result<Box<dyn CacheLevel>, XenosError>>,
+        Fut: Future<Output = Result<Box<dyn CacheLevel>, E>>,
     {
         if enabled {
             self.levels.push(f().await?);
