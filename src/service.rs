@@ -356,7 +356,7 @@ impl Service {
     }
 
     async fn _get_head(&self, uuid: &Uuid, overlay: bool) -> Result<Dated<HeadData>, XenosError> {
-        // the cache also includes the head of default skins as they have to be constructed
+        // try to get from cache
         let cached = self.cache.get_head(uuid, overlay).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
@@ -391,14 +391,16 @@ impl Service {
             bytes: head_bytes,
             default: skin.default,
         };
-        Ok(self
+        let dated = self
             .cache
             .set_head(*uuid, overlay, Some(head))
             .await
-            .unwrap())
+            .unwrap();
+        Ok(dated)
     }
 }
 
+/// Gets the default [SkinData] for a [Uuid].
 fn get_default_skin(uuid: &Uuid) -> SkinData {
     match mojang::is_steve(uuid) {
         true => SkinData {
@@ -414,6 +416,7 @@ fn get_default_skin(uuid: &Uuid) -> SkinData {
     }
 }
 
+/// Gets the default [HeadData] for a [Uuid].
 fn get_default_head(uuid: &Uuid) -> HeadData {
     match mojang::is_steve(uuid) {
         true => HeadData {
