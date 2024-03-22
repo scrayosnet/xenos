@@ -266,23 +266,13 @@ impl Service {
 
         // get textures or return default skin
         let Some(textures) = profile.get_textures()?.textures.skin else {
-            return match mojang::is_steve(uuid) {
-                true => Ok(Dated::from(SkinData {
-                    bytes: STEVE_SKIN.to_vec(),
-                    model: CLASSIC_MODEL.to_string(),
-                    default: true,
-                })),
-                false => Ok(Dated::from(SkinData {
-                    bytes: ALEX_SKIN.to_vec(),
-                    model: SLIM_MODEL.to_string(),
-                    default: true,
-                })),
-            };
+            return Ok(Dated::from(get_default_skin(uuid)));
         };
         let skin_model = textures
             .metadata
             .map(|md| md.model)
-            .unwrap_or("".to_string());
+            // fallback to classic model (I didn't check that this is the correct default behavior)
+            .unwrap_or(CLASSIC_MODEL.to_string());
 
         // try to fetch from mojang and update cache
         match self.mojang.fetch_image_bytes(textures.url, "skin").await {
@@ -392,16 +382,7 @@ impl Service {
 
         // handle default skins
         if skin.default {
-            return match mojang::is_steve(uuid) {
-                true => Ok(Dated::from(HeadData {
-                    bytes: STEVE_HEAD.to_vec(),
-                    default: true,
-                })),
-                false => Ok(Dated::from(HeadData {
-                    bytes: ALEX_HEAD.to_vec(),
-                    default: true,
-                })),
-            };
+            return Ok(Dated::from(get_default_head(uuid)));
         }
 
         // build head
@@ -415,5 +396,33 @@ impl Service {
             .set_head(*uuid, overlay, Some(head))
             .await
             .unwrap())
+    }
+}
+
+fn get_default_skin(uuid: &Uuid) -> SkinData {
+    match mojang::is_steve(uuid) {
+        true => SkinData {
+            bytes: STEVE_SKIN.to_vec(),
+            model: CLASSIC_MODEL.to_string(),
+            default: true,
+        },
+        false => SkinData {
+            bytes: ALEX_SKIN.to_vec(),
+            model: SLIM_MODEL.to_string(),
+            default: true,
+        },
+    }
+}
+
+fn get_default_head(uuid: &Uuid) -> HeadData {
+    match mojang::is_steve(uuid) {
+        true => HeadData {
+            bytes: STEVE_HEAD.to_vec(),
+            default: true,
+        },
+        false => HeadData {
+            bytes: ALEX_HEAD.to_vec(),
+            default: true,
+        },
     }
 }
