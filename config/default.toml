@@ -1,5 +1,12 @@
 debug = false
 
+[cache.expiry]
+uuid = {cap = 0, exp = "PT120M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
+profile = {cap = 0, exp = "PT10M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
+skin = {cap = 0, exp = "PT10M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
+cape = {cap = 0, exp = "PT10M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
+head = {cap = 0, exp = "PT10M", exp_na = "PT5M", ttl = "P3D", ttl_na = "P1D", tti = "PT0S", tti_na = "PT0S"}
+
 [cache.redis]
 enabled = false
 address = "redis://username:password@example.com/0" # update if enabled
