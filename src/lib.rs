@@ -9,10 +9,10 @@
 //!
 //! See [settings] for a description on how to create the application configuration.
 
-use crate::cache::chaining::ChainingCache;
-use crate::cache::moka::MokaCache;
-use crate::cache::redis::RedisCache;
-use crate::cache::XenosCache;
+use crate::cache::level::moka::MokaCache;
+use crate::cache::level::redis::RedisCache;
+use crate::cache::level::CacheLevel;
+use crate::cache::Cache;
 use crate::grpc_services::GrpcProfileService;
 #[cfg(not(feature = "static-testing"))]
 use crate::mojang::api::MojangApi;
@@ -72,26 +72,24 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
     // build chaining cache with selected caches
     // it consists of a local and remote cache
     info!("building chaining cache from caches");
-    let cache = Box::new(
-        ChainingCache::new()
-            // the top most layer is a local (in-memory) cache, in this case a moka cache
-            .add_cache(settings.cache.moka.enabled, || async {
-                info!("adding moka cache to chaining cache");
-                let cache = MokaCache::new(&settings.cache.moka);
-                Ok(Box::new(cache) as Box<dyn XenosCache>)
-            })
-            .await?
-            // the next layer is a remote cache, in this case a redis cache
-            .add_cache(settings.cache.redis.enabled, || async {
-                info!("adding redis cache to chaining cache");
-                let cs = &settings.cache;
-                let redis_client = redis::Client::open(cs.redis.address.clone())?;
-                let redis_manager = redis_client.get_connection_manager().await?;
-                let cache = RedisCache::new(redis_manager, &settings.cache.redis);
-                Ok(Box::new(cache) as Box<dyn XenosCache>)
-            })
-            .await?,
-    );
+    let cache = Cache::new(settings.cache.expiry.clone())
+        // the top most layer is a local (in-memory) cache, in this case a moka cache
+        .add_level(settings.cache.moka.enabled, || async {
+            info!("adding moka cache to chaining cache");
+            let cache = MokaCache::new(settings.cache.moka.clone());
+            Ok(Box::new(cache) as Box<dyn CacheLevel>)
+        })
+        .await?
+        // the next layer is a remote cache, in this case a redis cache
+        .add_level(settings.cache.redis.enabled, || async {
+            info!("adding redis cache to chaining cache");
+            let cs = &settings.cache;
+            let redis_client = redis::Client::open(cs.redis.address.clone())?;
+            let redis_manager = redis_client.get_connection_manager().await?;
+            let cache = RedisCache::new(redis_manager, &settings.cache.redis);
+            Ok(Box::new(cache) as Box<dyn CacheLevel>)
+        })
+        .await?;
 
     // build mojang api
     // it is either the actual mojang api or a testing api for integration tests

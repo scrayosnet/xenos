@@ -54,6 +54,8 @@ use std::time::Duration;
 /// a remote cache (e.g. [redis](RedisCache)).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Cache {
+    pub expiry: CacheEntries<Expiry>,
+
     /// The [redis] cache configuration.
     pub redis: RedisCache,
 
@@ -68,8 +70,7 @@ pub struct MokaCache {
     /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
     pub enabled: bool,
 
-    /// The cache entries configuration (e.g. expiry, ...).
-    pub entries: CacheEntries,
+    pub entries: CacheEntries<CacheEntry>,
 }
 
 /// [RedisCache] hold the [redis] cache configuration. Redis is a fast remote cache. It supports
@@ -83,31 +84,43 @@ pub struct RedisCache {
     /// if redis is enabled.
     pub address: String,
 
-    /// The cache entries configuration (e.g. expiry, ...).
-    pub entries: CacheEntries,
+    pub entries: CacheEntries<CacheEntry>,
 }
 
 /// [CacheEntries] is a wrapper for configuring [CacheEntry] for all cache entry types.
 #[derive(Debug, Clone, Deserialize)]
-pub struct CacheEntries {
+pub struct CacheEntries<D> {
     /// The cache entry type for username to uuid resolve.
-    pub uuid: CacheEntry,
+    pub uuid: D,
 
     /// The cache entry type for uuid to profile resolve.
-    pub profile: CacheEntry,
+    pub profile: D,
 
     /// The cache entry type for uuid to skin resolve.
-    pub skin: CacheEntry,
+    pub skin: D,
 
     /// The cache entry type for uuid to cape resolve.
-    pub cape: CacheEntry,
+    pub cape: D,
 
     /// The cache entry type for uuid to head resolve.
-    pub head: CacheEntry,
+    pub head: D,
 }
 
 /// [CacheEntry] holds configuration for `cap`, `exp`, `ttl`, `tti` and `..._na` for a
 /// single cache entry type.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Expiry {
+    /// The cache entry expiration duration. If elapsed, then the cache entry is marked as expired,
+    /// but not deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub exp: Duration,
+
+    /// The cache entry expiration duration for empty cache entries (e.g. username not found). If
+    /// elapsed, then the cache entry is marked as expired, but not deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub exp_na: Duration,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CacheEntry {
     /// The cache max capacity. May be supported by cache.
