@@ -1,278 +1,268 @@
 //! The cache module provides multiple [cache](XenosCache) implementations for the xenos service.
 
-pub mod chaining;
-pub mod moka;
-mod monitor;
-pub mod redis;
+pub mod entry;
+pub mod level;
 
-use crate::cache::Cached::{Expired, Hit, Miss};
+use crate::cache::entry::Cached::{Expired, Hit, Miss};
+use crate::cache::entry::{Cached, CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
+use crate::cache::level::CacheLevel;
 use crate::error::XenosError;
-use crate::mojang::Profile;
-use async_trait::async_trait;
-use chrono::Utc;
-pub use monitor::{monitor_cache_get, monitor_cache_set};
-use serde::{Deserialize, Serialize};
+use crate::settings;
+use crate::settings::Expiry;
+use lazy_static::lazy_static;
+use prometheus::{register_histogram_vec, HistogramVec};
 use std::fmt::Debug;
-use std::time::Duration;
+use std::future::Future;
+use std::time::Instant;
 use uuid::Uuid;
 
-/// [Cached] is a utility wrapper for [CacheEntry]. Most caches respond with an [Option] for get requests.
-/// In the services we are interested not only if an entry was found but if the entry is considered
-/// [Expired] by the cache. By wrapping the [CacheEntry] in [Cached], the caches can communicate their
-/// intent while providing ease-of-use for the consumer with the match operator.
-///
-/// Additionally, the [CacheEntry] provides methods for checking its creation time and age.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Cached<T> {
-    /// Value was found.
-    Hit(T),
+// TODO update buckets
+lazy_static! {
+    /// A histogram for the cache get request latencies in seconds. It is intended to be used by all
+    /// caches (`cache_variant`) and cache requests (`request_type`). Use the [monitor_get]
+    /// utility for ease of use.
+    static ref CACHE_GET_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "xenos_cache_get_duration_seconds",
+        "The cache get request latencies in seconds.",
+        &["request_type", "cache_result"],
+        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
+    )
+    .unwrap();
 
-    /// Value was found but is flagged as expired by cache.
-    Expired(T),
-
-    /// Value was not found.
-    Miss,
+    /// A histogram for the cache set request latencies in seconds. It is intended to be used by all
+    /// caches (`cache_variant`) and cache requests (`request_type`). Use the [monitor_set]
+    /// utility for ease of use.
+    static ref CACHE_SET_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "xenos_cache_set_duration_seconds",
+        "The cache set request latencies in seconds.",
+        &["request_type"],
+        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
+    )
+    .unwrap();
 }
 
-/// A [CacheEntry] is a wrapper that may hold cached data. It consists of a timestamp, the time at which
-/// the entry was created, and optional inner data. If no data is set, the entry is considered `empty`.
-///
-/// In general, a [CacheEntry] is used as an immutable.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CacheEntry<D>
+async fn monitor_set<F, Fut, D>(request_type: &str, f: F) -> Entry<D>
 where
-    D: Debug + Clone + PartialEq + Eq,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Entry<D>>,
+    D: Clone + Debug + Eq + PartialEq,
 {
-    /// The entry creation time in seconds.
-    pub timestamp: u64,
-
-    /// The inner data of the cache entry.
-    pub data: Option<D>,
+    let start = Instant::now();
+    let result = f().await;
+    // TODO monitor more?
+    CACHE_SET_HISTOGRAM
+        .with_label_values(&[request_type])
+        .observe(start.elapsed().as_secs_f64());
+    result
 }
 
-impl<D> CacheEntry<D>
+async fn monitor_get<F, Fut, D>(request_type: &str, f: F) -> Cached<D>
 where
-    D: Debug + Clone + PartialEq + Eq,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Cached<D>>,
+    D: Clone + Debug + Eq + PartialEq,
 {
-    /// Creates a new empty instance of [CacheEntry].
-    pub fn new_empty() -> Self {
-        Self {
-            timestamp: get_epoch_seconds(),
-            data: None,
+    let start = Instant::now();
+    let result = f().await;
+    let cache_result = match &result {
+        Hit(_) => "hit",
+        Expired(_) => "expired",
+        Miss => "miss",
+    };
+    // TODO monitor more?
+    CACHE_GET_HISTOGRAM
+        .with_label_values(&[request_type, cache_result])
+        .observe(start.elapsed().as_secs_f64());
+    result
+}
+
+pub struct Cache {
+    expiry: settings::CacheEntries<Expiry>,
+    levels: Vec<Box<dyn CacheLevel>>,
+}
+
+impl Cache {
+    /// Creates a new [Cache] with no inner caches.
+    pub fn new(expiry: settings::CacheEntries<Expiry>) -> Self {
+        Cache {
+            expiry,
+            levels: vec![],
         }
     }
 
-    /// Creates a new filled instance of [CacheEntry] with the provided data. The creation time
-    /// is set to the current time.
-    pub fn new(data: D) -> Self {
-        Self {
-            timestamp: get_epoch_seconds(),
-            data: Some(data),
+    /// Pushes an optional cache to the end of the inner caches (the last layer).
+    pub async fn add_level<F, Fut>(mut self, enabled: bool, f: F) -> Result<Self, XenosError>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<Box<dyn CacheLevel>, XenosError>>,
+    {
+        if enabled {
+            self.levels.push(f().await?);
         }
+        Ok(self)
     }
 
-    /// Checks if the instance has data or is empty.
-    pub fn is_empty(&self) -> bool {
-        self.data.is_none()
-    }
+    async fn get<'a, D, G, GF, S, SF>(&'a self, expiry: &Expiry, getter: G, setter: S) -> Cached<D>
+    where
+        G: Fn(&'a dyn CacheLevel) -> GF,
+        GF: Future<Output = Option<Entry<D>>>,
+        S: Fn(&'a dyn CacheLevel, Entry<D>) -> SF,
+        SF: Future<Output = ()>,
+        D: Clone + Debug + Eq + PartialEq,
+    {
+        let mut depth = 0;
+        let mut result = Miss;
 
-    /// Gets the age of the [CacheEntry]. The age of a [CacheEntry] is the relative time from which
-    /// the cache entry was created until now.
-    pub fn current_age(&self) -> u64 {
-        get_epoch_seconds() - self.timestamp
-    }
-
-    /// Checks if the [CacheEntry] age is greater or equal than the provided expiry.
-    pub fn is_expired(&self, expiry: &Duration) -> bool {
-        self.current_age() >= expiry.as_secs()
-    }
-}
-
-/// A utility for converting something into a [Cached].
-pub trait IntoCached<T> {
-    fn into_cached(self, expiry: &Duration, expiry_missing: &Duration) -> Cached<T>;
-}
-
-impl<D> IntoCached<CacheEntry<D>> for Option<CacheEntry<D>>
-where
-    D: Debug + Clone + PartialEq + Eq,
-{
-    fn into_cached(self, expiry: &Duration, expiry_missing: &Duration) -> Cached<CacheEntry<D>> {
-        match self {
-            None => Miss,
-            Some(v) if v.is_empty() && v.is_expired(expiry_missing) => Expired(v),
-            Some(v) if v.is_expired(expiry) => Expired(v),
-            Some(v) => Hit(v),
+        // try to find cache hit falling back to expired, noting its depth
+        for i in 0..self.levels.len() {
+            // get entry from cache
+            let opt = getter(self.levels[depth].as_ref()).await;
+            let cached = Cached::with_expiry(opt, expiry);
+            match cached {
+                Hit(entry) => {
+                    result = Hit(entry);
+                    depth = i;
+                    break;
+                }
+                Expired(entry) => {
+                    result = Expired(entry);
+                }
+                Miss => {}
+            };
         }
+
+        // update upper caches, ensuring the consistency invariant
+        match &result {
+            Hit(entry) | Expired(entry) => {
+                for i in (0..depth).rev() {
+                    setter(self.levels[i].as_ref(), Entry::clone(entry)).await;
+                }
+            }
+            _ => {}
+        };
+        result
     }
-}
 
-/// A [UuidData] is a resolved username (case-sensitive).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct UuidData {
-    pub username: String,
-    pub uuid: Uuid,
-}
+    async fn set<'a, D, S, SF>(&'a self, data: Option<D>, setter: S) -> Entry<D>
+    where
+        S: Fn(&'a dyn CacheLevel, Entry<D>) -> SF,
+        SF: Future<Output = ()>,
+        D: Clone + Debug + Eq + PartialEq,
+    {
+        // fix entry timestamp to be the same for all caches
+        let entry = Entry::from(data);
 
-/// A [SkinData] is a profile skin with metadata.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SkinData {
-    pub bytes: Vec<u8>,
-    pub model: String,
-    pub default: bool,
-}
+        // update lower caches first, ensuring the consistency invariant
+        for cache in self.levels.iter().rev() {
+            setter(cache.as_ref(), Entry::clone(&entry)).await;
+        }
+        entry
+    }
 
-/// A [CapeData] is a profile cape.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CapeData {
-    pub bytes: Vec<u8>,
-}
+    #[tracing::instrument(skip(self))]
+    pub async fn get_uuid(&self, username: &str) -> Cached<UuidData> {
+        monitor_get("uuid", || {
+            self.get(
+                &self.expiry.uuid,
+                |level| level.get_uuid(username),
+                |level, entry| level.set_uuid(username.to_string(), entry),
+            )
+        })
+        .await
+    }
 
-/// A [HeadData] is a profile skin's head.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct HeadData {
-    pub bytes: Vec<u8>,
-    pub default: bool,
-}
+    #[tracing::instrument(skip(self))]
+    pub async fn set_uuid(&self, username: &str, data: Option<UuidData>) -> Entry<UuidData> {
+        monitor_set("uuid", || {
+            self.set(data, |level, entry| {
+                level.set_uuid(username.to_string(), entry)
+            })
+        })
+        .await
+    }
 
-/// A [UuidEntry] is a [cache entry](CacheEntry) that encapsulates [uuid data](UuidData). It is used
-/// to cache username to uuid resolve results.
-pub type UuidEntry = CacheEntry<UuidData>;
+    #[tracing::instrument(skip(self))]
+    pub async fn get_profile(&self, uuid: &Uuid) -> Cached<ProfileData> {
+        monitor_get("profile", || {
+            self.get(
+                &self.expiry.profile,
+                |level| level.get_profile(uuid),
+                |level, entry| level.set_profile(*uuid, entry),
+            )
+        })
+        .await
+    }
 
-/// A [ProfileEntry] is a [cache entry](CacheEntry) that encapsulates [profile data](Profile).
-/// It is used to cache uuid to profile resolve results.
-pub type ProfileEntry = CacheEntry<Profile>;
+    #[tracing::instrument(skip(self))]
+    pub async fn set_profile(&self, uuid: Uuid, data: Option<ProfileData>) -> Entry<ProfileData> {
+        monitor_set("profile", || {
+            self.set(data, |level, entry| level.set_profile(uuid, entry))
+        })
+        .await
+    }
 
-/// A [SkinEntry] is a [cache entry](CacheEntry) that encapsulates [skin data](SkinData). It is used
-/// to cache uuid to skin data resolve results.
-pub type SkinEntry = CacheEntry<SkinData>;
+    #[tracing::instrument(skip(self))]
+    pub async fn get_skin(&self, uuid: &Uuid) -> Cached<SkinData> {
+        monitor_get("skin", || {
+            self.get(
+                &self.expiry.skin,
+                |level| level.get_skin(uuid),
+                |level, entry| level.set_skin(*uuid, entry),
+            )
+        })
+        .await
+    }
 
-/// A [CapeEntry] is a [cache entry](CacheEntry) that encapsulates [cape data](CapeData). It is used
-/// to cache uuid to skin data resolve results.
-pub type CapeEntry = CacheEntry<CapeData>;
+    #[tracing::instrument(skip(self))]
+    pub async fn set_skin(&self, uuid: Uuid, data: Option<SkinData>) -> Entry<SkinData> {
+        monitor_set("skin", || {
+            self.set(data, |level, entry| level.set_skin(uuid, entry))
+        })
+        .await
+    }
 
-/// A [HeadEntry] is a [cache entry](CacheEntry) that encapsulates [head data](HeadData). It is used
-/// to cache uuid to head data resolve results.
-pub type HeadEntry = CacheEntry<HeadData>;
+    #[tracing::instrument(skip(self))]
+    pub async fn get_cape(&self, uuid: &Uuid) -> Cached<CapeData> {
+        monitor_get("cape", || {
+            self.get(
+                &self.expiry.cape,
+                |level| level.get_cape(uuid),
+                |level, entry| level.set_cape(*uuid, entry),
+            )
+        })
+        .await
+    }
 
-/// A [Cache](XenosCache) represents any cache used by Xenos. [Cache entries](CacheEntry) are
-/// returned best-effort. That means .can be in
-/// one of three states:
-/// - [Hit] if a valid entry was found in the cache,
-/// - [Expired] if an entry was found, but it has expired, and
-/// - [Miss] if no entry was found.
-///
-/// Based on the implementation, some response types may not be represented, e.g. a cache might not
-/// support [expired](Expired) [cache entries](CacheEntry).
-///
-/// The cache implementation itself handles concurrency, so it does not have to be wrapped in e.g.
-/// a [Mutex](tokio::sync::Mutex).
-#[async_trait]
-pub trait XenosCache: Debug + Send + Sync {
-    async fn get_uuid_by_username(&self, username: &str) -> Result<Cached<UuidEntry>, XenosError>;
-    async fn set_uuid_by_username(
-        &self,
-        username: &str,
-        entry: UuidEntry,
-    ) -> Result<(), XenosError>;
-    async fn get_profile_by_uuid(&self, uuid: &Uuid) -> Result<Cached<ProfileEntry>, XenosError>;
-    async fn set_profile_by_uuid(&self, uuid: Uuid, entry: ProfileEntry) -> Result<(), XenosError>;
-    async fn get_skin_by_uuid(&self, uuid: &Uuid) -> Result<Cached<SkinEntry>, XenosError>;
-    async fn set_skin_by_uuid(&self, uuid: Uuid, entry: SkinEntry) -> Result<(), XenosError>;
-    async fn get_cape_by_uuid(&self, uuid: &Uuid) -> Result<Cached<CapeEntry>, XenosError>;
-    async fn set_cape_by_uuid(&self, uuid: Uuid, entry: CapeEntry) -> Result<(), XenosError>;
-    async fn get_head_by_uuid(
-        &self,
-        uuid: &Uuid,
-        overlay: bool,
-    ) -> Result<Cached<HeadEntry>, XenosError>;
-    async fn set_head_by_uuid(
+    #[tracing::instrument(skip(self))]
+    pub async fn set_cape(&self, uuid: Uuid, data: Option<CapeData>) -> Entry<CapeData> {
+        monitor_set("cape", || {
+            self.set(data, |level, entry| level.set_cape(uuid, entry))
+        })
+        .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn get_head(&self, uuid: &Uuid, overlay: bool) -> Cached<HeadData> {
+        monitor_get("head", || {
+            self.get(
+                &self.expiry.head,
+                |level| level.get_head(uuid, overlay),
+                |level, entry| level.set_head(*uuid, overlay, entry),
+            )
+        })
+        .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn set_head(
         &self,
         uuid: Uuid,
-        entry: HeadEntry,
         overlay: bool,
-    ) -> Result<(), XenosError>;
-}
-
-/// Gets the current time in seconds.
-pub fn get_epoch_seconds() -> u64 {
-    u64::try_from(Utc::now().timestamp()).unwrap()
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    type VoidEntry = CacheEntry<()>;
-
-    #[test]
-    fn is_empty() {
-        // given
-        let entry = VoidEntry::new_empty();
-
-        // when
-
-        // then
-        assert!(entry.is_empty());
-    }
-
-    #[test]
-    fn is_not_empty() {
-        // given
-        let entry = VoidEntry::new(());
-
-        // when
-
-        // then
-        assert!(!entry.is_empty());
-    }
-
-    #[test]
-    fn expired() {
-        // given
-        let entry = VoidEntry::new_empty();
-
-        // when
-
-        // then
-        assert!(entry.is_expired(&Duration::from_secs(0)));
-        assert!(!entry.is_expired(&Duration::from_secs(1)));
-        assert!(!entry.is_expired(&Duration::from_secs(10)));
-        assert!(!entry.is_expired(&Duration::from_secs(120)));
-    }
-
-    #[test]
-    fn into_cached_miss() {
-        // given
-        let val: Option<VoidEntry> = None;
-
-        // when
-        let entry = val.into_cached(&Duration::from_secs(0), &Duration::from_secs(0));
-
-        // then
-        assert!(matches!(entry, Miss));
-    }
-
-    #[test]
-    fn into_cached_expired() {
-        // given
-        let val: Option<VoidEntry> = Some(VoidEntry::new_empty());
-
-        // when
-        let entry = val.into_cached(&Duration::from_secs(0), &Duration::from_secs(0));
-
-        // then
-        assert!(matches!(entry, Expired(_)));
-    }
-
-    #[test]
-    fn into_cached_hit() {
-        // given
-        let val: Option<VoidEntry> = Some(VoidEntry::new_empty());
-
-        // when
-        let entry = val.into_cached(&Duration::from_secs(10), &Duration::from_secs(10));
-
-        // then
-        assert!(matches!(entry, Hit(_)));
+        data: Option<HeadData>,
+    ) -> Entry<HeadData> {
+        monitor_set("head", || {
+            self.set(data, |level, entry| level.set_head(uuid, overlay, entry))
+        })
+        .await
     }
 }
