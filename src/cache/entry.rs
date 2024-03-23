@@ -1,9 +1,9 @@
 use crate::cache::entry::Cached::{Expired, Hit, Miss};
 use crate::mojang::Profile;
 use crate::settings;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 /// [Dated] associates some data to its creation time. It provides a measure of relevancy of the
@@ -178,5 +178,8 @@ pub struct HeadData {
 
 /// Gets the current time in seconds.
 pub fn now_seconds() -> u64 {
-    u64::try_from(Utc::now().timestamp()).unwrap()
+    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(n) => n.as_secs(),
+        Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+    }
 }
