@@ -12,14 +12,14 @@ use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
 use std::fmt::Debug;
 use std::future::Future;
+use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
 // TODO update buckets
 lazy_static! {
     /// A histogram for the cache get request latencies in seconds. It is intended to be used by all
-    /// caches (`cache_variant`) and cache requests (`request_type`). Use the [monitor_get]
-    /// utility for ease of use.
+    /// cache requests (`request_type`). Use the [monitor_get] utility for ease of use.
     static ref CACHE_GET_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_cache_get_duration_seconds",
         "The cache get request latencies in seconds.",
@@ -29,8 +29,7 @@ lazy_static! {
     .unwrap();
 
     /// A histogram for the cache set request latencies in seconds. It is intended to be used by all
-    /// caches (`cache_variant`) and cache requests (`request_type`). Use the [monitor_set]
-    /// utility for ease of use.
+    ///  cache requests (`request_type`). Use the [monitor_set] utility for ease of use.
     static ref CACHE_SET_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_cache_set_duration_seconds",
         "The cache set request latencies in seconds.",
@@ -96,7 +95,7 @@ where
 /// ```
 pub struct Cache {
     expiry: settings::CacheEntries<Expiry>,
-    levels: Vec<Box<dyn CacheLevel>>,
+    levels: Vec<Arc<dyn CacheLevel>>,
 }
 
 impl Cache {
@@ -112,7 +111,7 @@ impl Cache {
     pub async fn add_level<F, Fut, E>(mut self, enabled: bool, f: F) -> Result<Self, E>
     where
         F: Fn() -> Fut,
-        Fut: Future<Output = Result<Box<dyn CacheLevel>, E>>,
+        Fut: Future<Output = Result<Arc<dyn CacheLevel>, E>>,
     {
         if enabled {
             self.levels.push(f().await?);
@@ -294,5 +293,164 @@ impl Cache {
             self.set(data, |level, entry| level.set_head(uuid, overlay, entry))
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::cache::level::moka::MokaCache;
+    use crate::settings::{CacheEntries, CacheEntry};
+    use std::sync::Arc;
+    use std::time::Duration;
+    use uuid::uuid;
+
+    fn new_moka_settings() -> settings::MokaCache {
+        let entry = CacheEntry {
+            cap: 10,
+            ttl: Duration::from_secs(100),
+            ttl_na: Duration::from_secs(100),
+            tti: Duration::from_secs(100),
+            tti_na: Duration::from_secs(100),
+        };
+        settings::MokaCache {
+            enabled: false,
+            entries: CacheEntries {
+                uuid: entry.clone(),
+                profile: entry.clone(),
+                skin: entry.clone(),
+                cape: entry.clone(),
+                head: entry.clone(),
+            },
+        }
+    }
+
+    fn new_expiry(dur: Duration) -> CacheEntries<Expiry> {
+        let expiry = Expiry {
+            exp: dur,
+            exp_na: dur,
+        };
+        CacheEntries {
+            uuid: expiry.clone(),
+            profile: expiry.clone(),
+            skin: expiry.clone(),
+            cape: expiry.clone(),
+            head: expiry.clone(),
+        }
+    }
+
+    /// Creates a new cache with two levels.
+    async fn new_cache_2l(dur: Duration) -> Cache {
+        let new_moka = || async {
+            let l1: Arc<dyn CacheLevel> = Arc::new(MokaCache::new(new_moka_settings()));
+            Ok::<_, ()>(l1)
+        };
+
+        Cache::new(new_expiry(dur))
+            .add_level(true, new_moka)
+            .await
+            .unwrap()
+            .add_level(true, new_moka)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn new_cache() {
+        // given
+        let l1: Arc<dyn CacheLevel> = Arc::new(MokaCache::new(new_moka_settings()));
+        let l2: Arc<dyn CacheLevel> = Arc::new(MokaCache::new(new_moka_settings()));
+
+        // when
+        let cache = Cache::new(new_expiry(Duration::from_secs(10)))
+            .add_level(false, || async { Err(()) })
+            .await
+            .expect("factory 1 should not be called")
+            .add_level(true, || async { Ok::<_, ()>(Arc::clone(&l1)) })
+            .await
+            .expect("factory 2 should not fail")
+            .add_level(false, || async { Err(()) })
+            .await
+            .expect("factory 3 should not be called")
+            .add_level(true, || async { Ok::<_, ()>(Arc::clone(&l2)) })
+            .await
+            .expect("factory 4 should not fail");
+
+        // then
+        assert_eq!(2, cache.levels.len());
+    }
+
+    #[tokio::test]
+    async fn set_some() {
+        // given
+        let cache = new_cache_2l(Duration::from_secs(10)).await;
+        let data = UuidData {
+            username: "Hydrofin".to_string(),
+            uuid: uuid!("09879557e47945a9b434a56377674627"),
+        };
+
+        // when
+        cache.set_uuid("hydrofin", Some(data.clone())).await;
+
+        // then
+        let cached1 = cache.levels[0].get_uuid("hydrofin").await;
+        let cached2 = cache.levels[1].get_uuid("hydrofin").await;
+
+        assert!(matches!(cached1, Some(entry) if entry.data == Some(data.clone())));
+        assert!(matches!(cached2, Some(entry) if entry.data == Some(data.clone())));
+    }
+
+    #[tokio::test]
+    async fn set_none() {
+        // given
+        let cache = new_cache_2l(Duration::from_secs(10)).await;
+
+        // when
+        cache.set_uuid("hydrofin", None).await;
+
+        // then
+        let cached1 = cache.levels[0].get_uuid("hydrofin").await;
+        let cached2 = cache.levels[1].get_uuid("hydrofin").await;
+
+        assert!(matches!(cached1, Some(entry) if entry.data == None));
+        assert!(matches!(cached2, Some(entry) if entry.data == None));
+    }
+
+    #[tokio::test]
+    async fn get_hit() {
+        // given
+        let cache = new_cache_2l(Duration::from_secs(10)).await;
+        cache.set_uuid("hydrofin", None).await;
+
+        // when
+        let cached = cache.get_uuid("hydrofin").await;
+
+        // then
+        assert!(matches!(cached, Hit(entry) if entry.data == None));
+    }
+
+    #[tokio::test]
+    async fn get_expired() {
+        // given
+        let cache = new_cache_2l(Duration::from_secs(0)).await;
+        cache.set_uuid("hydrofin", None).await;
+
+        // when
+        let cached = cache.get_uuid("hydrofin").await;
+
+        // then
+        assert!(matches!(cached, Expired(entry) if entry.data == None));
+    }
+
+    #[tokio::test]
+    async fn get_miss() {
+        // given
+        let cache = new_cache_2l(Duration::from_secs(10)).await;
+
+        // when
+        let cached = cache.get_uuid("hydrofin").await;
+
+        // then
+        assert!(matches!(cached, Miss));
     }
 }

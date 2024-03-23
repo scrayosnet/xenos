@@ -126,16 +126,6 @@ pub struct CacheEntry {
     /// The cache max capacity. May be supported by cache.
     pub cap: u64,
 
-    /// The cache entry expiration duration. If elapsed, then the cache entry is marked as expired,
-    /// but not deleted.
-    #[serde(deserialize_with = "parse_duration")]
-    pub exp: Duration,
-
-    /// The cache entry expiration duration for empty cache entries (e.g. username not found). If
-    /// elapsed, then the cache entry is marked as expired, but not deleted.
-    #[serde(deserialize_with = "parse_duration")]
-    pub exp_na: Duration,
-
     /// The cache entry time-to-life. If elapsed, then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
     pub ttl: Duration,

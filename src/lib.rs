@@ -78,7 +78,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
         .add_level(settings.cache.moka.enabled, || async {
             info!("adding moka cache to chaining cache");
             let cache = MokaCache::new(settings.cache.moka.clone());
-            Ok::<Box<dyn CacheLevel>, RedisError>(Box::new(cache))
+            Ok::<Arc<dyn CacheLevel>, Box<dyn std::error::Error>>(Arc::new(cache))
         })
         .await?
         // the next layer is a remote cache, in this case a redis cache
@@ -88,7 +88,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
             let redis_client = redis::Client::open(cs.redis.address.clone())?;
             let redis_manager = redis_client.get_connection_manager().await?;
             let cache = RedisCache::new(redis_manager, &settings.cache.redis);
-            Ok::<Box<dyn CacheLevel>, RedisError>(Box::new(cache))
+            Ok::<Arc<dyn CacheLevel>, RedisError>(Arc::new(cache))
         })
         .await?;
 
