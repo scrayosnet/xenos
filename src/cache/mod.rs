@@ -1,5 +1,3 @@
-//! The cache module provides multiple [cache](XenosCache) implementations for the xenos service.
-
 pub mod entry;
 pub mod level;
 

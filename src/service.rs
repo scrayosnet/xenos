@@ -90,7 +90,7 @@ where
 }
 
 /// The [Service] is the backbone of Xenos. All exposed services (gRPC/REST) use a shared instance of
-/// this service. The [Service] incorporates a [cache](XenosCache) and [mojang api](Mojang) implementations
+/// this service. The [Service] incorporates a [Cache] and [Mojang] implementations
 /// as well as a clone of the [application settings](Settings). It is expected, that the settings
 /// match the settings used to construct the cache and api.
 pub struct Service {
