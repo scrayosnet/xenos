@@ -73,7 +73,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
     // build chaining cache with selected caches
     // it consists of a local and remote cache
     info!("building chaining cache from caches");
-    let cache = Cache::new(settings.cache.expiry.clone())
+    let cache = Cache::new(settings.cache.entries.clone())
         // the top most layer is a local (in-memory) cache, in this case a moka cache
         .add_level(settings.cache.moka.enabled, || async {
             info!("adding moka cache to chaining cache");

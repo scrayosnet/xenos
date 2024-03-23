@@ -7,7 +7,7 @@ use crate::cache::entry::Cached::{Expired, Hit, Miss};
 use crate::cache::entry::{Cached, CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::cache::level::CacheLevel;
 use crate::settings;
-use crate::settings::Expiry;
+use crate::settings::CacheEntry;
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
 use std::fmt::Debug;
@@ -94,13 +94,13 @@ where
 ///   .add_level(true, || async { ... }).await?;
 /// ```
 pub struct Cache {
-    expiry: settings::CacheEntries<Expiry>,
+    expiry: settings::CacheEntries<CacheEntry>,
     levels: Vec<Arc<dyn CacheLevel>>,
 }
 
 impl Cache {
     /// Creates a new [Cache] with no inner caches.
-    pub fn new(expiry: settings::CacheEntries<Expiry>) -> Self {
+    pub fn new(expiry: settings::CacheEntries<CacheEntry>) -> Self {
         Cache {
             expiry,
             levels: vec![],
@@ -120,7 +120,12 @@ impl Cache {
     }
 
     /// Utility for getting an [Entry] from the cache levels. Also updates cache levels appropriately.
-    async fn get<'a, D, G, GF, S, SF>(&'a self, expiry: &Expiry, getter: G, setter: S) -> Cached<D>
+    async fn get<'a, D, G, GF, S, SF>(
+        &'a self,
+        expiry: &CacheEntry,
+        getter: G,
+        setter: S,
+    ) -> Cached<D>
     where
         G: Fn(&'a dyn CacheLevel) -> GF,
         GF: Future<Output = Option<Entry<D>>>,
@@ -300,13 +305,13 @@ impl Cache {
 mod test {
     use super::*;
     use crate::cache::level::moka::MokaCache;
-    use crate::settings::{CacheEntries, CacheEntry};
+    use crate::settings::{CacheEntries, MokaCacheEntry};
     use std::sync::Arc;
     use std::time::Duration;
     use uuid::uuid;
 
     fn new_moka_settings() -> settings::MokaCache {
-        let entry = CacheEntry {
+        let entry = MokaCacheEntry {
             cap: 10,
             ttl: Duration::from_secs(100),
             ttl_na: Duration::from_secs(100),
@@ -325,8 +330,8 @@ mod test {
         }
     }
 
-    fn new_expiry(dur: Duration) -> CacheEntries<Expiry> {
-        let expiry = Expiry {
+    fn new_expiry(dur: Duration) -> CacheEntries<CacheEntry> {
+        let expiry = CacheEntry {
             exp: dur,
             exp_na: dur,
         };
