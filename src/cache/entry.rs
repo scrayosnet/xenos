@@ -103,7 +103,7 @@ where
     /// is **greater or equal** the provided expiry.
     pub fn is_expired(&self, expiry: &settings::CacheEntry) -> bool {
         let exp = match &self.data {
-            None => expiry.exp_na,
+            None => expiry.exp_empty,
             Some(_) => expiry.exp,
         };
         self.current_age() >= exp.as_secs()

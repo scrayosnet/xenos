@@ -312,9 +312,9 @@ mod test {
         let entry = MokaCacheEntry {
             cap: 10,
             ttl: Duration::from_secs(100),
-            ttl_na: Duration::from_secs(100),
+            ttl_empty: Duration::from_secs(100),
             tti: Duration::from_secs(100),
-            tti_na: Duration::from_secs(100),
+            tti_empty: Duration::from_secs(100),
         };
         settings::MokaCache {
             enabled: false,
@@ -331,7 +331,7 @@ mod test {
     fn new_expiry(dur: Duration) -> CacheEntries<CacheEntry> {
         let expiry = CacheEntry {
             exp: dur,
-            exp_na: dur,
+            exp_empty: dur,
         };
         CacheEntries {
             uuid: expiry.clone(),

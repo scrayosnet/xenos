@@ -117,7 +117,7 @@ pub struct CacheEntry {
     /// The cache entry expiration duration for empty cache entries (e.g. username not found). If
     /// elapsed, then the cache entry is marked as expired, but not deleted.
     #[serde(deserialize_with = "parse_duration")]
-    pub exp_na: Duration,
+    pub exp_empty: Duration,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -132,7 +132,7 @@ pub struct MokaCacheEntry {
     /// The cache entry time-to-life for empty cache entries (e.g. username not found). If elapsed,
     /// then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
-    pub ttl_na: Duration,
+    pub ttl_empty: Duration,
 
     /// The cache entry time-to-idle. If elapsed, then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
@@ -141,7 +141,7 @@ pub struct MokaCacheEntry {
     /// The cache entry time-to-idle for empty cache entries (e.g. username not found). If elapsed,
     /// then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
-    pub tti_na: Duration,
+    pub tti_empty: Duration,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -153,7 +153,7 @@ pub struct RedisCacheEntry {
     /// The cache entry time-to-life for empty cache entries (e.g. username not found). If elapsed,
     /// then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
-    pub ttl_na: Duration,
+    pub ttl_empty: Duration,
 }
 
 /// [RestServer] holds the rest server configuration. The rest server is implicitly enabled if either
