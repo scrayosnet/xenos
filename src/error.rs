@@ -9,10 +9,6 @@ pub enum XenosError {
     #[error(transparent)]
     UuidError(#[from] uuid::Error),
 
-    /// A [RedisError] wraps a [redis::RedisError].
-    #[error(transparent)]
-    RedisError(#[from] redis::RedisError),
-
     /// A [ReqwestError] wraps a [reqwest::Error].
     #[error(transparent)]
     ReqwestError(#[from] reqwest::Error),

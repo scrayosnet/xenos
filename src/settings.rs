@@ -54,6 +54,8 @@ use std::time::Duration;
 /// a remote cache (e.g. [redis](RedisCache)).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Cache {
+    pub entries: CacheEntries<CacheEntry>,
+
     /// The [redis] cache configuration.
     pub redis: RedisCache,
 
@@ -62,18 +64,17 @@ pub struct Cache {
 }
 
 /// [MokaCache] hold the [moka] cache configuration. Moka is a fast in-memory (local) cache. It
-/// supports [CacheEntry] `ttl` and `tti` and `cap` per cache entry type.
+/// supports [MokaCacheEntry] `ttl` and `tti` and `cap` per cache entry type.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MokaCache {
     /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
     pub enabled: bool,
 
-    /// The cache entries configuration (e.g. expiry, ...).
-    pub entries: CacheEntries,
+    pub entries: CacheEntries<MokaCacheEntry>,
 }
 
 /// [RedisCache] hold the [redis] cache configuration. Redis is a fast remote cache. It supports
-/// [CacheEntry] `ttl` per cache entry type but not `tti` and `cap`.
+/// [RedisCacheEntry] `ttl` per cache entry type but not `tti` and `cap`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisCache {
     /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
@@ -83,36 +84,31 @@ pub struct RedisCache {
     /// if redis is enabled.
     pub address: String,
 
-    /// The cache entries configuration (e.g. expiry, ...).
-    pub entries: CacheEntries,
+    pub entries: CacheEntries<RedisCacheEntry>,
 }
 
-/// [CacheEntries] is a wrapper for configuring [CacheEntry] for all cache entry types.
+/// [CacheEntries] is a wrapper for configuring [MokaCacheEntry] for all cache entry types.
 #[derive(Debug, Clone, Deserialize)]
-pub struct CacheEntries {
+pub struct CacheEntries<D> {
     /// The cache entry type for username to uuid resolve.
-    pub uuid: CacheEntry,
+    pub uuid: D,
 
     /// The cache entry type for uuid to profile resolve.
-    pub profile: CacheEntry,
+    pub profile: D,
 
     /// The cache entry type for uuid to skin resolve.
-    pub skin: CacheEntry,
+    pub skin: D,
 
     /// The cache entry type for uuid to cape resolve.
-    pub cape: CacheEntry,
+    pub cape: D,
 
     /// The cache entry type for uuid to head resolve.
-    pub head: CacheEntry,
+    pub head: D,
 }
 
-/// [CacheEntry] holds configuration for `cap`, `exp`, `ttl`, `tti` and `..._na` for a
-/// single cache entry type.
+/// [CacheEntry] holds the general configuration for a single cache entry type.
 #[derive(Debug, Clone, Deserialize)]
 pub struct CacheEntry {
-    /// The cache max capacity. May be supported by cache.
-    pub cap: u64,
-
     /// The cache entry expiration duration. If elapsed, then the cache entry is marked as expired,
     /// but not deleted.
     #[serde(deserialize_with = "parse_duration")]
@@ -121,7 +117,13 @@ pub struct CacheEntry {
     /// The cache entry expiration duration for empty cache entries (e.g. username not found). If
     /// elapsed, then the cache entry is marked as expired, but not deleted.
     #[serde(deserialize_with = "parse_duration")]
-    pub exp_na: Duration,
+    pub exp_empty: Duration,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MokaCacheEntry {
+    /// The cache max capacity. May be supported by cache.
+    pub cap: u64,
 
     /// The cache entry time-to-life. If elapsed, then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
@@ -130,7 +132,7 @@ pub struct CacheEntry {
     /// The cache entry time-to-life for empty cache entries (e.g. username not found). If elapsed,
     /// then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
-    pub ttl_na: Duration,
+    pub ttl_empty: Duration,
 
     /// The cache entry time-to-idle. If elapsed, then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
@@ -139,7 +141,19 @@ pub struct CacheEntry {
     /// The cache entry time-to-idle for empty cache entries (e.g. username not found). If elapsed,
     /// then the cache entry is deleted.
     #[serde(deserialize_with = "parse_duration")]
-    pub tti_na: Duration,
+    pub tti_empty: Duration,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RedisCacheEntry {
+    /// The cache entry time-to-life. If elapsed, then the cache entry is deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub ttl: Duration,
+
+    /// The cache entry time-to-life for empty cache entries (e.g. username not found). If elapsed,
+    /// then the cache entry is deleted.
+    #[serde(deserialize_with = "parse_duration")]
+    pub ttl_empty: Duration,
 }
 
 /// [RestServer] holds the rest server configuration. The rest server is implicitly enabled if either
