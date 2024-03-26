@@ -304,7 +304,6 @@ mod test {
     use super::*;
     use crate::cache::level::moka::MokaCache;
     use crate::settings::{CacheEntries, MokaCacheEntry};
-    use std::sync::Arc;
     use std::time::Duration;
     use uuid::uuid;
 
@@ -415,8 +414,8 @@ mod test {
         let cached1 = cache.levels[0].get_uuid("hydrofin").await;
         let cached2 = cache.levels[1].get_uuid("hydrofin").await;
 
-        assert!(matches!(cached1, Some(entry) if entry.data == None));
-        assert!(matches!(cached2, Some(entry) if entry.data == None));
+        assert!(matches!(cached1, Some(entry) if entry.data.is_none()));
+        assert!(matches!(cached2, Some(entry) if entry.data.is_none()));
     }
 
     #[tokio::test]
@@ -429,7 +428,7 @@ mod test {
         let cached = cache.get_uuid("hydrofin").await;
 
         // then
-        assert!(matches!(cached, Hit(entry) if entry.data == None));
+        assert!(matches!(cached, Hit(entry) if entry.data.is_none()));
     }
 
     #[tokio::test]
@@ -442,7 +441,7 @@ mod test {
         let cached = cache.get_uuid("hydrofin").await;
 
         // then
-        assert!(matches!(cached, Expired(entry) if entry.data == None));
+        assert!(matches!(cached, Expired(entry) if entry.data.is_none()));
     }
 
     #[tokio::test]
