@@ -1,3 +1,5 @@
+# See settings documantation at src/settings.rs.
+
 debug = false
 
 [cache.entries]
