@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enabled
             .then_some(settings.sentry.address.clone()),
         sentry::ClientOptions {
-            debug: settings.debug,
+            debug: settings.sentry.debug,
             release: sentry::release_name!(),
             environment: Some(Owned(settings.sentry.environment.clone())),
             ..sentry::ClientOptions::default()

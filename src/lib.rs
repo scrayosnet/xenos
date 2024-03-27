@@ -68,7 +68,7 @@ where
 /// [tracing] was configured beforehand. It blocks until a shutdown signal is received (graceful shutdown).
 #[tracing::instrument(skip(settings))]
 pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
-    info!(debug = settings.debug, "starting xenos …");
+    info!("starting xenos …");
 
     // build chaining cache with selected caches
     // it consists of a local and remote cache

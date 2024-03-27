@@ -1,7 +1,5 @@
 # See settings documantation at src/settings.rs.
 
-debug = false
-
 [cache.entries]
 uuid = { exp = "PT120M", exp_empty = "PT5M" }
 profile = { exp = "PT10M", exp_empty = "PT5M" }
@@ -32,6 +30,7 @@ head = { cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty =
 
 [sentry]
 enabled = false
+debug = false
 address = "https://key@sentry.io/42" # update if enabled
 environment = "staging"
 

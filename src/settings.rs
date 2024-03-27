@@ -215,6 +215,9 @@ pub struct Sentry {
     /// Whether sentry should be enabled.
     pub enabled: bool,
 
+    /// Whether sentry should have debug enabled.
+    pub debug: bool,
+
     /// The address of the sentry instance. This can either be the official sentry or a self-hosted instance.
     /// The address has to bes event if sentry is disabled. In that case, the address can be any non-nil value.
     pub address: String,
@@ -238,10 +241,6 @@ pub struct Logging {
 /// with status ok.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
-    /// Whether the application should be in debug mode. Application components may provide additional
-    /// functionalities or outputs in debug mode.
-    pub debug: bool,
-
     /// The logging configuration.
     pub logging: Logging,
 
