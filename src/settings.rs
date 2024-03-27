@@ -241,6 +241,9 @@ pub struct Logging {
 /// with status ok.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
+    /// Whether the profiles should be requested with a signature.
+    pub unsigned_profile: bool,
+
     /// The logging configuration.
     pub logging: Logging,
 

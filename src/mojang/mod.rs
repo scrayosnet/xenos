@@ -169,7 +169,7 @@ pub fn is_steve(uuid: &Uuid) -> bool {
 /// Builds the head image bytes from a skin. Expects a valid skin.
 #[tracing::instrument(skip(skin_bytes))]
 pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, ImageError> {
-    let skin_img = image::load_from_memory_with_format(skin_bytes, image::ImageFormat::Png)?;
+    let skin_img = image::load_from_memory_with_format(skin_bytes, ImageFormat::Png)?;
     let mut head_img = skin_img.view(8, 8, 8, 8).to_image();
 
     if overlay {
@@ -193,7 +193,7 @@ pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, Imag
 #[async_trait]
 pub trait Mojang: Send + Sync {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError>;
-    async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError>;
+    async fn fetch_profile(&self, uuid: &Uuid, unsigned: bool) -> Result<Profile, XenosError>;
     async fn fetch_image_bytes(&self, url: String, resource_tag: &str)
         -> Result<Bytes, XenosError>;
 }

@@ -1,5 +1,7 @@
 # See settings documantation at src/settings.rs.
 
+unsigned_profile = true
+
 [cache.entries]
 uuid = { exp = "PT120M", exp_empty = "PT5M" }
 profile = { exp = "PT10M", exp_empty = "PT5M" }

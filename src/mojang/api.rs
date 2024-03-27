@@ -102,12 +102,13 @@ impl Mojang for MojangApi {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
+    async fn fetch_profile(&self, uuid: &Uuid, unsigned: bool) -> Result<Profile, XenosError> {
         let response = monitor_reqwest("profile", || {
             HTTP_CLIENT
                 .get(format!(
-                    "https://sessionserver.mojang.com/session/minecraft/profile/{}",
-                    uuid.simple()
+                    "https://sessionserver.mojang.com/session/minecraft/profile/{}?unsigned={}",
+                    uuid.simple(),
+                    unsigned,
                 ))
                 .send()
         })
