@@ -1,6 +1,6 @@
 use std::borrow::Cow::Owned;
 use std::sync::Arc;
-use tracing::{info, Level};
+use tracing::info;
 
 use tracing_subscriber::prelude::*;
 use xenos::settings::Settings;
@@ -28,8 +28,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize logging with sentry hook
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::fmt::Layer::new()
-                .with_writer(std::io::stdout.with_max_level(Level::INFO)),
+            tracing_subscriber::fmt::layer()
+                .compact()
+                .with_filter(settings.logging.level),
         )
         .with(sentry_tracing::layer())
         .init();

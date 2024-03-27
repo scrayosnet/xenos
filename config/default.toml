@@ -3,32 +3,32 @@
 debug = false
 
 [cache.entries]
-uuid = {exp = "PT120M", exp_empty = "PT5M"}
-profile = {exp = "PT10M", exp_empty = "PT5M"}
-skin = {exp = "PT10M", exp_empty = "PT5M"}
-cape = {exp = "PT10M", exp_empty = "PT5M"}
-head = {exp = "PT10M", exp_empty = "PT5M"}
+uuid = { exp = "PT120M", exp_empty = "PT5M" }
+profile = { exp = "PT10M", exp_empty = "PT5M" }
+skin = { exp = "PT10M", exp_empty = "PT5M" }
+cape = { exp = "PT10M", exp_empty = "PT5M" }
+head = { exp = "PT10M", exp_empty = "PT5M" }
 
 [cache.redis]
 enabled = false
 address = "redis://username:password@example.com/0" # update if enabled
 
 [cache.redis.entries]
-uuid = {ttl = "P3D", ttl_empty = "P1D"}
-profile = {ttl = "P3D", ttl_empty = "P1D"}
-skin = {ttl = "P3D", ttl_empty = "P1D"}
-cape = {ttl = "P3D", ttl_empty = "P1D"}
-head = {ttl = "P3D", ttl_empty = "P1D"}
+uuid = { ttl = "P3D", ttl_empty = "P1D" }
+profile = { ttl = "P3D", ttl_empty = "P1D" }
+skin = { ttl = "P3D", ttl_empty = "P1D" }
+cape = { ttl = "P3D", ttl_empty = "P1D" }
+head = { ttl = "P3D", ttl_empty = "P1D" }
 
 [cache.moka]
 enabled = false
 
 [cache.moka.entries]
-uuid = {cap = 500, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M"}
-profile = {cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M"}
-skin = {cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M"}
-cape = {cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M"}
-head = {cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M"}
+uuid = { cap = 500, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M" }
+profile = { cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M" }
+skin = { cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M" }
+cape = { cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M" }
+head = { cap = 300, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M" }
 
 [sentry]
 enabled = false
@@ -49,3 +49,6 @@ address = "0.0.0.0:9990"
 profile_enabled = true
 health_enabled = true
 address = "0.0.0.0:50051"
+
+[logging]
+level = "info"

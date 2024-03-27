@@ -41,10 +41,13 @@
 //! ```
 
 use config::{Config, ConfigError, Environment, File};
+use serde::de::Unexpected;
 use serde::{Deserialize, Deserializer};
 use std::env;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::time::Duration;
+use tracing::metadata::LevelFilter;
 
 /// [Cache] hold the service cache configurations. The different caches are accumulated by the
 /// [ChainingCache](crate::cache::chaining::ChainingCache). If no cache is `enabled`, caching is
@@ -220,6 +223,14 @@ pub struct Sentry {
     pub environment: String,
 }
 
+/// [Logging] hold the log configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Logging {
+    /// The log level that should be printed.
+    #[serde(deserialize_with = "parse_level_filter")]
+    pub level: LevelFilter,
+}
+
 /// [Settings] holds all configuration for the application. I.g. one immutable instance is created
 /// on startup and then shared among the application components.
 ///
@@ -230,6 +241,9 @@ pub struct Settings {
     /// Whether the application should be in debug mode. Application components may provide additional
     /// functionalities or outputs in debug mode.
     pub debug: bool,
+
+    /// The logging configuration.
+    pub logging: Logging,
 
     /// The service cache configuration.
     pub cache: Cache,
@@ -281,4 +295,13 @@ impl Settings {
 pub fn parse_duration<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Duration, D::Error> {
     let iso: iso8601::Duration = Deserialize::deserialize(deserializer)?;
     Ok(Duration::from(iso))
+}
+
+/// Deserializer for [LevelFilter] from string. E.g. `info`.
+pub fn parse_level_filter<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<LevelFilter, D::Error> {
+    let level: String = Deserialize::deserialize(deserializer)?;
+    LevelFilter::from_str(&level)
+        .map_err(|_| serde::de::Error::invalid_value(Unexpected::Str(&level), &"log level string"))
 }
