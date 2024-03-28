@@ -3,7 +3,8 @@
 //!
 //! # Layers
 //!
-//! The configuration consists of up to four layers. Upper layers overwrite lower layer configurations.
+//! The configuration consists of up to three layers. Upper layers overwrite lower layer configurations
+//! (e.g. environment variables overwrite the default configuration).
 //!
 //! ## Layer 1 (Environment variables) \[optional\]
 //!
@@ -12,24 +13,20 @@
 //! an environment variable defaulting to `XENOS`. That means, the nested settings field `cache.redis.enabled`
 //! can be overwritten by the environment variable `XENOS__CACHE__REDIS__ENABLED`.
 //!
-//! ## Layer 2 (Deployment configuration) \[optional\]
+//! ## Layer 2 (Custom configuration) \[optional\]
 //!
-//! The next layer is an optional configuration file intended to be used by deployments. The file
-//! location can be configured using the `CONFIG_FILE` environment variable, defaulting to `config/config`.
-//! The file can be any file type supported by [config] (e.g. `config/config.toml`).
+//! The next layer is an optional configuration file intended to be used by deployments and local testing. The file
+//! location can be configured using the `CONFIG_CUSTOM_FILE` environment variable, defaulting to `config/custom`.
+//! It can be of any file type supported by [config] (e.g. `config/custom.toml`). The file should not be
+//! published by git as its configuration is context dependent (e.g. local/cluster) and probably contains
+//! secrets.
 //!
-//! ## Layer 3 (Local configuration)  \[optional\]
+//! ## Layer 3 (Default configuration)
 //!
-//! The next layer is an optional configuration file intended to be used for local testing. The file
-//! is expected to be at `config/local` and can be any file type supported by [config] (e.g. `config/local.toml`).
-//! This configuration file SHOULD NOT be published by git, as it could contain secrets (e.g. redis credentials).
-//!
-//! ## Layer 4 (Default configuration)
-//!
-//! The base layer is a configuration file confining the default configuration. The file is expected
-//! to be at `config/default` and can be any file type supported by [config] (e.g. `config/default.toml`).
-//! This file gives a default value for all settings fields. It is published by git and SHOULD NEVER
-//! contain secrets.
+//! The base layer is a configuration file confining the default configuration. The file
+//! location can be configured using the `CONFIG_DEFAULT_FILE` environment variable, defaulting to `config/default`.
+//! The file can be any file type supported by [config] (e.g. `config/default.toml`). It provides a
+//! default value for all settings fields. It is published by git and SHOULD NEVER contain secrets.
 //!
 //! # Usage
 //!
@@ -40,13 +37,14 @@
 //! let settings: Settings = Settings::new()?;
 //! ```
 
-use config::{Config, ConfigError, Environment, File};
-use serde::de::Unexpected;
-use serde::{Deserialize, Deserializer};
 use std::env;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
+
+use config::{Config, ConfigError, Environment, File};
+use serde::de::Unexpected;
+use serde::{Deserialize, Deserializer};
 use tracing::metadata::LevelFilter;
 
 /// [Cache] hold the service cache configurations. The different caches are accumulated by the
@@ -267,20 +265,15 @@ impl Settings {
     /// Creates a new application configuration as described in the [module documentation](crate::settings).
     pub fn new() -> Result<Self, ConfigError> {
         // the environment prefix for all `Settings` fields
-        let env_prefix = env::var("ENV_PREFIX").unwrap_or_else(|_| "xenos".into());
-        // the name of an additional optional configuration file
-        // it is intended to be used by the deployment
-        let config_file = env::var("CONFIG_FILE").unwrap_or_else(|_| "config/config".into());
+        let env_prefix = env::var("ENV_PREFIX").unwrap_or("xenos".into());
+        // the name of the configuration files (used by the deployment)
+        let default_file = env::var("CONFIG_DEFAULT_FILE").unwrap_or("config/default".into());
+        let custom_file = env::var("CONFIG_CUSTOM_FILE").unwrap_or("config/custom".into());
 
         let s = Config::builder()
-            // start off by merging in the "default" configuration file
-            .add_source(File::with_name("config/default"))
-            // add in a local configuration file
-            // this file shouldn't be checked in to git
-            .add_source(File::with_name("config/local").required(false))
-            // add in a configured configuration file
-            // it is intended to be supplied by the deployment
-            .add_source(File::with_name(&config_file).required(false))
+            // load configuration files: default -> custom
+            .add_source(File::with_name(&default_file))
+            .add_source(File::with_name(&custom_file).required(false))
             // add in settings from the environment (with a prefix of APP)
             // e.g. `XENOS__DEBUG=1` would set the `debug` key, on the other hand,
             // `XENOS__CACHE__REDIS__ENABLED=1` would enable the redis cache.
