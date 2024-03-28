@@ -48,8 +48,7 @@ use serde::{Deserialize, Deserializer};
 use tracing::metadata::LevelFilter;
 
 /// [Cache] hold the service cache configurations. The different caches are accumulated by the
-/// [ChainingCache](crate::cache::chaining::ChainingCache). If no cache is `enabled`, caching is
-/// effectively disabled.
+/// [Cache](crate::cache::Cache). If no cache is `enabled`, caching is effectively disabled.
 ///
 /// In general, there should always be a local cache (e.g. [moka](MokaCache)) enabled and optionally
 /// a remote cache (e.g. [redis](RedisCache)).
@@ -68,9 +67,10 @@ pub struct Cache {
 /// supports [MokaCacheEntry] `ttl` and `tti` and `cap` per cache entry type.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MokaCache {
-    /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
+    /// Whether the cache level should be used.
     pub enabled: bool,
 
+    /// The configuration for the cache entries.
     pub entries: CacheEntries<MokaCacheEntry>,
 }
 
@@ -78,13 +78,14 @@ pub struct MokaCache {
 /// [RedisCacheEntry] `ttl` per cache entry type but not `tti` and `cap`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisCache {
-    /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
+    /// Whether the cache level should be used.
     pub enabled: bool,
 
     /// The address of the redis instance (e.g. `redis://username:password@example.com/0`). Only used
     /// if redis is enabled.
     pub address: String,
 
+    /// The configuration for the cache entries.
     pub entries: CacheEntries<RedisCacheEntry>,
 }
 
