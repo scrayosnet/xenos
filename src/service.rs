@@ -220,7 +220,7 @@ impl Service {
         // try to fetch from mojang and update cache
         match self
             .mojang
-            .fetch_profile(uuid, self.settings.unsigned_profile)
+            .fetch_profile(uuid, self.settings.signed_profiles)
             .await
         {
             Ok(profile) => {

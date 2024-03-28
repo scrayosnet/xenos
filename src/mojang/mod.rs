@@ -193,7 +193,7 @@ pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, Imag
 #[async_trait]
 pub trait Mojang: Send + Sync {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError>;
-    async fn fetch_profile(&self, uuid: &Uuid, unsigned: bool) -> Result<Profile, XenosError>;
+    async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, XenosError>;
     async fn fetch_image_bytes(&self, url: String, resource_tag: &str)
         -> Result<Bytes, XenosError>;
 }
