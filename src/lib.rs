@@ -68,22 +68,22 @@ where
 /// [tracing] was configured beforehand. It blocks until a shutdown signal is received (graceful shutdown).
 #[tracing::instrument(skip(settings))]
 pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
-    info!(debug = settings.debug, "starting xenos …");
+    info!("starting xenos …");
 
-    // build chaining cache with selected caches
+    // build cache with selected cache levels
     // it consists of a local and remote cache
-    info!("building chaining cache from caches");
+    info!("building multi-level cache");
     let cache = Cache::new(settings.cache.entries.clone())
-        // the top most layer is a local (in-memory) cache, in this case a moka cache
+        // the top most level is a local (in-memory) cache, in this case a moka cache
         .add_level(settings.cache.moka.enabled, || async {
-            info!("adding moka cache to chaining cache");
+            info!("adding moka cache level");
             let cache = MokaCache::new(settings.cache.moka.clone());
             Ok::<Arc<dyn CacheLevel>, Box<dyn std::error::Error>>(Arc::new(cache))
         })
         .await?
-        // the next layer is a remote cache, in this case a redis cache
+        // the next level is a remote cache, in this case a redis cache
         .add_level(settings.cache.redis.enabled, || async {
-            info!("adding redis cache to chaining cache");
+            info!("adding redis cache level");
             let cs = &settings.cache;
             let redis_client = redis::Client::open(cs.redis.address.clone())?;
             let redis_manager = redis_client.get_connection_manager().await?;

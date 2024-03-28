@@ -148,7 +148,7 @@ impl<'a> Mojang for MojangTestingApi<'a> {
         Ok(uuids)
     }
 
-    async fn fetch_profile(&self, uuid: &Uuid) -> Result<Profile, XenosError> {
+    async fn fetch_profile(&self, uuid: &Uuid, _signed: bool) -> Result<Profile, XenosError> {
         self.profiles.get(uuid).cloned().ok_or(XenosError::NotFound)
     }
 

@@ -218,7 +218,11 @@ impl Service {
         };
 
         // try to fetch from mojang and update cache
-        match self.mojang.fetch_profile(uuid).await {
+        match self
+            .mojang
+            .fetch_profile(uuid, self.settings.signed_profiles)
+            .await
+        {
             Ok(profile) => {
                 let dated = self.cache.set_profile(*uuid, Some(profile)).await.unwrap();
                 Ok(dated)

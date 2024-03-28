@@ -3,7 +3,8 @@
 //!
 //! # Layers
 //!
-//! The configuration consists of up to four layers. Upper layers overwrite lower layer configurations.
+//! The configuration consists of up to three layers. Upper layers overwrite lower layer configurations
+//! (e.g. environment variables overwrite the default configuration).
 //!
 //! ## Layer 1 (Environment variables) \[optional\]
 //!
@@ -12,24 +13,18 @@
 //! an environment variable defaulting to `XENOS`. That means, the nested settings field `cache.redis.enabled`
 //! can be overwritten by the environment variable `XENOS__CACHE__REDIS__ENABLED`.
 //!
-//! ## Layer 2 (Deployment configuration) \[optional\]
+//! ## Layer 2 (Custom configuration) \[optional\]
 //!
-//! The next layer is an optional configuration file intended to be used by deployments. The file
+//! The next layer is an optional configuration file intended to be used by deployments and local testing. The file
 //! location can be configured using the `CONFIG_FILE` environment variable, defaulting to `config/config`.
-//! The file can be any file type supported by [config] (e.g. `config/config.toml`).
+//! It can be of any file type supported by [config] (e.g. `config/config.toml`). The file should not be
+//! published by git as its configuration is context dependent (e.g. local/cluster) and probably contains
+//! secrets.
 //!
-//! ## Layer 3 (Local configuration)  \[optional\]
+//! ## Layer 3 (Default configuration)
 //!
-//! The next layer is an optional configuration file intended to be used for local testing. The file
-//! is expected to be at `config/local` and can be any file type supported by [config] (e.g. `config/local.toml`).
-//! This configuration file SHOULD NOT be published by git, as it could contain secrets (e.g. redis credentials).
-//!
-//! ## Layer 4 (Default configuration)
-//!
-//! The base layer is a configuration file confining the default configuration. The file is expected
-//! to be at `config/default` and can be any file type supported by [config] (e.g. `config/default.toml`).
-//! This file gives a default value for all settings fields. It is published by git and SHOULD NEVER
-//! contain secrets.
+//! The default configuration provides default value for all settings fields. It is loaded from
+//! `config/default.toml` at compile time.
 //!
 //! # Usage
 //!
@@ -40,15 +35,21 @@
 //! let settings: Settings = Settings::new()?;
 //! ```
 
-use config::{Config, ConfigError, Environment, File};
-use serde::{Deserialize, Deserializer};
+mod parser;
+
+use crate::settings::parser::parse_duration;
+use crate::settings::parser::parse_level_filter;
+
 use std::env;
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use config::{Config, ConfigError, Environment, File, FileFormat};
+use serde::Deserialize;
+use tracing::metadata::LevelFilter;
+
 /// [Cache] hold the service cache configurations. The different caches are accumulated by the
-/// [ChainingCache](crate::cache::chaining::ChainingCache). If no cache is `enabled`, caching is
-/// effectively disabled.
+/// [Cache](crate::cache::Cache). If no cache is `enabled`, caching is effectively disabled.
 ///
 /// In general, there should always be a local cache (e.g. [moka](MokaCache)) enabled and optionally
 /// a remote cache (e.g. [redis](RedisCache)).
@@ -67,9 +68,10 @@ pub struct Cache {
 /// supports [MokaCacheEntry] `ttl` and `tti` and `cap` per cache entry type.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MokaCache {
-    /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
+    /// Whether the cache level should be used.
     pub enabled: bool,
 
+    /// The configuration for the cache entries.
     pub entries: CacheEntries<MokaCacheEntry>,
 }
 
@@ -77,13 +79,14 @@ pub struct MokaCache {
 /// [RedisCacheEntry] `ttl` per cache entry type but not `tti` and `cap`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisCache {
-    /// Whether the cache should be used by the [ChainingCache](crate::cache::chaining::ChainingCache).
+    /// Whether the cache level should be used.
     pub enabled: bool,
 
     /// The address of the redis instance (e.g. `redis://username:password@example.com/0`). Only used
     /// if redis is enabled.
     pub address: String,
 
+    /// The configuration for the cache entries.
     pub entries: CacheEntries<RedisCacheEntry>,
 }
 
@@ -212,12 +215,23 @@ pub struct Sentry {
     /// Whether sentry should be enabled.
     pub enabled: bool,
 
+    /// Whether sentry should have debug enabled.
+    pub debug: bool,
+
     /// The address of the sentry instance. This can either be the official sentry or a self-hosted instance.
     /// The address has to bes event if sentry is disabled. In that case, the address can be any non-nil value.
     pub address: String,
 
     /// The environment of the application that should be communicated to sentry.
     pub environment: String,
+}
+
+/// [Logging] hold the log configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Logging {
+    /// The log level that should be printed.
+    #[serde(deserialize_with = "parse_level_filter")]
+    pub level: LevelFilter,
 }
 
 /// [Settings] holds all configuration for the application. I.g. one immutable instance is created
@@ -227,9 +241,11 @@ pub struct Sentry {
 /// with status ok.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
-    /// Whether the application should be in debug mode. Application components may provide additional
-    /// functionalities or outputs in debug mode.
-    pub debug: bool,
+    /// Whether the profiles should be requested with a signature.
+    pub signed_profiles: bool,
+
+    /// The logging configuration.
+    pub logging: Logging,
 
     /// The service cache configuration.
     pub cache: Cache,
@@ -251,19 +267,17 @@ impl Settings {
     /// Creates a new application configuration as described in the [module documentation](crate::settings).
     pub fn new() -> Result<Self, ConfigError> {
         // the environment prefix for all `Settings` fields
-        let env_prefix = env::var("ENV_PREFIX").unwrap_or_else(|_| "xenos".into());
-        // the name of an additional optional configuration file
-        // it is intended to be used by the deployment
-        let config_file = env::var("CONFIG_FILE").unwrap_or_else(|_| "config/config".into());
+        let env_prefix = env::var("ENV_PREFIX").unwrap_or("xenos".into());
+        // the path of the custom configuration file
+        let config_file = env::var("CONFIG_FILE").unwrap_or("config/config".into());
 
         let s = Config::builder()
-            // start off by merging in the "default" configuration file
-            .add_source(File::with_name("config/default"))
-            // add in a local configuration file
-            // this file shouldn't be checked in to git
-            .add_source(File::with_name("config/local").required(false))
-            // add in a configured configuration file
-            // it is intended to be supplied by the deployment
+            // load default configuration (embedded at compile time)
+            .add_source(File::from_str(
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/config/default.toml")),
+                FileFormat::Toml,
+            ))
+            // load custom configuration from file (at runtime)
             .add_source(File::with_name(&config_file).required(false))
             // add in settings from the environment (with a prefix of APP)
             // e.g. `XENOS__DEBUG=1` would set the `debug` key, on the other hand,
@@ -274,11 +288,4 @@ impl Settings {
         // you can deserialize (and thus freeze) the entire configuration as
         s.try_deserialize()
     }
-}
-
-/// Deserializer that parses an [iso8601] duration string to a [Duration]. E.g. `PT1M` is a duration
-/// of one minute.
-pub fn parse_duration<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Duration, D::Error> {
-    let iso: iso8601::Duration = Deserialize::deserialize(deserializer)?;
-    Ok(Duration::from(iso))
 }

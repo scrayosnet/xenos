@@ -20,9 +20,6 @@ EXPOSE 50051 9990
 # copy the raw binary into the new image
 COPY --from=builder "/usr/src/xenos/target/release/xenos" "/xenos"
 
-# copy the config into the new image
-COPY "./config" "/config"
-
 # copy the users and groups for the nobody user and group
 COPY --from=builder "/etc/passwd" "/etc/passwd"
 COPY --from=builder "/etc/group" "/etc/group"
