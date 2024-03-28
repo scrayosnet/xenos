@@ -37,14 +37,17 @@
 //! let settings: Settings = Settings::new()?;
 //! ```
 
+mod parser;
+
+use crate::settings::parser::parse_duration;
+use crate::settings::parser::parse_level_filter;
+
 use std::env;
 use std::net::SocketAddr;
-use std::str::FromStr;
 use std::time::Duration;
 
 use config::{Config, ConfigError, Environment, File};
-use serde::de::Unexpected;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use tracing::metadata::LevelFilter;
 
 /// [Cache] hold the service cache configurations. The different caches are accumulated by the
@@ -284,20 +287,4 @@ impl Settings {
         // you can deserialize (and thus freeze) the entire configuration as
         s.try_deserialize()
     }
-}
-
-/// Deserializer that parses an [iso8601] duration string to a [Duration]. E.g. `PT1M` is a duration
-/// of one minute.
-pub fn parse_duration<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Duration, D::Error> {
-    let iso: iso8601::Duration = Deserialize::deserialize(deserializer)?;
-    Ok(Duration::from(iso))
-}
-
-/// Deserializer for [LevelFilter] from string. E.g. `info`.
-pub fn parse_level_filter<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<LevelFilter, D::Error> {
-    let level: String = Deserialize::deserialize(deserializer)?;
-    LevelFilter::from_str(&level)
-        .map_err(|_| serde::de::Error::invalid_value(Unexpected::Str(&level), &"log level string"))
 }
