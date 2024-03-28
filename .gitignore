@@ -98,4 +98,4 @@ target/
 build/
 
 # local configuration
-config/custom.toml
+config/config.toml

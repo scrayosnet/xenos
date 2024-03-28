@@ -16,17 +16,15 @@
 //! ## Layer 2 (Custom configuration) \[optional\]
 //!
 //! The next layer is an optional configuration file intended to be used by deployments and local testing. The file
-//! location can be configured using the `CONFIG_CUSTOM_FILE` environment variable, defaulting to `config/custom`.
-//! It can be of any file type supported by [config] (e.g. `config/custom.toml`). The file should not be
+//! location can be configured using the `CONFIG_FILE` environment variable, defaulting to `config/config`.
+//! It can be of any file type supported by [config] (e.g. `config/config.toml`). The file should not be
 //! published by git as its configuration is context dependent (e.g. local/cluster) and probably contains
 //! secrets.
 //!
 //! ## Layer 3 (Default configuration)
 //!
-//! The base layer is a configuration file confining the default configuration. The file
-//! location can be configured using the `CONFIG_DEFAULT_FILE` environment variable, defaulting to `config/default`.
-//! The file can be any file type supported by [config] (e.g. `config/default.toml`). It provides a
-//! default value for all settings fields. It is published by git and SHOULD NEVER contain secrets.
+//! The default configuration provides default value for all settings fields. It is loaded from
+//! `config/default.toml` at compile time.
 //!
 //! # Usage
 //!
@@ -46,7 +44,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use config::{Config, ConfigError, Environment, File};
+use config::{Config, ConfigError, Environment, File, FileFormat};
 use serde::Deserialize;
 use tracing::metadata::LevelFilter;
 
@@ -270,14 +268,17 @@ impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         // the environment prefix for all `Settings` fields
         let env_prefix = env::var("ENV_PREFIX").unwrap_or("xenos".into());
-        // the name of the configuration files (used by the deployment)
-        let default_file = env::var("CONFIG_DEFAULT_FILE").unwrap_or("config/default".into());
-        let custom_file = env::var("CONFIG_CUSTOM_FILE").unwrap_or("config/custom".into());
+        // the path of the custom configuration file
+        let config_file = env::var("CONFIG_FILE").unwrap_or("config/config".into());
 
         let s = Config::builder()
-            // load configuration files: default -> custom
-            .add_source(File::with_name(&default_file))
-            .add_source(File::with_name(&custom_file).required(false))
+            // load default configuration (embedded at compile time)
+            .add_source(File::from_str(
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/config/default.toml")),
+                FileFormat::Toml,
+            ))
+            // load custom configuration from file (at runtime)
+            .add_source(File::with_name(&config_file).required(false))
             // add in settings from the environment (with a prefix of APP)
             // e.g. `XENOS__DEBUG=1` would set the `debug` key, on the other hand,
             // `XENOS__CACHE__REDIS__ENABLED=1` would enable the redis cache.
