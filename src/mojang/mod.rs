@@ -40,13 +40,29 @@ lazy_static! {
     );
 }
 
-/// [ApiError] is the error definition for the Mojang api. The inconsistent error responses from
-/// Mojang are mapped to these.
+/// [ApiError] is the error definition for the Mojang api. It maps the inconsistent error responses
+/// from Mojang into a consistent format.
+#[derive(thiserror::Error, Debug)]
 pub enum ApiError {
     /// The api is currently unavailable (outage/timeout/rate limited) or is out-of-date.
+    #[error("unable to request resource from mojang api")]
     Unavailable,
 
     /// The requested resource was not found.
+    #[error("resource not found")]
+    NotFound,
+}
+
+/// [TextureError] is an error that occurred while decoding textures from a profile.
+#[derive(thiserror::Error, Debug)]
+pub enum TextureError {
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::error::Error),
+
+    #[error(transparent)]
+    Base64(#[from] base64::DecodeError),
+
+    #[error("textures not found")]
     NotFound,
 }
 
@@ -135,23 +151,20 @@ pub struct UsernameResolved {
 impl Profile {
     /// Gets the [texture property](TexturesProperty) of the [profile](Profile). It is expected, that
     /// the property exists on the [profile](Profile) and is valid.
-    pub fn get_textures(&self) -> TexturesProperty {
+    pub fn get_textures(&self) -> Result<TexturesProperty, TextureError> {
         let prop = self
             .properties
             .iter()
             .find(|prop| prop.name == *"textures")
-            .expect("expected textures exist on profile");
+            .ok_or(TextureError::NotFound)?;
         decode_texture_prop(prop.value.clone())
     }
 }
 
 /// Decodes a base64 encoded [texture property](TexturesProperty).
-pub fn decode_texture_prop(b64: String) -> TexturesProperty {
-    let json = BASE64_STANDARD
-        .decode(b64)
-        .expect("expected textures to be base64 decodable");
-    serde_json::from_slice::<TexturesProperty>(&json)
-        .expect("expected textures to be json decodable")
+pub fn decode_texture_prop(b64: String) -> Result<TexturesProperty, TextureError> {
+    let json = BASE64_STANDARD.decode(b64)?;
+    Ok(serde_json::from_slice::<TexturesProperty>(&json)?)
 }
 
 /// Encodes [texture property](TexturesProperty) to base64.

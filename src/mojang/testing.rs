@@ -111,7 +111,10 @@ impl<'a> MojangTestingApi<'a> {
     /// Adds a profile to the [api](MojangTestingApi) using a [TestingProfile]. The profile is expected
     /// to a valid textures property.
     pub fn add_profile(mut self, profile: &'a TestingProfile) -> Self {
-        let textures = profile.profile.get_textures();
+        let textures = profile
+            .profile
+            .get_textures()
+            .expect("expected textures to exist an be valid");
         self.uuids.insert(
             profile.profile.name.to_lowercase(),
             UsernameResolved {

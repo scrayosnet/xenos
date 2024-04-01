@@ -268,7 +268,7 @@ impl Service {
         };
 
         // get textures or return default skin
-        let Some(textures) = profile.get_textures().textures.skin else {
+        let Some(textures) = profile.get_textures()?.textures.skin else {
             return Ok(Dated::from(get_default_skin(uuid)));
         };
         let skin_model = textures
@@ -288,7 +288,7 @@ impl Service {
                 let dated = self.cache.set_skin(*uuid, Some(skin)).await.unwrap();
                 Ok(dated)
             }
-            // handle NotFound as NotRetrieved as the profile (and therefore the skin) should exist
+            // handle NotFound as Unavailable as the profile (and therefore the skin) should exist
             Err(ApiError::NotFound) | Err(ApiError::Unavailable) => fallback
                 .ok_or(Unavailable)
                 .and_then(|entry| entry.some_or(NotFound)),
@@ -326,7 +326,7 @@ impl Service {
         };
 
         // try to get textures
-        let Some(textures) = profile.get_textures().textures.cape else {
+        let Some(textures) = profile.get_textures()?.textures.cape else {
             return Err(NotFound);
         };
 
@@ -339,7 +339,7 @@ impl Service {
                 let dated = self.cache.set_cape(*uuid, Some(cape)).await.unwrap();
                 Ok(dated)
             }
-            // handle NotFound as NotRetrieved as the profile (and therefore the cape) should exist
+            // handle NotFound as Unavailable as the profile (and therefore the cape) should exist
             Err(ApiError::NotFound) | Err(ApiError::Unavailable) => fallback
                 .ok_or(Unavailable)
                 .and_then(|entry| entry.some_or(NotFound)),
