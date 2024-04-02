@@ -18,7 +18,7 @@ edition = "2021"
 prost = "0.12"
 prost-types = { version = "0.12.3" }
 redis = { version = "0.25", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"] }
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.37", features = ["full"] }
 tonic = "0.11.0"
 tonic-health = "0.11.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
