@@ -1,4 +1,4 @@
-use crate::error::XenosError;
+use crate::error::ServiceError;
 use crate::proto::{
     CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
     SkinRequest, SkinResponse, UuidRequest, UuidResponse, UuidsRequest, UuidsResponse,
@@ -15,18 +15,20 @@ use prometheus::{Encoder, TextEncoder};
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// [RestResult] is an alias for a rest [Json] result with [XenosError]
-type RestResult<T> = Result<Json<T>, XenosError>;
+/// [RestResult] is an alias for a rest [Json] result with [ServiceError]
+type RestResult<T> = Result<Json<T>, ServiceError>;
 
-// implement automatic XenosError to response conversion
-// with that, XenosError can be returned in a result
-impl IntoResponse for XenosError {
+// implement automatic ServiceError to response conversion
+// with that, ServiceError can be returned in a result
+impl IntoResponse for ServiceError {
     fn into_response(self) -> Response {
         match self {
-            XenosError::NotRetrieved => {
-                (StatusCode::SERVICE_UNAVAILABLE, "mojang not reached").into_response()
-            }
-            XenosError::NotFound => (StatusCode::NOT_FOUND, "not found").into_response(),
+            ServiceError::Unavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "unable to request resource from mojang api",
+            )
+                .into_response(),
+            ServiceError::NotFound => (StatusCode::NOT_FOUND, "not found").into_response(),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response(),
         }
     }

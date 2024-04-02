@@ -2,7 +2,6 @@ pub mod api;
 #[cfg(feature = "static-testing")]
 pub mod testing;
 
-use crate::error::XenosError;
 use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
@@ -39,6 +38,32 @@ lazy_static! {
     pub static ref ALEX_HEAD: Bytes = Bytes::from(
         build_skin_head(&ALEX_SKIN, false).expect("expect Alex head to be build successfully"),
     );
+}
+
+/// [ApiError] is the error definition for the Mojang api. It maps the inconsistent error responses
+/// from Mojang into a consistent format.
+#[derive(thiserror::Error, Debug)]
+pub enum ApiError {
+    /// The api is currently unavailable (outage/timeout/rate limited) or is out-of-date.
+    #[error("unable to request resource from mojang api")]
+    Unavailable,
+
+    /// The requested resource was not found.
+    #[error("resource not found")]
+    NotFound,
+}
+
+/// [TextureError] is an error that occurred while decoding textures from a profile.
+#[derive(thiserror::Error, Debug)]
+pub enum TextureError {
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::error::Error),
+
+    #[error(transparent)]
+    Base64(#[from] base64::DecodeError),
+
+    #[error("textures not found")]
+    NotFound,
 }
 
 /// Represents a single Minecraft user profile with all current properties.
@@ -126,30 +151,26 @@ pub struct UsernameResolved {
 impl Profile {
     /// Gets the [texture property](TexturesProperty) of the [profile](Profile). It is expected, that
     /// the property exists on the [profile](Profile) and is valid.
-    pub fn get_textures(&self) -> Result<TexturesProperty, XenosError> {
+    pub fn get_textures(&self) -> Result<TexturesProperty, TextureError> {
         let prop = self
             .properties
             .iter()
             .find(|prop| prop.name == *"textures")
-            .ok_or(XenosError::InvalidTextures("missing".to_string()))?;
+            .ok_or(TextureError::NotFound)?;
         decode_texture_prop(prop.value.clone())
     }
 }
 
 /// Decodes a base64 encoded [texture property](TexturesProperty).
-pub fn decode_texture_prop(b64: String) -> Result<TexturesProperty, XenosError> {
-    let json = BASE64_STANDARD
-        .decode(b64)
-        .map_err(|_err| XenosError::InvalidTextures("base64 decode failed".to_string()))?;
-    serde_json::from_slice::<TexturesProperty>(&json)
-        .map_err(|_err| XenosError::InvalidTextures("json decode failed".to_string()))
+pub fn decode_texture_prop(b64: String) -> Result<TexturesProperty, TextureError> {
+    let json = BASE64_STANDARD.decode(b64)?;
+    Ok(serde_json::from_slice::<TexturesProperty>(&json)?)
 }
 
 /// Encodes [texture property](TexturesProperty) to base64.
-pub fn encode_texture_prop(prop: &TexturesProperty) -> Result<String, XenosError> {
-    let vec = serde_json::to_vec(prop)
-        .map_err(|_err| XenosError::InvalidTextures("json encode failed".to_string()))?;
-    Ok(BASE64_STANDARD.encode(vec))
+pub fn encode_texture_prop(prop: &TexturesProperty) -> String {
+    let vec = serde_json::to_vec(prop).expect("expected textures to be encodable");
+    BASE64_STANDARD.encode(vec)
 }
 
 /// Calculates the java hashcode of a [Uuid].
@@ -192,8 +213,7 @@ pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, Imag
 
 #[async_trait]
 pub trait Mojang: Send + Sync {
-    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError>;
-    async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, XenosError>;
-    async fn fetch_image_bytes(&self, url: String, resource_tag: &str)
-        -> Result<Bytes, XenosError>;
+    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError>;
+    async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, ApiError>;
+    async fn fetch_image_bytes(&self, url: String, resource_tag: &str) -> Result<Bytes, ApiError>;
 }

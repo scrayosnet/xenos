@@ -1,5 +1,5 @@
-use crate::error::XenosError;
-use crate::error::XenosError::{NotFound, NotRetrieved, UuidError};
+use crate::error::ServiceError;
+use crate::error::ServiceError::{NotFound, Unavailable, UuidError};
 use crate::proto::{
     profile_server::Profile, CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest,
     ProfileResponse, SkinRequest, SkinResponse, UuidRequest, UuidResponse, UuidsRequest,
@@ -13,12 +13,12 @@ use uuid::Uuid;
 /// [GrpcResult] is an alias for grpc result [Response] and [Status].
 type GrpcResult<T> = Result<Response<T>, Status>;
 
-// utility that allows the usage of XenosError in result with auto conversion to (tonic) response status
-impl From<XenosError> for Status {
-    fn from(value: XenosError) -> Self {
+// utility that allows the usage of ServiceError in result with auto conversion to (tonic) response status
+impl From<ServiceError> for Status {
+    fn from(value: ServiceError) -> Self {
         match value {
             UuidError(_) => Status::invalid_argument("invalid uuid"),
-            NotRetrieved => Status::unavailable("unable to retrieve"),
+            Unavailable => Status::unavailable("unable to request resource from mojang api"),
             NotFound => Status::not_found("resource not found"),
             err => Status::internal(err.to_string()),
         }

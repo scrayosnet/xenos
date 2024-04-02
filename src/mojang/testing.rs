@@ -1,7 +1,7 @@
-use crate::error::XenosError;
+use crate::mojang::ApiError::NotFound;
 use crate::mojang::{
-    encode_texture_prop, Mojang, Profile, ProfileProperty, Texture, Textures, TexturesProperty,
-    UsernameResolved,
+    encode_texture_prop, ApiError, Mojang, Profile, ProfileProperty, Texture, Textures,
+    TexturesProperty, UsernameResolved,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -69,8 +69,7 @@ impl TestingProfile {
                 name: name.to_string(),
                 properties: vec![ProfileProperty {
                     name: "textures".to_string(),
-                    value: encode_texture_prop(&textures)
-                        .expect("expected textures to serializable"),
+                    value: encode_texture_prop(&textures),
                     signature: None,
                 }],
                 profile_actions: vec![],
@@ -115,7 +114,7 @@ impl<'a> MojangTestingApi<'a> {
         let textures = profile
             .profile
             .get_textures()
-            .expect("expected testing profile to provide textures");
+            .expect("expected textures to exist an be valid");
         self.uuids.insert(
             profile.profile.name.to_lowercase(),
             UsernameResolved {
@@ -139,7 +138,7 @@ impl<'a> MojangTestingApi<'a> {
 
 #[async_trait]
 impl<'a> Mojang for MojangTestingApi<'a> {
-    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
+    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError> {
         let uuids = usernames
             .iter()
             .filter_map(|username| self.uuids.get(&username.to_lowercase()))
@@ -148,16 +147,12 @@ impl<'a> Mojang for MojangTestingApi<'a> {
         Ok(uuids)
     }
 
-    async fn fetch_profile(&self, uuid: &Uuid, _signed: bool) -> Result<Profile, XenosError> {
-        self.profiles.get(uuid).cloned().ok_or(XenosError::NotFound)
+    async fn fetch_profile(&self, uuid: &Uuid, _signed: bool) -> Result<Profile, ApiError> {
+        self.profiles.get(uuid).cloned().ok_or(NotFound)
     }
 
-    async fn fetch_image_bytes(&self, url: String, _: &str) -> Result<Bytes, XenosError> {
-        self.images
-            .get(&url)
-            .cloned()
-            .cloned()
-            .ok_or(XenosError::NotFound)
+    async fn fetch_image_bytes(&self, url: String, _: &str) -> Result<Bytes, ApiError> {
+        self.images.get(&url).cloned().cloned().ok_or(NotFound)
     }
 }
 

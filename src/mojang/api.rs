@@ -1,6 +1,5 @@
-use crate::error::XenosError;
-use crate::error::XenosError::{NotFound, NotRetrieved};
-use crate::mojang::{Mojang, Profile, UsernameResolved};
+use crate::mojang::ApiError::{NotFound, Unavailable};
+use crate::mojang::{ApiError, Mojang, Profile, UsernameResolved};
 use async_trait::async_trait;
 use bytes::Bytes;
 use lazy_static::lazy_static;
@@ -8,6 +7,7 @@ use prometheus::{register_histogram_vec, HistogramVec};
 use reqwest::StatusCode;
 use std::future::Future;
 use std::time::Instant;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 // TODO update buckets
@@ -68,21 +68,28 @@ impl MojangApi {
     async fn fetch_uuids_chunk(
         &self,
         usernames: &[String],
-    ) -> Result<Vec<UsernameResolved>, XenosError> {
+    ) -> Result<Vec<UsernameResolved>, ApiError> {
         let response = monitor_reqwest("uuids", || {
             HTTP_CLIENT
                 .post("https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname")
                 .json(usernames)
                 .send()
         })
-        .await?;
+        .await
+        .map_err(|err| {
+            warn!("failed to fetch uuids: {}", err);
+            Unavailable
+        })?;
+
         match response.status() {
-            StatusCode::NOT_FOUND => Err(NotFound),
-            StatusCode::NO_CONTENT => Ok(vec![]),
-            StatusCode::TOO_MANY_REQUESTS => Err(NotRetrieved),
-            _ => {
-                let resolved = response.error_for_status()?.json().await?;
-                Ok(resolved)
+            StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Ok(vec![]),
+            StatusCode::OK => response.json().await.map_err(|err| {
+                error!("failed to read body (username_resolved): {}", err);
+                Unavailable
+            }),
+            code => {
+                warn!(status = code.as_str(), "{:?}", response.text().await.ok());
+                Err(Unavailable)
             }
         }
     }
@@ -91,7 +98,7 @@ impl MojangApi {
 #[async_trait]
 impl Mojang for MojangApi {
     #[tracing::instrument(skip(self))]
-    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, XenosError> {
+    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError> {
         // split into requests with ten or fewer usernames
         let mut resolved = vec![];
         let chunks = usernames.chunks(10);
@@ -102,7 +109,7 @@ impl Mojang for MojangApi {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, XenosError> {
+    async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, ApiError> {
         let response = monitor_reqwest("profile", || {
             HTTP_CLIENT
                 .get(format!(
@@ -112,33 +119,43 @@ impl Mojang for MojangApi {
                 ))
                 .send()
         })
-        .await?;
+        .await
+        .map_err(|err| {
+            warn!("failed to fetch profile: {}", err);
+            Unavailable
+        })?;
+
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
-            StatusCode::TOO_MANY_REQUESTS => Err(NotRetrieved),
-            _ => {
-                let profile = response.error_for_status()?.json().await?;
-                Ok(profile)
+            StatusCode::OK => response.json().await.map_err(|err| {
+                error!("failed to read body (profile): {}", err);
+                Unavailable
+            }),
+            code => {
+                warn!(status = code.as_str(), "{:?}", response.text().await.ok());
+                Err(Unavailable)
             }
         }
     }
 
     #[tracing::instrument(skip(self))]
-    async fn fetch_image_bytes(
-        &self,
-        url: String,
-        resource_tag: &str,
-    ) -> Result<Bytes, XenosError> {
-        let response = monitor_reqwest(&format!("texture_{resource_tag}"), || {
-            HTTP_CLIENT.get(url).send()
-        })
-        .await?;
+    async fn fetch_image_bytes(&self, url: String, resource_tag: &str) -> Result<Bytes, ApiError> {
+        let response = monitor_reqwest(resource_tag, || HTTP_CLIENT.get(url).send())
+            .await
+            .map_err(|err| {
+                warn!("failed to fetch {} bytes: {}", resource_tag, err);
+                Unavailable
+            })?;
+
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
-            StatusCode::TOO_MANY_REQUESTS => Err(NotRetrieved),
-            _ => {
-                let bytes = response.error_for_status()?.bytes().await?;
-                Ok(bytes)
+            StatusCode::OK => response.bytes().await.map_err(|err| {
+                error!("failed to read body (bytes): {}", err);
+                Unavailable
+            }),
+            code => {
+                warn!(status = code.as_str(), "{:?}", response.text().await.ok());
+                Err(Unavailable)
             }
         }
     }

@@ -2,11 +2,11 @@ use crate::cache::entry::Cached::{Expired, Hit, Miss};
 use crate::cache::entry::{CapeData, HeadData, SkinData, UuidData};
 use crate::cache::entry::{Dated, Entry, ProfileData};
 use crate::cache::Cache;
-use crate::error::XenosError;
-use crate::error::XenosError::{NotFound, NotRetrieved};
+use crate::error::ServiceError;
+use crate::error::ServiceError::{NotFound, Unavailable};
 use crate::mojang;
 use crate::mojang::{
-    build_skin_head, Mojang, ALEX_HEAD, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_HEAD,
+    build_skin_head, ApiError, Mojang, ALEX_HEAD, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_HEAD,
     STEVE_SKIN,
 };
 use crate::settings::Settings;
@@ -53,10 +53,10 @@ lazy_static! {
 async fn monitor_service_call_with_age<F, Fut, D>(
     request_type: &str,
     f: F,
-) -> Result<Dated<D>, XenosError>
+) -> Result<Dated<D>, ServiceError>
 where
     F: FnOnce() -> Fut,
-    Fut: Future<Output = Result<Dated<D>, XenosError>>,
+    Fut: Future<Output = Result<Dated<D>, ServiceError>>,
     D: Clone + Debug + Eq + PartialEq,
 {
     let result = monitor_service_call(request_type, f).await;
@@ -69,17 +69,17 @@ where
 }
 
 /// A utility that wraps a [Service] call, monitoring its runtime and response status.
-async fn monitor_service_call<F, Fut, D>(request_type: &str, f: F) -> Result<D, XenosError>
+async fn monitor_service_call<F, Fut, D>(request_type: &str, f: F) -> Result<D, ServiceError>
 where
     F: FnOnce() -> Fut,
-    Fut: Future<Output = Result<D, XenosError>>,
+    Fut: Future<Output = Result<D, ServiceError>>,
     D: Clone + Debug + Eq + PartialEq,
 {
     let start = Instant::now();
     let result = f().await;
     let status = match &result {
         Ok(_) => "ok",
-        Err(NotRetrieved) => "not_retrieved",
+        Err(Unavailable) => "unavailable",
         Err(NotFound) => "not_found",
         Err(_) => "error",
     };
@@ -118,7 +118,7 @@ impl Service {
     /// Resolves the provided (case-insensitive) username to its (case-sensitive) username and uuid
     /// from cache or mojang.
     #[tracing::instrument(skip(self))]
-    pub async fn get_uuid(&self, username: &str) -> Result<Dated<UuidData>, XenosError> {
+    pub async fn get_uuid(&self, username: &str) -> Result<Dated<UuidData>, ServiceError> {
         monitor_service_call("uuid", || async {
             let mut uuids = self._get_uuids(&[username.to_string()]).await?;
             match uuids.remove(&username.to_lowercase()) {
@@ -135,14 +135,14 @@ impl Service {
     pub async fn get_uuids(
         &self,
         usernames: &[String],
-    ) -> Result<HashMap<String, Entry<UuidData>>, XenosError> {
+    ) -> Result<HashMap<String, Entry<UuidData>>, ServiceError> {
         monitor_service_call("uuids", || self._get_uuids(usernames)).await
     }
 
     pub async fn _get_uuids(
         &self,
         usernames: &[String],
-    ) -> Result<HashMap<String, Entry<UuidData>>, XenosError> {
+    ) -> Result<HashMap<String, Entry<UuidData>>, ServiceError> {
         // 1. initialize with uuid not found
         // contrary to the mojang api, we want all requested usernames to map to something instead of
         // being omitted in case the username is invalid/unused
@@ -181,7 +181,7 @@ impl Service {
             let response = match self.mojang.fetch_uuids(&cache_misses).await {
                 Ok(r) => r,
                 // currently, partial responses are not supported
-                Err(err) => return Err(err),
+                Err(err) => return Err(err.into()),
             };
             let mut found: HashMap<_, _> = response
                 .into_iter()
@@ -204,11 +204,11 @@ impl Service {
 
     /// Gets the profile for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
-    pub async fn get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, XenosError> {
+    pub async fn get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, ServiceError> {
         monitor_service_call_with_age("profile", || self._get_profile(uuid)).await
     }
 
-    async fn _get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, XenosError> {
+    async fn _get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, ServiceError> {
         // try to get from cache
         let cached = self.cache.get_profile(uuid).await;
         let fallback = match cached {
@@ -227,24 +227,23 @@ impl Service {
                 let dated = self.cache.set_profile(*uuid, Some(profile)).await.unwrap();
                 Ok(dated)
             }
-            Err(NotFound) => {
+            Err(ApiError::NotFound) => {
                 self.cache.set_profile(*uuid, None).await;
                 Err(NotFound)
             }
-            Err(NotRetrieved) => fallback
-                .ok_or(NotRetrieved)
+            Err(ApiError::Unavailable) => fallback
+                .ok_or(Unavailable)
                 .and_then(|entry| entry.some_or(NotFound)),
-            Err(err) => Err(err),
         }
     }
 
     /// Gets the profile skin for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
-    pub async fn get_skin(&self, uuid: &Uuid) -> Result<Dated<SkinData>, XenosError> {
+    pub async fn get_skin(&self, uuid: &Uuid) -> Result<Dated<SkinData>, ServiceError> {
         monitor_service_call_with_age("skin", || self._get_skin(uuid)).await
     }
 
-    async fn _get_skin(&self, uuid: &Uuid) -> Result<Dated<SkinData>, XenosError> {
+    async fn _get_skin(&self, uuid: &Uuid) -> Result<Dated<SkinData>, ServiceError> {
         // try to get from cache
         let cached = self.cache.get_skin(uuid).await;
         let fallback = match cached {
@@ -256,9 +255,9 @@ impl Service {
         // try to get profile
         let profile = match self.get_profile(uuid).await {
             Ok(profile) => profile.data,
-            Err(NotRetrieved) => {
+            Err(Unavailable) => {
                 return fallback
-                    .ok_or(NotRetrieved)
+                    .ok_or(Unavailable)
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
@@ -289,21 +288,20 @@ impl Service {
                 let dated = self.cache.set_skin(*uuid, Some(skin)).await.unwrap();
                 Ok(dated)
             }
-            // handle NotFound as NotRetrieved as the profile (and therefore the skin) should exist
-            Err(NotFound) | Err(NotRetrieved) => fallback
-                .ok_or(NotRetrieved)
+            // handle NotFound as Unavailable as the profile (and therefore the skin) should exist
+            Err(ApiError::NotFound) | Err(ApiError::Unavailable) => fallback
+                .ok_or(Unavailable)
                 .and_then(|entry| entry.some_or(NotFound)),
-            Err(err) => Err(err),
         }
     }
 
     /// Gets the profile cape for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
-    pub async fn get_cape(&self, uuid: &Uuid) -> Result<Dated<CapeData>, XenosError> {
+    pub async fn get_cape(&self, uuid: &Uuid) -> Result<Dated<CapeData>, ServiceError> {
         monitor_service_call_with_age("cape", || self._get_cape(uuid)).await
     }
 
-    async fn _get_cape(&self, uuid: &Uuid) -> Result<Dated<CapeData>, XenosError> {
+    async fn _get_cape(&self, uuid: &Uuid) -> Result<Dated<CapeData>, ServiceError> {
         // try to get from cache
         let cached = self.cache.get_cape(uuid).await;
         let fallback = match cached {
@@ -315,9 +313,9 @@ impl Service {
         // try to get profile
         let profile = match self.get_profile(uuid).await {
             Ok(profile) => profile.data,
-            Err(NotRetrieved) => {
+            Err(Unavailable) => {
                 return fallback
-                    .ok_or(NotRetrieved)
+                    .ok_or(Unavailable)
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
@@ -341,11 +339,10 @@ impl Service {
                 let dated = self.cache.set_cape(*uuid, Some(cape)).await.unwrap();
                 Ok(dated)
             }
-            // handle NotFound as NotRetrieved as the profile (and therefore the cape) should exist
-            Err(NotFound) | Err(NotRetrieved) => fallback
-                .ok_or(NotRetrieved)
+            // handle NotFound as Unavailable as the profile (and therefore the cape) should exist
+            Err(ApiError::NotFound) | Err(ApiError::Unavailable) => fallback
+                .ok_or(Unavailable)
                 .and_then(|entry| entry.some_or(NotFound)),
-            Err(err) => Err(err),
         }
     }
 
@@ -355,11 +352,11 @@ impl Service {
         &self,
         uuid: &Uuid,
         overlay: bool,
-    ) -> Result<Dated<HeadData>, XenosError> {
+    ) -> Result<Dated<HeadData>, ServiceError> {
         monitor_service_call_with_age("head", || self._get_head(uuid, overlay)).await
     }
 
-    async fn _get_head(&self, uuid: &Uuid, overlay: bool) -> Result<Dated<HeadData>, XenosError> {
+    async fn _get_head(&self, uuid: &Uuid, overlay: bool) -> Result<Dated<HeadData>, ServiceError> {
         // try to get from cache
         let cached = self.cache.get_head(uuid, overlay).await;
         let fallback = match cached {
@@ -371,9 +368,9 @@ impl Service {
         // try to get skin
         let skin = match self.get_skin(uuid).await {
             Ok(skin) => skin.data,
-            Err(NotRetrieved) => {
+            Err(Unavailable) => {
                 return fallback
-                    .ok_or(NotRetrieved)
+                    .ok_or(Unavailable)
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
