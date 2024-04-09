@@ -16,7 +16,7 @@ edition = "2021"
 
 [dependencies]
 prost = "0.12"
-prost-types = { version = "0.12.3" }
+prost-types = { version = "0.12.4" }
 redis = { version = "0.25", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"] }
 tokio = { version = "1.37", features = ["full"] }
 tonic = "0.11.0"
