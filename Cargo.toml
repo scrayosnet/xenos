@@ -1,7 +1,7 @@
 [package]
 name = "xenos"
 description = "Minecraft Profile Information Proxy"
-version = "0.1.0"
+version = "0.3.0"
 authors = [
     "Joshua Dean Küpper <admin@joshua-kuepper.de>",
     "Paul Wagner <contact@paulwagner.dev>"
