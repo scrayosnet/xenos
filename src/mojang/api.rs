@@ -77,18 +77,22 @@ impl MojangApi {
         })
         .await
         .map_err(|err| {
-            warn!("failed to fetch uuids: {}", err);
+            warn!("failed to fetch uuids: {:?}", err);
             Unavailable
         })?;
 
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Ok(vec![]),
             StatusCode::OK => response.json().await.map_err(|err| {
-                error!("failed to read body (username_resolved): {}", err);
+                error!("failed to read body (username_resolved): {:?}", err);
                 Unavailable
             }),
             code => {
-                warn!(status = code.as_str(), "{:?}", response.text().await.ok());
+                warn!(
+                    status = code.as_str(),
+                    "{:?}",
+                    response.text().await.unwrap_or(String::new())
+                );
                 Err(Unavailable)
             }
         }
@@ -121,14 +125,14 @@ impl Mojang for MojangApi {
         })
         .await
         .map_err(|err| {
-            warn!("failed to fetch profile: {}", err);
+            warn!("failed to fetch profile: {:?}", err);
             Unavailable
         })?;
 
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
             StatusCode::OK => response.json().await.map_err(|err| {
-                error!("failed to read body (profile): {}", err);
+                error!("failed to read body (profile): {:?}", err);
                 Unavailable
             }),
             code => {
@@ -150,7 +154,7 @@ impl Mojang for MojangApi {
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
             StatusCode::OK => response.bytes().await.map_err(|err| {
-                error!("failed to read body (bytes): {}", err);
+                error!("failed to read body (bytes): {:?}", err);
                 Unavailable
             }),
             code => {
