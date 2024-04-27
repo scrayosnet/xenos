@@ -63,7 +63,7 @@ impl RedisCache {
             .get(key)
             .await
             .unwrap_or_else(|err| {
-                error!("Failed to get value from redis: {}", err);
+                error!("Failed to get value from redis: {:?}", err);
                 None
             })
     }
@@ -84,7 +84,7 @@ impl RedisCache {
             )
             .await
             .unwrap_or_else(|err| {
-                error!("Failed to set value to redis: {}", err);
+                error!("Failed to set value to redis: {:?}", err);
             });
     }
 }
