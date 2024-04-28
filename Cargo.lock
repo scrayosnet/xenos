@@ -3782,7 +3782,7 @@ dependencies = [
 
 [[package]]
 name = "xenos"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "axum 0.7.5",
