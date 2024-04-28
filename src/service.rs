@@ -278,7 +278,7 @@ impl Service {
             .unwrap_or(CLASSIC_MODEL.to_string());
 
         // try to fetch from mojang and update cache
-        match self.mojang.fetch_image_bytes(textures.url, "skin").await {
+        match self.mojang.fetch_bytes(textures.url, "skin").await {
             Ok(skin_bytes) => {
                 let skin = SkinData {
                     bytes: skin_bytes.to_vec(),
@@ -331,7 +331,7 @@ impl Service {
         };
 
         // try to fetch from mojang and update cache
-        match self.mojang.fetch_image_bytes(textures.url, "cape").await {
+        match self.mojang.fetch_bytes(textures.url, "cape").await {
             Ok(cape_bytes) => {
                 let cape = CapeData {
                     bytes: cape_bytes.to_vec(),
