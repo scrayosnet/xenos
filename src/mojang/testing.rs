@@ -151,7 +151,7 @@ impl<'a> Mojang for MojangTestingApi<'a> {
         self.profiles.get(uuid).cloned().ok_or(NotFound)
     }
 
-    async fn fetch_image_bytes(&self, url: String, _: &str) -> Result<Bytes, ApiError> {
+    async fn fetch_bytes(&self, url: String, _: &str) -> Result<Bytes, ApiError> {
         self.images.get(&url).cloned().cloned().ok_or(NotFound)
     }
 }

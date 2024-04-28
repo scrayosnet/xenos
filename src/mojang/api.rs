@@ -5,6 +5,7 @@ use bytes::Bytes;
 use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
 use reqwest::StatusCode;
+use std::error::Error;
 use std::future::Future;
 use std::time::Instant;
 use tracing::{error, warn};
@@ -77,21 +78,22 @@ impl MojangApi {
         })
         .await
         .map_err(|err| {
-            warn!("failed to fetch uuids: {:?}", err);
+            warn!(error = %err, cause = err.source(), "failed to fetch uuids");
             Unavailable
         })?;
 
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Ok(vec![]),
             StatusCode::OK => response.json().await.map_err(|err| {
-                error!("failed to read body (username_resolved): {:?}", err);
+                error!(error = %err, "failed to parse uuids body");
                 Unavailable
             }),
             code => {
+                let body = response.text().await.unwrap_or(String::new());
                 warn!(
                     status = code.as_str(),
-                    "{:?}",
-                    response.text().await.unwrap_or(String::new())
+                    body = body,
+                    "failed to read uuids: invalid status code"
                 );
                 Err(Unavailable)
             }
@@ -125,40 +127,51 @@ impl Mojang for MojangApi {
         })
         .await
         .map_err(|err| {
-            warn!("failed to fetch profile: {:?}", err);
+            warn!(error = %err, cause = err.source(), "failed to fetch profile");
             Unavailable
         })?;
 
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
             StatusCode::OK => response.json().await.map_err(|err| {
-                error!("failed to read body (profile): {:?}", err);
+                error!(error = %err, "failed to parse profile body");
                 Unavailable
             }),
             code => {
-                warn!(status = code.as_str(), "{:?}", response.text().await.ok());
+                let body = response.text().await.unwrap_or(String::new());
+                warn!(
+                    status = code.as_str(),
+                    body = body,
+                    "failed to read profile: invalid status code"
+                );
                 Err(Unavailable)
             }
         }
     }
 
     #[tracing::instrument(skip(self))]
-    async fn fetch_image_bytes(&self, url: String, resource_tag: &str) -> Result<Bytes, ApiError> {
+    async fn fetch_bytes(&self, url: String, resource_tag: &str) -> Result<Bytes, ApiError> {
         let response = monitor_reqwest(resource_tag, || HTTP_CLIENT.get(url).send())
             .await
             .map_err(|err| {
-                warn!("failed to fetch {} bytes: {}", resource_tag, err);
+                warn!(error = %err, cause = err.source(), "failed to fetch {} (bytes)", resource_tag);
                 Unavailable
             })?;
 
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
             StatusCode::OK => response.bytes().await.map_err(|err| {
-                error!("failed to read body (bytes): {:?}", err);
+                error!(error = %err, "failed to parse {} body (bytes)", resource_tag);
                 Unavailable
             }),
             code => {
-                warn!(status = code.as_str(), "{:?}", response.text().await.ok());
+                let body = response.text().await.unwrap_or(String::new());
+                warn!(
+                    status = code.as_str(),
+                    body = body,
+                    "failed to read {} (bytes): invalid status code",
+                    resource_tag
+                );
                 Err(Unavailable)
             }
         }
