@@ -39,7 +39,7 @@ prometheus = { version = "0.13" }
 futures-util = "0.3.30"
 config = "0.14.0"
 tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
+tracing-subscriber = { version = "0.3.18", features = ["json"] }
 sentry = { version = "0.32.2", default-features = false, features = ["backtrace", "contexts", "panic", "debug-images", "reqwest", "rustls", "tower"] }
 sentry-tracing = "0.32.2"
 moka = { version = "0.12.5", features = ["future"] }

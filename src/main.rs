@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
-                .compact()
+                .json()
                 .with_filter(settings.logging.level),
         )
         .with(sentry_tracing::layer())
