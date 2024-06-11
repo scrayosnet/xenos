@@ -44,6 +44,9 @@ jobs:
     - name: Check format
       run: cargo fmt --check
 
+    - name: Check OpenSSL
+      run: cargo tree -i sentry > /dev/null 2>&1; test $? -eq 101
+
     - name: Perform linting
       run:
         cargo clippy
