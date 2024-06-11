@@ -36,7 +36,7 @@ jobs:
       run: cargo install clippy-sarif sarif-fmt
 
     - name: Check OpenSSL
-      run: "! cargo tree -i sentry 2> /dev/null"
+      run: (! cargo tree -i sentry 2> /dev/null)
 
     - name: Build with cargo
       run: cargo build --verbose
