@@ -17,7 +17,7 @@ edition = "2021"
 [dependencies]
 prost = "0.12"
 prost-types = { version = "0.12.4" }
-redis = { version = "0.25", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"] }
+redis = { version = "0.25", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"], optional = true }
 tokio = { version = "1.37", features = ["full"] }
 tonic = "0.11.0"
 tonic-health = "0.11.0"
@@ -56,3 +56,4 @@ xenos = { path = ".", features = ["default", "static-testing"] }
 [features]
 default = []
 static-testing = []
+redis = ["dep:redis"]

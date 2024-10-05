@@ -100,65 +100,65 @@ impl Debug for RedisCache {
 
 #[async_trait]
 impl CacheLevel for RedisCache {
-    async fn get_uuid(&self, username: &str) -> Option<Entry<UuidData>> {
-        let key = key!("uuid", username.to_lowercase());
+    async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
+        let key = key!("uuid", key.to_lowercase());
         monitor_get("redis", "uuid", || self.get(key)).await
     }
 
-    async fn set_uuid(&self, username: String, entry: Entry<UuidData>) {
-        let key = key!("uuid", username.to_lowercase());
+    async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
+        let key = key!("uuid", key.to_lowercase());
         monitor_set("redis", "uuid", || {
             self.set(key, entry, &self.settings.entries.uuid.ttl)
         })
         .await
     }
 
-    async fn get_profile(&self, uuid: &Uuid) -> Option<Entry<ProfileData>> {
-        let key = key!("profile", uuid.simple());
+    async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
+        let key = key!("profile", key.simple());
         monitor_get("redis", "profile", || self.get(key)).await
     }
 
-    async fn set_profile(&self, uuid: Uuid, entry: Entry<ProfileData>) {
-        let key = key!("profile", uuid.simple());
+    async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
+        let key = key!("profile", key.simple());
         monitor_set("redis", "profile", || {
             self.set(key, entry, &self.settings.entries.profile.ttl)
         })
         .await
     }
 
-    async fn get_skin(&self, uuid: &Uuid) -> Option<Entry<SkinData>> {
-        let key = key!("skin", uuid.simple());
+    async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
+        let key = key!("skin", key.simple());
         monitor_get("redis", "skin", || self.get(key)).await
     }
 
-    async fn set_skin(&self, uuid: Uuid, entry: Entry<SkinData>) {
-        let key = key!("skin", uuid.simple());
+    async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
+        let key = key!("skin", key.simple());
         monitor_set("redis", "skin", || {
             self.set(key, entry, &self.settings.entries.skin.ttl)
         })
         .await
     }
 
-    async fn get_cape(&self, uuid: &Uuid) -> Option<Entry<CapeData>> {
-        let key = key!("cape", uuid.simple());
+    async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
+        let key = key!("cape", key.simple());
         monitor_get("redis", "cape", || self.get(key)).await
     }
 
-    async fn set_cape(&self, uuid: Uuid, entry: Entry<CapeData>) {
-        let key = key!("cape", uuid.simple());
+    async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>) {
+        let key = key!("cape", key.simple());
         monitor_set("redis", "cape", || {
             self.set(key, entry, &self.settings.entries.cape.ttl)
         })
         .await
     }
 
-    async fn get_head(&self, uuid: &Uuid, overlay: bool) -> Option<Entry<HeadData>> {
-        let key = key!("head", uuid.simple(), overlay);
+    async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
+        let key = key!("head", key.0.simple(), key.1);
         monitor_get("redis", "head", || self.get(key)).await
     }
 
-    async fn set_head(&self, uuid: Uuid, overlay: bool, entry: Entry<HeadData>) {
-        let key = key!("head", uuid.simple(), overlay);
+    async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
+        let key = key!("head", key.0.simple(), key.1);
         monitor_set("redis", "head", || {
             self.set(key, entry, &self.settings.entries.head.ttl)
         })

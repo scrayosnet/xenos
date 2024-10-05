@@ -8,6 +8,8 @@ use std::time::Instant;
 use uuid::Uuid;
 
 pub mod moka;
+pub mod no;
+#[cfg(feature = "redis")]
 pub mod redis;
 
 lazy_static! {
@@ -34,6 +36,7 @@ lazy_static! {
     .unwrap();
 }
 
+// TODO do with macro
 /// Monitors a cache get operation, tracking its runtime and response.
 async fn monitor_set<F, Fut>(cache_variant: &str, request_type: &str, f: F)
 where
@@ -48,6 +51,7 @@ where
     result
 }
 
+// TODO do with macro
 /// Monitors a cache set operation, tracking its runtime and response.
 async fn monitor_get<F, Fut, D>(cache_variant: &str, request_type: &str, f: F) -> Option<Entry<D>>
 where
@@ -83,32 +87,32 @@ where
 #[async_trait]
 pub trait CacheLevel: Debug + Send + Sync {
     /// Gets some [UuidData] from the [CacheLevel] for a case-insensitive username.
-    async fn get_uuid(&self, username: &str) -> Option<Entry<UuidData>>;
+    async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>>;
 
     /// Sets some optional [UuidData] to the [CacheLevel] for a case-insensitive username.
-    async fn set_uuid(&self, username: String, entry: Entry<UuidData>);
+    async fn set_uuid(&self, key: &str, entry: Entry<UuidData>);
 
     /// Gets some [ProfileData] from the [CacheLevel] for a profile [Uuid].
-    async fn get_profile(&self, uuid: &Uuid) -> Option<Entry<ProfileData>>;
+    async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>>;
 
     /// Sets some optional [ProfileData] to the [CacheLevel] for a profile [Uuid].
-    async fn set_profile(&self, uuid: Uuid, entry: Entry<ProfileData>);
+    async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>);
 
     /// Gets some [SkinData] from the [CacheLevel] for a profile [Uuid].
-    async fn get_skin(&self, uuid: &Uuid) -> Option<Entry<SkinData>>;
+    async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>>;
 
     /// Sets some optional [SkinData] to the [CacheLevel] for a profile [Uuid].
-    async fn set_skin(&self, uuid: Uuid, entry: Entry<SkinData>);
+    async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>);
 
     /// Gets some [CapeData] from the [CacheLevel] for a profile [Uuid].
-    async fn get_cape(&self, uuid: &Uuid) -> Option<Entry<CapeData>>;
+    async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>>;
 
     /// Sets some optional [CapeData] to the [CacheLevel] for a profile [Uuid].
-    async fn set_cape(&self, uuid: Uuid, entry: Entry<CapeData>);
+    async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>);
 
     /// Gets some [HeadData] from the [CacheLevel] for a profile [Uuid] with or without its overlay.
-    async fn get_head(&self, uuid: &Uuid, overlay: bool) -> Option<Entry<HeadData>>;
+    async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>>;
 
     /// Sets some optional [HeadData] to the [CacheLevel] for a profile [Uuid] with or without its overlay.
-    async fn set_head(&self, uuid: Uuid, overlay: bool, entry: Entry<HeadData>);
+    async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>);
 }

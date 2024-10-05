@@ -57,53 +57,52 @@ impl MokaCache {
 #[async_trait]
 impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
-    async fn get_uuid(&self, username: &str) -> Option<Entry<UuidData>> {
-        monitor_get("moka", "uuid", || self.uuids.get(username)).await
+    async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
+        monitor_get("moka", "uuid", || self.uuids.get(key)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn set_uuid(&self, username: String, entry: Entry<UuidData>) {
-        monitor_set("moka", "uuid", || self.uuids.insert(username, entry)).await
+    async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
+        monitor_set("moka", "uuid", || self.uuids.insert(key.to_string(), entry)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn get_profile(&self, uuid: &Uuid) -> Option<Entry<ProfileData>> {
-        monitor_get("moka", "profile", || self.profiles.get(uuid)).await
+    async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
+        monitor_get("moka", "profile", || self.profiles.get(key)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn set_profile(&self, uuid: Uuid, entry: Entry<ProfileData>) {
-        monitor_set("moka", "profile", || self.profiles.insert(uuid, entry)).await
+    async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
+        monitor_set("moka", "profile", || self.profiles.insert(*key, entry)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn get_skin(&self, uuid: &Uuid) -> Option<Entry<SkinData>> {
-        monitor_get("moka", "skin", || self.skins.get(uuid)).await
+    async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
+        monitor_get("moka", "skin", || self.skins.get(key)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn set_skin(&self, uuid: Uuid, entry: Entry<SkinData>) {
-        monitor_set("moka", "skin", || self.skins.insert(uuid, entry)).await
+    async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
+        monitor_set("moka", "skin", || self.skins.insert(*key, entry)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn get_cape(&self, uuid: &Uuid) -> Option<Entry<CapeData>> {
-        monitor_get("moka", "cape", || self.capes.get(uuid)).await
+    async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
+        monitor_get("moka", "cape", || self.capes.get(key)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn set_cape(&self, uuid: Uuid, entry: Entry<CapeData>) {
-        monitor_set("moka", "cape", || self.capes.insert(uuid, entry)).await
+    async fn set_cape(&self, uuid: &Uuid, entry: Entry<CapeData>) {
+        monitor_set("moka", "cape", || self.capes.insert(*uuid, entry)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn get_head(&self, uuid: &Uuid, overlay: bool) -> Option<Entry<HeadData>> {
-        let key = (*uuid, overlay);
-        monitor_get("moka", "head", || self.heads.get(&key)).await
+    async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
+        monitor_get("moka", "head", || self.heads.get(key)).await
     }
 
     #[tracing::instrument(skip(self))]
-    async fn set_head(&self, uuid: Uuid, overlay: bool, entry: Entry<HeadData>) {
-        monitor_set("moka", "head", || self.heads.insert((uuid, overlay), entry)).await
+    async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
+        monitor_set("moka", "head", || self.heads.insert(*key, entry)).await
     }
 }

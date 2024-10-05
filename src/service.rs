@@ -1,6 +1,7 @@
 use crate::cache::entry::Cached::{Expired, Hit, Miss};
 use crate::cache::entry::{CapeData, HeadData, SkinData, UuidData};
 use crate::cache::entry::{Dated, Entry, ProfileData};
+use crate::cache::level::CacheLevel;
 use crate::cache::Cache;
 use crate::error::ServiceError;
 use crate::error::ServiceError::{NotFound, Unavailable};
@@ -93,16 +94,26 @@ where
 /// this service. The [Service] incorporates a [Cache] and [Mojang] implementations
 /// as well as a clone of the [application settings](Settings). It is expected, that the settings
 /// match the settings used to construct the cache and api.
-pub struct Service {
+pub struct Service<L, R, M>
+where
+    L: CacheLevel,
+    R: CacheLevel,
+    M: Mojang,
+{
     settings: Arc<Settings>,
-    cache: Cache,
-    mojang: Box<dyn Mojang>,
+    cache: Cache<L, R>,
+    mojang: M,
 }
 
-impl Service {
+impl<L, R, M> Service<L, R, M>
+where
+    L: CacheLevel,
+    R: CacheLevel,
+    M: Mojang,
+{
     /// Builds a new [Service] with provided cache and mojang api implementation. It is expected, that
     /// the provided settings match the settings used to construct the cache and api.
-    pub fn new(settings: Arc<Settings>, cache: Cache, mojang: Box<dyn Mojang>) -> Self {
+    pub fn new(settings: Arc<Settings>, cache: Cache<L, R>, mojang: M) -> Self {
         Self {
             settings,
             cache,
@@ -224,11 +235,11 @@ impl Service {
             .await
         {
             Ok(profile) => {
-                let dated = self.cache.set_profile(*uuid, Some(profile)).await.unwrap();
+                let dated = self.cache.set_profile(uuid, Some(profile)).await.unwrap();
                 Ok(dated)
             }
             Err(ApiError::NotFound) => {
-                self.cache.set_profile(*uuid, None).await;
+                self.cache.set_profile(uuid, None).await;
                 Err(NotFound)
             }
             Err(ApiError::Unavailable) => fallback
@@ -261,7 +272,7 @@ impl Service {
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
-                self.cache.set_skin(*uuid, None).await;
+                self.cache.set_skin(uuid, None).await;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
@@ -285,7 +296,7 @@ impl Service {
                     model: skin_model,
                     default: false,
                 };
-                let dated = self.cache.set_skin(*uuid, Some(skin)).await.unwrap();
+                let dated = self.cache.set_skin(uuid, Some(skin)).await.unwrap();
                 Ok(dated)
             }
             // handle NotFound as Unavailable as the profile (and therefore the skin) should exist
@@ -319,7 +330,7 @@ impl Service {
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
-                self.cache.set_cape(*uuid, None).await;
+                self.cache.set_cape(uuid, None).await;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
@@ -336,7 +347,7 @@ impl Service {
                 let cape = CapeData {
                     bytes: cape_bytes.to_vec(),
                 };
-                let dated = self.cache.set_cape(*uuid, Some(cape)).await.unwrap();
+                let dated = self.cache.set_cape(uuid, Some(cape)).await.unwrap();
                 Ok(dated)
             }
             // handle NotFound as Unavailable as the profile (and therefore the cape) should exist
@@ -358,7 +369,7 @@ impl Service {
 
     async fn _get_head(&self, uuid: &Uuid, overlay: bool) -> Result<Dated<HeadData>, ServiceError> {
         // try to get from cache
-        let cached = self.cache.get_head(uuid, overlay).await;
+        let cached = self.cache.get_head(&(*uuid, overlay)).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
             Expired(entry) => Some(entry),
@@ -374,8 +385,8 @@ impl Service {
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
-                self.cache.set_head(*uuid, false, None).await;
-                self.cache.set_head(*uuid, true, None).await;
+                self.cache.set_head(&(*uuid, false), None).await;
+                self.cache.set_head(&(*uuid, true), None).await;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
@@ -394,7 +405,7 @@ impl Service {
         };
         let dated = self
             .cache
-            .set_head(*uuid, overlay, Some(head))
+            .set_head(&(*uuid, overlay), Some(head))
             .await
             .unwrap();
         Ok(dated)

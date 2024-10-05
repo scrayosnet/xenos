@@ -10,7 +10,6 @@ use lazy_static::lazy_static;
 use prometheus::{register_histogram_vec, HistogramVec};
 use std::fmt::Debug;
 use std::future::Future;
-use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -37,6 +36,7 @@ lazy_static! {
     .unwrap();
 }
 
+// TODO do with macro
 /// Monitors a cache get operation, tracking its runtime and response.
 async fn monitor_get<F, Fut, D>(request_type: &str, f: F) -> Cached<D>
 where
@@ -57,6 +57,7 @@ where
     result
 }
 
+// TODO do with macro
 /// Monitors a cache set operation, tracking its runtime and response.
 async fn monitor_set<F, Fut, D>(request_type: &str, f: F) -> Entry<D>
 where
@@ -91,211 +92,197 @@ where
 ///   // add cache level 3 (added as cache level 2)
 ///   .add_level(true, || async { ... }).await?;
 /// ```
-pub struct Cache {
+pub struct Cache<L, R>
+where
+    L: CacheLevel,
+    R: CacheLevel,
+{
     expiry: settings::CacheEntries<CacheEntry>,
-    levels: Vec<Arc<dyn CacheLevel>>,
+    local_cache: L,
+    remote_cache: R,
 }
 
-impl Cache {
+impl<L, R> Cache<L, R>
+where
+    L: CacheLevel,
+    R: CacheLevel,
+{
     /// Creates a new [Cache] with no inner caches.
-    pub fn new(expiry: settings::CacheEntries<CacheEntry>) -> Self {
+    pub fn new(
+        expiry: settings::CacheEntries<CacheEntry>,
+        local_cache: L,
+        remote_cache: R,
+    ) -> Self {
         Cache {
             expiry,
-            levels: vec![],
+            local_cache,
+            remote_cache,
         }
-    }
-
-    /// Pushes an optional cache level to the end of the cache levels (as the lowest level).
-    pub async fn add_level<F, Fut, E>(mut self, enabled: bool, f: F) -> Result<Self, E>
-    where
-        F: Fn() -> Fut,
-        Fut: Future<Output = Result<Arc<dyn CacheLevel>, E>>,
-    {
-        if enabled {
-            self.levels.push(f().await?);
-        }
-        Ok(self)
-    }
-
-    /// Utility for getting an [Entry] from the cache levels. Also updates cache levels appropriately.
-    async fn get<'a, D, G, GF, S, SF>(
-        &'a self,
-        expiry: &CacheEntry,
-        getter: G,
-        setter: S,
-    ) -> Cached<D>
-    where
-        G: Fn(&'a dyn CacheLevel) -> GF,
-        GF: Future<Output = Option<Entry<D>>>,
-        S: Fn(&'a dyn CacheLevel, Entry<D>) -> SF,
-        SF: Future<Output = ()>,
-        D: Clone + Debug + Eq + PartialEq,
-    {
-        let mut depth = 0;
-        let mut result = Miss;
-
-        // try to find cache hit falling back to expired, noting its depth
-        for i in 0..self.levels.len() {
-            // get entry from cache
-            let opt = getter(self.levels[depth].as_ref()).await;
-            let cached = Cached::with_expiry(opt, expiry);
-            match cached {
-                Hit(entry) => {
-                    result = Hit(entry);
-                    depth = i;
-                    break;
-                }
-                Expired(entry) => {
-                    result = Expired(entry);
-                }
-                Miss => {}
-            };
-        }
-
-        // update upper caches, ensuring the consistency invariant
-        match &result {
-            Hit(entry) | Expired(entry) => {
-                for i in (0..depth).rev() {
-                    setter(self.levels[i].as_ref(), Entry::clone(entry)).await;
-                }
-            }
-            _ => {}
-        };
-        result
-    }
-
-    /// Utility for settings an [Entry] to all cache levels.
-    async fn set<'a, D, S, SF>(&'a self, data: Option<D>, setter: S) -> Entry<D>
-    where
-        S: Fn(&'a dyn CacheLevel, Entry<D>) -> SF,
-        SF: Future<Output = ()>,
-        D: Clone + Debug + Eq + PartialEq,
-    {
-        // fix entry timestamp to be the same for all caches
-        let entry = Entry::from(data);
-
-        // update lower caches first, ensuring the consistency invariant
-        for cache in self.levels.iter().rev() {
-            setter(cache.as_ref(), Entry::clone(&entry)).await;
-        }
-        entry
     }
 
     /// Gets some [UuidData] from the [Cache] for a case-insensitive username.
     #[tracing::instrument(skip(self))]
-    pub async fn get_uuid(&self, username: &str) -> Cached<UuidData> {
-        monitor_get("uuid", || {
-            self.get(
-                &self.expiry.uuid,
-                |level| level.get_uuid(username),
-                |level, entry| level.set_uuid(username.to_string(), entry),
-            )
-        })
-        .await
+    pub async fn get_uuid(&self, key: &str) -> Cached<UuidData> {
+        let local = self.local_cache.get_uuid(key).await;
+        if let Some(entry) = &local {
+            if !entry.is_expired(&self.expiry.uuid) {
+                return Cached::with_expiry(local, &self.expiry.uuid);
+            }
+        }
+
+        let remote = self.remote_cache.get_uuid(key).await;
+        match &remote {
+            None => {
+                // if remote cache has no value, use local result
+                Cached::with_expiry(local, &self.expiry.uuid)
+            }
+            Some(entry) => {
+                // if remote cache has a value, sync with local cache
+                self.local_cache.set_uuid(key, entry.clone()).await;
+                Cached::with_expiry(remote, &self.expiry.uuid)
+            }
+        }
     }
 
     /// Sets some optional [UuidData] to the [Cache] for a case-insensitive username.
     #[tracing::instrument(skip(self))]
-    pub async fn set_uuid(&self, username: &str, data: Option<UuidData>) -> Entry<UuidData> {
-        monitor_set("uuid", || {
-            self.set(data, |level, entry| {
-                level.set_uuid(username.to_string(), entry)
-            })
-        })
-        .await
+    pub async fn set_uuid(&self, key: &str, data: Option<UuidData>) -> Entry<UuidData> {
+        let entry = Entry::from(data);
+        self.local_cache.set_uuid(key, entry.clone()).await;
+        self.remote_cache.set_uuid(key, entry.clone()).await;
+        entry
     }
 
     /// Gets some [ProfileData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn get_profile(&self, uuid: &Uuid) -> Cached<ProfileData> {
-        monitor_get("profile", || {
-            self.get(
-                &self.expiry.profile,
-                |level| level.get_profile(uuid),
-                |level, entry| level.set_profile(*uuid, entry),
-            )
-        })
-        .await
+        let local = self.local_cache.get_profile(uuid).await;
+        if let Some(entry) = &local {
+            if !entry.is_expired(&self.expiry.profile) {
+                return Cached::with_expiry(local, &self.expiry.profile);
+            }
+        }
+
+        let remote = self.remote_cache.get_profile(uuid).await;
+        match &remote {
+            None => {
+                // if remote cache has no value, use local result
+                Cached::with_expiry(local, &self.expiry.profile)
+            }
+            Some(entry) => {
+                // if remote cache has a value, sync with local cache
+                self.local_cache.set_profile(uuid, entry.clone()).await;
+                Cached::with_expiry(remote, &self.expiry.profile)
+            }
+        }
     }
 
     /// Sets some optional [ProfileData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
-    pub async fn set_profile(&self, uuid: Uuid, data: Option<ProfileData>) -> Entry<ProfileData> {
-        monitor_set("profile", || {
-            self.set(data, |level, entry| level.set_profile(uuid, entry))
-        })
-        .await
+    pub async fn set_profile(&self, key: &Uuid, data: Option<ProfileData>) -> Entry<ProfileData> {
+        let entry = Entry::from(data);
+        self.local_cache.set_profile(key, entry.clone()).await;
+        self.remote_cache.set_profile(key, entry.clone()).await;
+        entry
     }
 
     /// Gets some [SkinData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn get_skin(&self, uuid: &Uuid) -> Cached<SkinData> {
-        monitor_get("skin", || {
-            self.get(
-                &self.expiry.skin,
-                |level| level.get_skin(uuid),
-                |level, entry| level.set_skin(*uuid, entry),
-            )
-        })
-        .await
+        let local = self.local_cache.get_skin(uuid).await;
+        if let Some(entry) = &local {
+            if !entry.is_expired(&self.expiry.skin) {
+                return Cached::with_expiry(local, &self.expiry.skin);
+            }
+        }
+
+        let remote = self.remote_cache.get_skin(uuid).await;
+        match &remote {
+            None => {
+                // if remote cache has no value, use local result
+                Cached::with_expiry(local, &self.expiry.skin)
+            }
+            Some(entry) => {
+                // if remote cache has a value, sync with local cache
+                self.local_cache.set_skin(uuid, entry.clone()).await;
+                Cached::with_expiry(remote, &self.expiry.skin)
+            }
+        }
     }
 
     /// Sets some optional [SkinData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
-    pub async fn set_skin(&self, uuid: Uuid, data: Option<SkinData>) -> Entry<SkinData> {
-        monitor_set("skin", || {
-            self.set(data, |level, entry| level.set_skin(uuid, entry))
-        })
-        .await
+    pub async fn set_skin(&self, key: &Uuid, data: Option<SkinData>) -> Entry<SkinData> {
+        let entry = Entry::from(data);
+        self.local_cache.set_skin(key, entry.clone()).await;
+        self.remote_cache.set_skin(key, entry.clone()).await;
+        entry
     }
 
     /// Gets some [CapeData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
     pub async fn get_cape(&self, uuid: &Uuid) -> Cached<CapeData> {
-        monitor_get("cape", || {
-            self.get(
-                &self.expiry.cape,
-                |level| level.get_cape(uuid),
-                |level, entry| level.set_cape(*uuid, entry),
-            )
-        })
-        .await
+        let local = self.local_cache.get_cape(uuid).await;
+        if let Some(entry) = &local {
+            if !entry.is_expired(&self.expiry.cape) {
+                return Cached::with_expiry(local, &self.expiry.cape);
+            }
+        }
+
+        let remote = self.remote_cache.get_cape(uuid).await;
+        match &remote {
+            None => {
+                // if remote cache has no value, use local result
+                Cached::with_expiry(local, &self.expiry.cape)
+            }
+            Some(entry) => {
+                // if remote cache has a value, sync with local cache
+                self.local_cache.set_cape(uuid, entry.clone()).await;
+                Cached::with_expiry(remote, &self.expiry.cape)
+            }
+        }
     }
 
     /// Sets some optional [CapeData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
-    pub async fn set_cape(&self, uuid: Uuid, data: Option<CapeData>) -> Entry<CapeData> {
-        monitor_set("cape", || {
-            self.set(data, |level, entry| level.set_cape(uuid, entry))
-        })
-        .await
+    pub async fn set_cape(&self, key: &Uuid, data: Option<CapeData>) -> Entry<CapeData> {
+        let entry = Entry::from(data);
+        self.local_cache.set_cape(key, entry.clone()).await;
+        self.remote_cache.set_cape(key, entry.clone()).await;
+        entry
     }
 
     /// Gets some [HeadData] from the [Cache] for a profile [Uuid] with or without its overlay.
     #[tracing::instrument(skip(self))]
-    pub async fn get_head(&self, uuid: &Uuid, overlay: bool) -> Cached<HeadData> {
-        monitor_get("head", || {
-            self.get(
-                &self.expiry.head,
-                |level| level.get_head(uuid, overlay),
-                |level, entry| level.set_head(*uuid, overlay, entry),
-            )
-        })
-        .await
+    pub async fn get_head(&self, uuid: &(Uuid, bool)) -> Cached<HeadData> {
+        let local = self.local_cache.get_head(uuid).await;
+        if let Some(entry) = &local {
+            if !entry.is_expired(&self.expiry.head) {
+                return Cached::with_expiry(local, &self.expiry.head);
+            }
+        }
+
+        let remote = self.remote_cache.get_head(uuid).await;
+        match &remote {
+            None => {
+                // if remote cache has no value, use local result
+                Cached::with_expiry(local, &self.expiry.head)
+            }
+            Some(entry) => {
+                // if remote cache has a value, sync with local cache
+                self.local_cache.set_head(uuid, entry.clone()).await;
+                Cached::with_expiry(remote, &self.expiry.head)
+            }
+        }
     }
 
     /// Sets some optional [HeadData] to the [Cache] for a profile [Uuid] with or without its overlay.
     #[tracing::instrument(skip(self))]
-    pub async fn set_head(
-        &self,
-        uuid: Uuid,
-        overlay: bool,
-        data: Option<HeadData>,
-    ) -> Entry<HeadData> {
-        monitor_set("head", || {
-            self.set(data, |level, entry| level.set_head(uuid, overlay, entry))
-        })
-        .await
+    pub async fn set_head(&self, key: &(Uuid, bool), data: Option<HeadData>) -> Entry<HeadData> {
+        let entry = Entry::from(data);
+        self.local_cache.set_head(key, entry.clone()).await;
+        self.remote_cache.set_head(key, entry.clone()).await;
+        entry
     }
 }
 
@@ -342,44 +329,12 @@ mod test {
     }
 
     /// Creates a new cache with two levels.
-    async fn new_cache_2l(dur: Duration) -> Cache {
-        let new_moka = || async {
-            let l1: Arc<dyn CacheLevel> = Arc::new(MokaCache::new(new_moka_settings()));
-            Ok::<_, ()>(l1)
-        };
-
-        Cache::new(new_expiry(dur))
-            .add_level(true, new_moka)
-            .await
-            .unwrap()
-            .add_level(true, new_moka)
-            .await
-            .unwrap()
-    }
-
-    #[tokio::test]
-    async fn new_cache() {
-        // given
-        let l1: Arc<dyn CacheLevel> = Arc::new(MokaCache::new(new_moka_settings()));
-        let l2: Arc<dyn CacheLevel> = Arc::new(MokaCache::new(new_moka_settings()));
-
-        // when
-        let cache = Cache::new(new_expiry(Duration::from_secs(10)))
-            .add_level(false, || async { Err(()) })
-            .await
-            .expect("factory 1 should not be called")
-            .add_level(true, || async { Ok::<_, ()>(Arc::clone(&l1)) })
-            .await
-            .expect("factory 2 should not fail")
-            .add_level(false, || async { Err(()) })
-            .await
-            .expect("factory 3 should not be called")
-            .add_level(true, || async { Ok::<_, ()>(Arc::clone(&l2)) })
-            .await
-            .expect("factory 4 should not fail");
-
-        // then
-        assert_eq!(2, cache.levels.len());
+    async fn new_cache_2l(dur: Duration) -> Cache<MokaCache, MokaCache> {
+        Cache::new(
+            new_expiry(dur),
+            MokaCache::new(new_moka_settings()),
+            MokaCache::new(new_moka_settings()),
+        )
     }
 
     #[tokio::test]
@@ -395,8 +350,8 @@ mod test {
         cache.set_uuid("hydrofin", Some(data.clone())).await;
 
         // then
-        let cached1 = cache.levels[0].get_uuid("hydrofin").await;
-        let cached2 = cache.levels[1].get_uuid("hydrofin").await;
+        let cached1 = cache.local_cache.get_uuid("hydrofin").await;
+        let cached2 = cache.remote_cache.get_uuid("hydrofin").await;
 
         assert!(matches!(cached1, Some(entry) if entry.data == Some(data.clone())));
         assert!(matches!(cached2, Some(entry) if entry.data == Some(data.clone())));
@@ -411,8 +366,8 @@ mod test {
         cache.set_uuid("hydrofin", None).await;
 
         // then
-        let cached1 = cache.levels[0].get_uuid("hydrofin").await;
-        let cached2 = cache.levels[1].get_uuid("hydrofin").await;
+        let cached1 = cache.local_cache.get_uuid("hydrofin").await;
+        let cached2 = cache.remote_cache.get_uuid("hydrofin").await;
 
         assert!(matches!(cached1, Some(entry) if entry.data.is_none()));
         assert!(matches!(cached2, Some(entry) if entry.data.is_none()));

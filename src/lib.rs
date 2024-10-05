@@ -10,6 +10,8 @@
 //! See [settings] for a description on how to create the application configuration.
 
 use crate::cache::level::moka::MokaCache;
+use crate::cache::level::no::NoCache;
+#[cfg(feature = "redis")]
 use crate::cache::level::redis::RedisCache;
 use crate::cache::level::CacheLevel;
 use crate::cache::Cache;
@@ -25,7 +27,6 @@ use crate::settings::Settings;
 use axum::routing::{post, MethodRouter};
 use axum::{routing::get, Extension, Router};
 use futures_util::FutureExt;
-use redis::RedisError;
 use std::sync::Arc;
 use tokio::try_join;
 use tonic::transport::Server;
@@ -71,34 +72,38 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
     info!("starting xenos …");
 
     // build cache with selected cache levels
-    // it consists of a local and remote cache
     info!("building multi-level cache");
-    let cache = Cache::new(settings.cache.entries.clone())
-        // the top most level is a local (in-memory) cache, in this case a moka cache
-        .add_level(settings.cache.moka.enabled, || async {
-            info!("adding moka cache level");
-            let cache = MokaCache::new(settings.cache.moka.clone());
-            Ok::<Arc<dyn CacheLevel>, Box<dyn std::error::Error>>(Arc::new(cache))
-        })
-        .await?
-        // the next level is a remote cache, in this case a redis cache
-        .add_level(settings.cache.redis.enabled, || async {
-            info!("adding redis cache level");
-            let cs = &settings.cache;
-            let redis_client = redis::Client::open(cs.redis.address.clone())?;
-            let redis_manager = redis_client.get_connection_manager().await?;
-            let cache = RedisCache::new(redis_manager, &settings.cache.redis);
-            Ok::<Arc<dyn CacheLevel>, RedisError>(Arc::new(cache))
-        })
-        .await?;
+    let cache = Cache::new(
+        settings.cache.entries.clone(),
+        {
+            info!("building moka cache");
+            MokaCache::new(settings.cache.moka.clone())
+        },
+        // the remote cache should be selected using feature flags
+        {
+            #[cfg(feature = "redis")]
+            {
+                info!("building redis cache");
+                let cs = &settings.cache;
+                let redis_client = redis::Client::open(cs.redis.address.clone())?;
+                let redis_manager = redis_client.get_connection_manager().await?;
+                RedisCache::new(redis_manager, &settings.cache.redis)
+            }
+            #[cfg(not(feature = "redis"))]
+            {
+                info!("disabling remote cache");
+                NoCache::new()
+            }
+        },
+    );
 
     // build mojang api
     // it is either the actual mojang api or a testing api for integration tests
     info!("building mojang api");
     #[cfg(not(feature = "static-testing"))]
-    let mojang: Box<dyn Mojang> = Box::new(MojangApi::new());
+    let mojang = MojangApi::new();
     #[cfg(feature = "static-testing")]
-    let mojang: Box<dyn Mojang> = Box::new(MojangTestingApi::with_profiles());
+    let mojang = MojangTestingApi::with_profiles();
 
     // build xenos service from cache and mojang api
     // the service is then shared by the grpc and rest servers
@@ -116,7 +121,14 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
 /// Tries to start the rest server. The rest server is started if either the rest gateway or the
 /// metrics service is enabled. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]
-async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::error::Error>> {
+async fn serve_rest_server<L, R, M>(
+    service: Arc<Service<L, R, M>>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    L: CacheLevel + 'static,
+    R: CacheLevel + 'static,
+    M: Mojang + 'static,
+{
     let settings = service.settings();
     let address = settings.rest_server.address;
     let metrics_enabled = settings.metrics.enabled;
@@ -130,13 +142,41 @@ async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
 
     // build rest server
     let rest_app = Router::new()
-        .optional_route(metrics_enabled, "/metrics", get(rest_services::metrics))
-        .optional_route(gateway_enabled, "/uuid", post(rest_services::uuid))
-        .optional_route(gateway_enabled, "/uuids", post(rest_services::uuids))
-        .optional_route(gateway_enabled, "/profile", post(rest_services::profile))
-        .optional_route(gateway_enabled, "/skin", post(rest_services::skin))
-        .optional_route(gateway_enabled, "/cape", post(rest_services::cape))
-        .optional_route(gateway_enabled, "/head", post(rest_services::head))
+        .optional_route(
+            metrics_enabled,
+            "/metrics",
+            get(rest_services::metrics::<L, R, M>),
+        )
+        .optional_route(
+            gateway_enabled,
+            "/uuid",
+            post(rest_services::uuid::<L, R, M>),
+        )
+        .optional_route(
+            gateway_enabled,
+            "/uuids",
+            post(rest_services::uuids::<L, R, M>),
+        )
+        .optional_route(
+            gateway_enabled,
+            "/profile",
+            post(rest_services::profile::<L, R, M>),
+        )
+        .optional_route(
+            gateway_enabled,
+            "/skin",
+            post(rest_services::skin::<L, R, M>),
+        )
+        .optional_route(
+            gateway_enabled,
+            "/cape",
+            post(rest_services::cape::<L, R, M>),
+        )
+        .optional_route(
+            gateway_enabled,
+            "/head",
+            post(rest_services::head::<L, R, M>),
+        )
         .layer(Extension(Arc::clone(&service)))
         .with_state(());
 
@@ -162,7 +202,14 @@ async fn serve_rest_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
 /// Tries to start the grpc server. The grpc server is started if it is enabled. It also starts the
 /// health reporter. Blocks until shutdown (graceful shutdown).
 #[tracing::instrument(skip_all)]
-async fn serve_grpc_server(service: Arc<Service>) -> Result<(), Box<dyn std::error::Error>> {
+async fn serve_grpc_server<L, R, M>(
+    service: Arc<Service<L, R, M>>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    L: CacheLevel + 'static,
+    R: CacheLevel + 'static,
+    M: Mojang + 'static,
+{
     let settings = service.settings();
     let address = settings.grpc_server.address;
     let health_enabled = settings.grpc_server.health_enabled;
@@ -186,7 +233,7 @@ async fn serve_grpc_server(service: Arc<Service>) -> Result<(), Box<dyn std::err
     if health_enabled {
         let (mut reporter, server) = health_reporter();
         reporter
-            .set_serving::<ProfileServer<GrpcProfileService>>()
+            .set_serving::<ProfileServer<GrpcProfileService<L, R, M>>>()
             .await;
         health_server = Some(server)
     }
