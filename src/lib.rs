@@ -10,6 +10,7 @@
 //! See [settings] for a description on how to create the application configuration.
 
 use crate::cache::level::moka::MokaCache;
+#[cfg(not(feature = "redis"))]
 use crate::cache::level::no::NoCache;
 #[cfg(feature = "redis")]
 use crate::cache::level::redis::RedisCache;

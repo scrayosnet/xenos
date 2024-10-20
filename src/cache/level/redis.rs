@@ -94,7 +94,7 @@ impl RedisCache {
     )]
     async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
         let key = key!("uuid", key.to_lowercase());
-        self.get(key)
+        self.get(key).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -105,7 +105,7 @@ impl RedisCache {
     )]
     async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
         let key = key!("uuid", key.to_lowercase());
-        self.set(key, entry, &self.settings.entries.uuid.ttl)
+        self.set(key, entry, &self.settings.entries.uuid.ttl).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -116,7 +116,7 @@ impl RedisCache {
     )]
     async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
         let key = key!("profile", key.simple());
-        self.get(key)
+        self.get(key).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -139,7 +139,7 @@ impl RedisCache {
     )]
     async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
         let key = key!("skin", key.simple());
-        self.get(key)
+        self.get(key).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -150,7 +150,7 @@ impl RedisCache {
     )]
     async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
         let key = key!("skin", key.simple());
-        self.set(key, entry, &self.settings.entries.skin.ttl)
+        self.set(key, entry, &self.settings.entries.skin.ttl).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -161,7 +161,7 @@ impl RedisCache {
     )]
     async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
         let key = key!("cape", key.simple());
-        self.get(key)
+        self.get(key).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -172,7 +172,7 @@ impl RedisCache {
     )]
     async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>) {
         let key = key!("cape", key.simple());
-        self.set(key, entry, &self.settings.entries.cape.ttl)
+        self.set(key, entry, &self.settings.entries.cape.ttl).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -183,7 +183,7 @@ impl RedisCache {
     )]
     async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
         let key = key!("head", key.0.simple(), key.1);
-        self.get(key)
+        self.get(key).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -194,7 +194,7 @@ impl RedisCache {
     )]
     async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
         let key = key!("head", key.0.simple(), key.1);
-        self.set(key, entry, &self.settings.entries.head.ttl)
+        self.set(key, entry, &self.settings.entries.head.ttl).await
     }
 }
 
