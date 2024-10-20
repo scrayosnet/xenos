@@ -42,6 +42,17 @@ Mojang APIs and will even be able to proxy authentication requests in the future
 * Fall back to retrieving cached data, if the Mojang API is currently not available.
 * Store resolved information to allow for grace periods for the resolution between name changes!
 
+### Remote Caches
+
+Xenos provides multiple images with configurations for different remote caches. Additional caches might be provided in
+the future. Caches are excluded from the build process using build features. This allows for a greater variety of caches
+while minimizing security risks arising from their dependencies.
+
+Currently, the supported remote caches are:
+
+- None (default)
+- Redis
+
 ## Getting started
 
 > [!WARNING]
