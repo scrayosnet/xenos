@@ -15,30 +15,30 @@ use uuid::Uuid;
 lazy_static! {
     /// A histogram for the cache get request latencies in seconds. It is intended to be used by all
     /// cache requests (`request_type`). Use the [monitor_get] utility for ease of use.
-    static ref CACHE_GET_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    pub(crate) static ref CACHE_GET_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_cache_get_duration_seconds",
         "The cache get request latencies in seconds.",
-        &["request_type", "cache_result"],
+        &["cache_variant", "request_type", "cache_result"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
 
     /// A histogram for the cache get request result age in seconds. It is intended to be used by all
     /// cache requests (`request_type`). Use the [monitor_get] utility for ease of use.
-    static ref CACHE_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    pub(crate) static ref CACHE_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_cache_age_duration_seconds",
         "The cache get request latencies in seconds.",
-        &["request_type"],
+        &["cache_variant", "request_type"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
 
     /// A histogram for the cache set request latencies in seconds. It is intended to be used by all
     ///  cache requests (`request_type`). Use the [monitor_set] utility for ease of use.
-    static ref CACHE_SET_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    pub(crate) static ref CACHE_SET_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "xenos_cache_set_duration_seconds",
         "The cache set request latencies in seconds.",
-        &["request_type"],
+        &["cache_variant", "request_type"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
@@ -55,13 +55,13 @@ fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Cached<T>>) {
         return;
     };
     CACHE_GET_HISTOGRAM
-        .with_label_values(&[request_type, label])
+        .with_label_values(&["main", request_type, label])
         .observe(event.time);
 
     match event.result {
         Cached::Hit(entry) | Cached::Expired(entry) => {
             CACHE_AGE_HISTOGRAM
-                .with_label_values(&[request_type])
+                .with_label_values(&["main", request_type])
                 .observe(entry.current_age() as f64);
         }
         _ => {}
@@ -74,7 +74,7 @@ fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Entry<T>>) {
         return;
     };
     CACHE_SET_HISTOGRAM
-        .with_label_values(&[request_type])
+        .with_label_values(&["main", request_type])
         .observe(event.time);
 }
 
@@ -129,7 +129,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "combined", request_type = "uuid"),
+        labels(request_type = "uuid"),
         handler = metrics_get_handler,
     )]
     pub async fn get_uuid(&self, key: &str) -> Cached<UuidData> {
@@ -158,7 +158,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "combined", request_type = "uuid"),
+        labels(request_type = "uuid"),
         handler = metrics_set_handler,
     )]
     pub async fn set_uuid(&self, key: &str, data: Option<UuidData>) -> Entry<UuidData> {
@@ -172,7 +172,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "combined", request_type = "profile"),
+        labels(request_type = "profile"),
         handler = metrics_get_handler,
     )]
     pub async fn get_profile(&self, uuid: &Uuid) -> Cached<ProfileData> {
@@ -201,7 +201,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "combined", request_type = "profile"),
+        labels(request_type = "profile"),
         handler = metrics_set_handler,
     )]
     pub async fn set_profile(&self, key: &Uuid, data: Option<ProfileData>) -> Entry<ProfileData> {
@@ -215,7 +215,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "combined", request_type = "skin"),
+        labels(request_type = "skin"),
         handler = metrics_get_handler,
     )]
     pub async fn get_skin(&self, uuid: &Uuid) -> Cached<SkinData> {
@@ -244,7 +244,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "combined", request_type = "profile"),
+        labels(request_type = "profile"),
         handler = metrics_set_handler,
     )]
     pub async fn set_skin(&self, key: &Uuid, data: Option<SkinData>) -> Entry<SkinData> {
@@ -258,7 +258,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "combined", request_type = "cape"),
+        labels(request_type = "cape"),
         handler = metrics_get_handler,
     )]
     pub async fn get_cape(&self, uuid: &Uuid) -> Cached<CapeData> {
@@ -287,7 +287,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "combined", request_type = "cape"),
+        labels(request_type = "cape"),
         handler = metrics_set_handler,
     )]
     pub async fn set_cape(&self, key: &Uuid, data: Option<CapeData>) -> Entry<CapeData> {
@@ -301,7 +301,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "combined", request_type = "head"),
+        labels(request_type = "head"),
         handler = metrics_get_handler,
     )]
     pub async fn get_head(&self, uuid: &(Uuid, bool)) -> Cached<HeadData> {
@@ -330,7 +330,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "combined", request_type = "head"),
+        labels(request_type = "head"),
         handler = metrics_set_handler,
     )]
     pub async fn set_head(&self, key: &(Uuid, bool), data: Option<HeadData>) -> Entry<HeadData> {
