@@ -10,6 +10,7 @@ use image::{imageops, ColorType, GenericImageView, ImageError, ImageFormat};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
+use std::ops::Deref;
 use uuid::Uuid;
 
 /// The model key for the classic skin (e.g. "Steve")
@@ -148,6 +149,15 @@ pub struct UsernameResolved {
     pub name: String,
 }
 
+pub struct TextureBytes(Bytes);
+
+impl Deref for TextureBytes {
+    type Target = Bytes;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl Profile {
     /// Gets the [texture property](TexturesProperty) of the [profile](Profile). It is expected, that
     /// the property exists on the [profile](Profile) and is valid.
@@ -215,5 +225,5 @@ pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, Imag
 pub trait Mojang: Send + Sync {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError>;
     async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, ApiError>;
-    async fn fetch_bytes(&self, url: String, resource_tag: &str) -> Result<Bytes, ApiError>;
+    async fn fetch_bytes(&self, url: String) -> Result<TextureBytes, ApiError>;
 }

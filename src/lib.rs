@@ -92,7 +92,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
             #[cfg(not(feature = "redis"))]
             {
                 info!("disabling remote cache");
-                NoCache::new()
+                NoCache
             }
         },
     );

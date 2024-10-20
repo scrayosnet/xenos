@@ -1,3 +1,6 @@
+[workspace]
+members = ["metrics", "metrics/metrics-macros"]
+
 [package]
 name = "xenos"
 description = "Minecraft Profile Information Proxy"
@@ -15,6 +18,7 @@ keywords = ["minecraft", "gamedev", "profile", "query", "grpc"]
 edition = "2021"
 
 [dependencies]
+metrics = { path = "metrics" }
 prost = "0.13.3"
 prost-types = { version = "0.13.3" }
 redis = { version = "0.27.3", features = ["serde_json", "json", "aio", "tokio-comp", "async-std-comp", "connection-manager"], optional = true }

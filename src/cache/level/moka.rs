@@ -1,6 +1,5 @@
 use crate::cache::entry::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
-use crate::cache::level::CacheLevel;
-use crate::cache::level::{monitor_get, monitor_set};
+use crate::cache::level::{metrics_get_handler, metrics_set_handler, CacheLevel};
 use crate::settings;
 use async_trait::async_trait;
 use moka::future::Cache;
@@ -52,57 +51,147 @@ impl MokaCache {
                 .build(),
         }
     }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "moka", request_type = "uuid"),
+        handler = metrics_get_handler
+    )]
+    async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
+        self.uuids.get(key).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "moka", request_type = "uuid"),
+        handler = metrics_set_handler
+    )]
+    async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
+        self.uuids.insert(key.to_string(), entry).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "moka", request_type = "profile"),
+        handler = metrics_get_handler
+    )]
+    async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
+        self.profiles.get(key).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "moka", request_type = "profile"),
+        handler = metrics_set_handler
+    )]
+    async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
+        self.profiles.insert(*key, entry).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "moka", request_type = "skin"),
+        handler = metrics_get_handler
+    )]
+    async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
+        self.skins.get(key).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "moka", request_type = "skin"),
+        handler = metrics_set_handler
+    )]
+    async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
+        self.skins.insert(*key, entry).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "moka", request_type = "cape"),
+        handler = metrics_get_handler
+    )]
+    async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
+        self.capes.get(key).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "moka", request_type = "cape"),
+        handler = metrics_set_handler
+    )]
+    async fn set_cape(&self, uuid: &Uuid, entry: Entry<CapeData>) {
+        self.capes.insert(*uuid, entry).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "moka", request_type = "head"),
+        handler = metrics_get_handler
+    )]
+    async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
+        self.heads.get(key).await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "moka", request_type = "head"),
+        handler = metrics_set_handler
+    )]
+    async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
+        self.heads.insert(*key, entry).await
+    }
 }
 
 #[async_trait]
 impl CacheLevel for MokaCache {
-    #[tracing::instrument(skip(self))]
     async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
-        monitor_get("moka", "uuid", || self.uuids.get(key)).await
+        self.get_uuid(key).await
     }
 
-    #[tracing::instrument(skip(self))]
     async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
-        monitor_set("moka", "uuid", || self.uuids.insert(key.to_string(), entry)).await
+        self.set_uuid(key, entry).await
     }
 
-    #[tracing::instrument(skip(self))]
     async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
-        monitor_get("moka", "profile", || self.profiles.get(key)).await
+        self.get_profile(key).await
     }
 
-    #[tracing::instrument(skip(self))]
     async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
-        monitor_set("moka", "profile", || self.profiles.insert(*key, entry)).await
+        self.set_profile(key, entry).await
     }
 
-    #[tracing::instrument(skip(self))]
     async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
-        monitor_get("moka", "skin", || self.skins.get(key)).await
+        self.get_skin(key).await
     }
 
-    #[tracing::instrument(skip(self))]
     async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
-        monitor_set("moka", "skin", || self.skins.insert(*key, entry)).await
+        self.set_skin(key, entry).await
     }
 
-    #[tracing::instrument(skip(self))]
     async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
-        monitor_get("moka", "cape", || self.capes.get(key)).await
+        self.get_cape(key).await
     }
 
-    #[tracing::instrument(skip(self))]
-    async fn set_cape(&self, uuid: &Uuid, entry: Entry<CapeData>) {
-        monitor_set("moka", "cape", || self.capes.insert(*uuid, entry)).await
+    async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>) {
+        self.set_cape(key, entry).await
     }
 
-    #[tracing::instrument(skip(self))]
     async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
-        monitor_get("moka", "head", || self.heads.get(key)).await
+        self.get_head(key).await
     }
 
-    #[tracing::instrument(skip(self))]
     async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
-        monitor_set("moka", "head", || self.heads.insert(*key, entry)).await
+        self.set_head(key, entry).await
     }
 }

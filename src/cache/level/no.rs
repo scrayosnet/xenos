@@ -5,14 +5,8 @@ use uuid::Uuid;
 
 /// [No Cache](NoCache) is a [CacheLevel] implementation that does nothing. It can be used to disable
 /// an otherwise mandatory [CacheLevel].
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct NoCache;
-
-impl NoCache {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
 
 #[async_trait]
 impl CacheLevel for NoCache {

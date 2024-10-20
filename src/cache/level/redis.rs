@@ -1,6 +1,5 @@
 use crate::cache::entry::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
-use crate::cache::level::CacheLevel;
-use crate::cache::level::{monitor_get, monitor_set};
+use crate::cache::level::{metrics_get_handler, metrics_set_handler, CacheLevel};
 use crate::settings;
 use async_trait::async_trait;
 use redis::aio::ConnectionManager;
@@ -80,12 +79,122 @@ impl RedisCache {
             .set_options(
                 key,
                 entry,
-                SetOptions::default().with_expiration(SetExpiry::EX(ttl.as_secs() as usize)),
+                SetOptions::default().with_expiration(SetExpiry::EX(ttl.as_secs())),
             )
             .await
             .unwrap_or_else(|err| {
                 error!("Failed to set value to redis: {:?}", err);
             });
+    }
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "redis", request_type = "uuid"),
+        handler = metrics_get_handler
+    )]
+    async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
+        let key = key!("uuid", key.to_lowercase());
+        self.get(key)
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "redis", request_type = "uuid"),
+        handler = metrics_set_handler
+    )]
+    async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
+        let key = key!("uuid", key.to_lowercase());
+        self.set(key, entry, &self.settings.entries.uuid.ttl)
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "redis", request_type = "profile"),
+        handler = metrics_get_handler
+    )]
+    async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
+        let key = key!("profile", key.simple());
+        self.get(key)
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "redis", request_type = "profile"),
+        handler = metrics_set_handler
+    )]
+    async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
+        let key = key!("profile", key.simple());
+        self.set(key, entry, &self.settings.entries.profile.ttl)
+            .await
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "redis", request_type = "skin"),
+        handler = metrics_get_handler
+    )]
+    async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
+        let key = key!("skin", key.simple());
+        self.get(key)
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "redis", request_type = "skin"),
+        handler = metrics_set_handler
+    )]
+    async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
+        let key = key!("skin", key.simple());
+        self.set(key, entry, &self.settings.entries.skin.ttl)
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "redis", request_type = "cape"),
+        handler = metrics_get_handler
+    )]
+    async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
+        let key = key!("cape", key.simple());
+        self.get(key)
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "redis", request_type = "cape"),
+        handler = metrics_set_handler
+    )]
+    async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>) {
+        let key = key!("cape", key.simple());
+        self.set(key, entry, &self.settings.entries.cape.ttl)
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "redis", request_type = "head"),
+        handler = metrics_get_handler
+    )]
+    async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
+        let key = key!("head", key.0.simple(), key.1);
+        self.get(key)
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "redis", request_type = "head"),
+        handler = metrics_set_handler
+    )]
+    async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
+        let key = key!("head", key.0.simple(), key.1);
+        self.set(key, entry, &self.settings.entries.head.ttl)
     }
 }
 
@@ -101,68 +210,43 @@ impl Debug for RedisCache {
 #[async_trait]
 impl CacheLevel for RedisCache {
     async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
-        let key = key!("uuid", key.to_lowercase());
-        monitor_get("redis", "uuid", || self.get(key)).await
+        self.get_uuid(key).await
     }
 
     async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
-        let key = key!("uuid", key.to_lowercase());
-        monitor_set("redis", "uuid", || {
-            self.set(key, entry, &self.settings.entries.uuid.ttl)
-        })
-        .await
+        self.set_uuid(key, entry).await
     }
 
     async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
-        let key = key!("profile", key.simple());
-        monitor_get("redis", "profile", || self.get(key)).await
+        self.get_profile(key).await
     }
 
     async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
-        let key = key!("profile", key.simple());
-        monitor_set("redis", "profile", || {
-            self.set(key, entry, &self.settings.entries.profile.ttl)
-        })
-        .await
+        self.set_profile(key, entry).await
     }
 
     async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
-        let key = key!("skin", key.simple());
-        monitor_get("redis", "skin", || self.get(key)).await
+        self.get_skin(key).await
     }
 
     async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
-        let key = key!("skin", key.simple());
-        monitor_set("redis", "skin", || {
-            self.set(key, entry, &self.settings.entries.skin.ttl)
-        })
-        .await
+        self.set_skin(key, entry).await
     }
 
     async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
-        let key = key!("cape", key.simple());
-        monitor_get("redis", "cape", || self.get(key)).await
+        self.get_cape(key).await
     }
 
     async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>) {
-        let key = key!("cape", key.simple());
-        monitor_set("redis", "cape", || {
-            self.set(key, entry, &self.settings.entries.cape.ttl)
-        })
-        .await
+        self.set_cape(key, entry).await
     }
 
     async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
-        let key = key!("head", key.0.simple(), key.1);
-        monitor_get("redis", "head", || self.get(key)).await
+        self.get_head(key).await
     }
 
     async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
-        let key = key!("head", key.0.simple(), key.1);
-        monitor_set("redis", "head", || {
-            self.set(key, entry, &self.settings.entries.head.ttl)
-        })
-        .await
+        self.set_head(key, entry).await
     }
 }
 

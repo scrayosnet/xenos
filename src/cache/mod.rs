@@ -1,19 +1,17 @@
 pub mod entry;
 pub mod level;
 
-use crate::cache::entry::Cached::{Expired, Hit, Miss};
 use crate::cache::entry::{Cached, CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::cache::level::CacheLevel;
 use crate::settings;
 use crate::settings::CacheEntry;
 use lazy_static::lazy_static;
+use metrics::MetricsEvent;
 use prometheus::{register_histogram_vec, HistogramVec};
 use std::fmt::Debug;
-use std::future::Future;
-use std::time::Instant;
+use tracing::warn;
 use uuid::Uuid;
 
-// TODO update buckets
 lazy_static! {
     /// A histogram for the cache get request latencies in seconds. It is intended to be used by all
     /// cache requests (`request_type`). Use the [monitor_get] utility for ease of use.
@@ -21,6 +19,16 @@ lazy_static! {
         "xenos_cache_get_duration_seconds",
         "The cache get request latencies in seconds.",
         &["request_type", "cache_result"],
+        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
+    )
+    .unwrap();
+
+    /// A histogram for the cache get request result age in seconds. It is intended to be used by all
+    /// cache requests (`request_type`). Use the [monitor_get] utility for ease of use.
+    static ref CACHE_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "xenos_cache_age_duration_seconds",
+        "The cache get request latencies in seconds.",
+        &["request_type"],
         vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
     )
     .unwrap();
@@ -36,41 +44,38 @@ lazy_static! {
     .unwrap();
 }
 
-// TODO do with macro
-/// Monitors a cache get operation, tracking its runtime and response.
-async fn monitor_get<F, Fut, D>(request_type: &str, f: F) -> Cached<D>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = Cached<D>>,
-    D: Clone + Debug + Eq + PartialEq,
-{
-    let start = Instant::now();
-    let result = f().await;
-    let cache_result = match &result {
-        Hit(_) => "hit",
-        Expired(_) => "expired",
-        Miss => "miss",
+fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Cached<T>>) {
+    let label = match event.result {
+        Cached::Hit(_) => "hit",
+        Cached::Expired(_) => "expired",
+        Cached::Miss => "miss",
+    };
+    let Some(request_type) = event.labels.get("request_type") else {
+        warn!("Failed to retrieve label 'request_type' for metric!");
+        return;
     };
     CACHE_GET_HISTOGRAM
-        .with_label_values(&[request_type, cache_result])
-        .observe(start.elapsed().as_secs_f64());
-    result
+        .with_label_values(&[request_type, label])
+        .observe(event.time);
+
+    match event.result {
+        Cached::Hit(entry) | Cached::Expired(entry) => {
+            CACHE_AGE_HISTOGRAM
+                .with_label_values(&[request_type])
+                .observe(entry.current_age() as f64);
+        }
+        _ => {}
+    };
 }
 
-// TODO do with macro
-/// Monitors a cache set operation, tracking its runtime and response.
-async fn monitor_set<F, Fut, D>(request_type: &str, f: F) -> Entry<D>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = Entry<D>>,
-    D: Clone + Debug + Eq + PartialEq,
-{
-    let start = Instant::now();
-    let result = f().await;
+fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Entry<T>>) {
+    let Some(request_type) = event.labels.get("request_type") else {
+        warn!("Failed to retrieve label 'request_type' for metric!");
+        return;
+    };
     CACHE_SET_HISTOGRAM
         .with_label_values(&[request_type])
-        .observe(start.elapsed().as_secs_f64());
-    result
+        .observe(event.time);
 }
 
 /// A [Cache] is a thread-safe multi-level cache. [Levels](CacheLevel) are added to the end of the stack.
@@ -122,6 +127,11 @@ where
 
     /// Gets some [UuidData] from the [Cache] for a case-insensitive username.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "combined", request_type = "uuid"),
+        handler = metrics_get_handler,
+    )]
     pub async fn get_uuid(&self, key: &str) -> Cached<UuidData> {
         let local = self.local_cache.get_uuid(key).await;
         if let Some(entry) = &local {
@@ -146,6 +156,11 @@ where
 
     /// Sets some optional [UuidData] to the [Cache] for a case-insensitive username.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "combined", request_type = "uuid"),
+        handler = metrics_set_handler,
+    )]
     pub async fn set_uuid(&self, key: &str, data: Option<UuidData>) -> Entry<UuidData> {
         let entry = Entry::from(data);
         self.local_cache.set_uuid(key, entry.clone()).await;
@@ -155,6 +170,11 @@ where
 
     /// Gets some [ProfileData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "combined", request_type = "profile"),
+        handler = metrics_get_handler,
+    )]
     pub async fn get_profile(&self, uuid: &Uuid) -> Cached<ProfileData> {
         let local = self.local_cache.get_profile(uuid).await;
         if let Some(entry) = &local {
@@ -179,6 +199,11 @@ where
 
     /// Sets some optional [ProfileData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "combined", request_type = "profile"),
+        handler = metrics_set_handler,
+    )]
     pub async fn set_profile(&self, key: &Uuid, data: Option<ProfileData>) -> Entry<ProfileData> {
         let entry = Entry::from(data);
         self.local_cache.set_profile(key, entry.clone()).await;
@@ -188,6 +213,11 @@ where
 
     /// Gets some [SkinData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "combined", request_type = "skin"),
+        handler = metrics_get_handler,
+    )]
     pub async fn get_skin(&self, uuid: &Uuid) -> Cached<SkinData> {
         let local = self.local_cache.get_skin(uuid).await;
         if let Some(entry) = &local {
@@ -212,6 +242,11 @@ where
 
     /// Sets some optional [SkinData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "combined", request_type = "profile"),
+        handler = metrics_set_handler,
+    )]
     pub async fn set_skin(&self, key: &Uuid, data: Option<SkinData>) -> Entry<SkinData> {
         let entry = Entry::from(data);
         self.local_cache.set_skin(key, entry.clone()).await;
@@ -221,6 +256,11 @@ where
 
     /// Gets some [CapeData] from the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "combined", request_type = "cape"),
+        handler = metrics_get_handler,
+    )]
     pub async fn get_cape(&self, uuid: &Uuid) -> Cached<CapeData> {
         let local = self.local_cache.get_cape(uuid).await;
         if let Some(entry) = &local {
@@ -245,6 +285,11 @@ where
 
     /// Sets some optional [CapeData] to the [Cache] for a profile [Uuid].
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "combined", request_type = "cape"),
+        handler = metrics_set_handler,
+    )]
     pub async fn set_cape(&self, key: &Uuid, data: Option<CapeData>) -> Entry<CapeData> {
         let entry = Entry::from(data);
         self.local_cache.set_cape(key, entry.clone()).await;
@@ -254,6 +299,11 @@ where
 
     /// Gets some [HeadData] from the [Cache] for a profile [Uuid] with or without its overlay.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_get",
+        labels(cache_type = "combined", request_type = "head"),
+        handler = metrics_get_handler,
+    )]
     pub async fn get_head(&self, uuid: &(Uuid, bool)) -> Cached<HeadData> {
         let local = self.local_cache.get_head(uuid).await;
         if let Some(entry) = &local {
@@ -278,6 +328,11 @@ where
 
     /// Sets some optional [HeadData] to the [Cache] for a profile [Uuid] with or without its overlay.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "cache_set",
+        labels(cache_type = "combined", request_type = "head"),
+        handler = metrics_set_handler,
+    )]
     pub async fn set_head(&self, key: &(Uuid, bool), data: Option<HeadData>) -> Entry<HeadData> {
         let entry = Entry::from(data);
         self.local_cache.set_head(key, entry.clone()).await;
