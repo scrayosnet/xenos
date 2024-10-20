@@ -348,6 +348,7 @@ mod test {
     use crate::settings::{CacheEntries, MokaCacheEntry};
     use std::time::Duration;
     use uuid::uuid;
+    use Cached::*;
 
     fn new_moka_settings() -> settings::MokaCache {
         let entry = MokaCacheEntry {

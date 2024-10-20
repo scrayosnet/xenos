@@ -18,7 +18,6 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
-use tracing::log;
 use tracing::warn;
 use uuid::Uuid;
 
