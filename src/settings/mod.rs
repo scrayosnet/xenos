@@ -58,6 +58,7 @@ pub struct Cache {
     pub entries: CacheEntries<CacheEntry>,
 
     /// The [redis] cache configuration.
+    #[cfg(feature = "redis")]
     pub redis: RedisCache,
 
     /// The [moka] cache configuration.

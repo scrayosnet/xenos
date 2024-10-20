@@ -1,7 +1,7 @@
 use crate::mojang::ApiError::NotFound;
 use crate::mojang::{
-    encode_texture_prop, ApiError, Mojang, Profile, ProfileProperty, Texture, Textures,
-    TexturesProperty, UsernameResolved,
+    encode_texture_prop, ApiError, Mojang, Profile, ProfileProperty, Texture, TextureBytes,
+    Textures, TexturesProperty, UsernameResolved,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -151,8 +151,13 @@ impl<'a> Mojang for MojangTestingApi<'a> {
         self.profiles.get(uuid).cloned().ok_or(NotFound)
     }
 
-    async fn fetch_bytes(&self, url: String, _: &str) -> Result<Bytes, ApiError> {
-        self.images.get(&url).cloned().cloned().ok_or(NotFound)
+    async fn fetch_bytes(&self, url: String) -> Result<TextureBytes, ApiError> {
+        self.images
+            .get(&url)
+            .cloned()
+            .cloned()
+            .ok_or(NotFound)
+            .map(TextureBytes)
     }
 }
 
