@@ -5,6 +5,3 @@ edition = "2021"
 
 [dependencies]
 metrics-macros = { path = "metrics-macros" }
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18" }
-lazy_static = "1.5.0"
