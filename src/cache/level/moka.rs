@@ -53,7 +53,6 @@ impl MokaCache {
 }
 
 impl CacheLevel for MokaCache {
-
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",

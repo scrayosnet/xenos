@@ -84,8 +84,8 @@ fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Entry<T>>) {
 /// upper level caches should be subsets of lower level caches.
 ///
 /// - **Get operations** find the first [CacheLevel] that contains a some [Entry].
-/// When a [Hit] is found, all previous levels are updated with that [Entry]. Otherwise, it uses the
-/// last found [Expired] entry. If no [Entry] could be found. Nothing is updated.
+///   When a [Hit] is found, all previous levels are updated with that [Entry]. Otherwise, it uses the
+///   last found [Expired] entry. If no [Entry] could be found. Nothing is updated.
 /// - **Set operations** update all levels, starting with the lowest level.
 ///
 /// ```rs

@@ -95,7 +95,6 @@ impl MojangApi {
 }
 
 impl Mojang for MojangApi {
-
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "mojang_api",
