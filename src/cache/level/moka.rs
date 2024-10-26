@@ -1,7 +1,6 @@
 use crate::cache::entry::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::cache::level::{metrics_get_handler, metrics_set_handler, CacheLevel};
 use crate::settings;
-use async_trait::async_trait;
 use moka::future::Cache;
 use uuid::Uuid;
 
@@ -51,6 +50,9 @@ impl MokaCache {
                 .build(),
         }
     }
+}
+
+impl CacheLevel for MokaCache {
 
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
@@ -150,48 +152,5 @@ impl MokaCache {
     )]
     async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
         self.heads.insert(*key, entry).await
-    }
-}
-
-#[async_trait]
-impl CacheLevel for MokaCache {
-    async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
-        self.get_uuid(key).await
-    }
-
-    async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
-        self.set_uuid(key, entry).await
-    }
-
-    async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
-        self.get_profile(key).await
-    }
-
-    async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
-        self.set_profile(key, entry).await
-    }
-
-    async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
-        self.get_skin(key).await
-    }
-
-    async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
-        self.set_skin(key, entry).await
-    }
-
-    async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
-        self.get_cape(key).await
-    }
-
-    async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>) {
-        self.set_cape(key, entry).await
-    }
-
-    async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
-        self.get_head(key).await
-    }
-
-    async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
-        self.set_head(key, entry).await
     }
 }

@@ -2,7 +2,6 @@ pub mod api;
 #[cfg(feature = "static-testing")]
 pub mod testing;
 
-use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bytes::Bytes;
@@ -221,8 +220,8 @@ pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, Imag
     Ok(head_bytes)
 }
 
-#[async_trait]
-pub trait Mojang: Send + Sync {
+#[trait_variant::make(Mojang: Send + Sync)]
+pub trait LocalMojang {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError>;
     async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, ApiError>;
     async fn fetch_bytes(&self, url: String) -> Result<TextureBytes, ApiError>;

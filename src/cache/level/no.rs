@@ -1,6 +1,5 @@
 use crate::cache::entry::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::cache::level::CacheLevel;
-use async_trait::async_trait;
 use uuid::Uuid;
 
 /// [No Cache](NoCache) is a [CacheLevel] implementation that does nothing. It can be used to disable
@@ -8,7 +7,6 @@ use uuid::Uuid;
 #[derive(Debug, Default)]
 pub struct NoCache;
 
-#[async_trait]
 impl CacheLevel for NoCache {
     async fn get_uuid(&self, _: &str) -> Option<Entry<UuidData>> {
         None

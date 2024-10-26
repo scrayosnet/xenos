@@ -1,7 +1,6 @@
 use crate::cache::entry::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::cache::level::{metrics_get_handler, metrics_set_handler, CacheLevel};
 use crate::settings;
-use async_trait::async_trait;
 use redis::aio::ConnectionManager;
 use redis::{
     from_redis_value, AsyncCommands, FromRedisValue, RedisResult, RedisWrite, SetExpiry,
@@ -86,6 +85,18 @@ impl RedisCache {
                 error!("Failed to set value to redis: {:?}", err);
             });
     }
+}
+
+impl Debug for RedisCache {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // prints all fields except the redis connection
+        f.debug_struct("RedisCache")
+            .field("settings", &self.settings)
+            .finish()
+    }
+}
+
+impl CacheLevel for RedisCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
@@ -195,58 +206,6 @@ impl RedisCache {
     async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
         let key = key!("head", key.0.simple(), key.1);
         self.set(key, entry, &self.settings.entries.head.ttl).await
-    }
-}
-
-impl Debug for RedisCache {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // prints all fields except the redis connection
-        f.debug_struct("RedisCache")
-            .field("settings", &self.settings)
-            .finish()
-    }
-}
-
-#[async_trait]
-impl CacheLevel for RedisCache {
-    async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
-        self.get_uuid(key).await
-    }
-
-    async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
-        self.set_uuid(key, entry).await
-    }
-
-    async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
-        self.get_profile(key).await
-    }
-
-    async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
-        self.set_profile(key, entry).await
-    }
-
-    async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
-        self.get_skin(key).await
-    }
-
-    async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
-        self.set_skin(key, entry).await
-    }
-
-    async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
-        self.get_cape(key).await
-    }
-
-    async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>) {
-        self.set_cape(key, entry).await
-    }
-
-    async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
-        self.get_head(key).await
-    }
-
-    async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
-        self.set_head(key, entry).await
     }
 }
 

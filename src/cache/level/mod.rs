@@ -3,7 +3,6 @@ use crate::cache::{
     CapeData, Entry, HeadData, ProfileData, SkinData, UuidData, CACHE_AGE_HISTOGRAM,
     CACHE_GET_HISTOGRAM, CACHE_SET_HISTOGRAM,
 };
-use async_trait::async_trait;
 use metrics::MetricsEvent;
 use std::fmt::Debug;
 use tracing::warn;
@@ -65,8 +64,9 @@ fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<T>) {
 ///   None => { ... }
 /// }
 /// ```
-#[async_trait]
-pub trait CacheLevel: Debug + Send + Sync {
+
+#[trait_variant::make(CacheLevel: Send + Sync)]
+pub trait LocalCacheLevel {
     /// Gets some [UuidData] from the [CacheLevel] for a case-insensitive username.
     async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>>;
 

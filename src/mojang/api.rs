@@ -1,6 +1,5 @@
 use crate::mojang::ApiError::{NotFound, Unavailable};
 use crate::mojang::{ApiError, Mojang, Profile, TextureBytes, UsernameResolved};
-use async_trait::async_trait;
 use lazy_static::lazy_static;
 use metrics::MetricsEvent;
 use prometheus::{register_histogram_vec, HistogramVec};
@@ -93,6 +92,9 @@ impl MojangApi {
             }
         }
     }
+}
+
+impl Mojang for MojangApi {
 
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
@@ -176,20 +178,5 @@ impl MojangApi {
                 Err(Unavailable)
             }
         }
-    }
-}
-
-#[async_trait]
-impl Mojang for MojangApi {
-    async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError> {
-        self.fetch_uuids(usernames).await
-    }
-
-    async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, ApiError> {
-        self.fetch_profile(uuid, signed).await
-    }
-
-    async fn fetch_bytes(&self, url: String) -> Result<TextureBytes, ApiError> {
-        self.fetch_bytes(url).await
     }
 }

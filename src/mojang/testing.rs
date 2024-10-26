@@ -3,7 +3,6 @@ use crate::mojang::{
     encode_texture_prop, ApiError, Mojang, Profile, ProfileProperty, Texture, TextureBytes,
     Textures, TexturesProperty, UsernameResolved,
 };
-use async_trait::async_trait;
 use bytes::Bytes;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -136,7 +135,6 @@ impl<'a> MojangTestingApi<'a> {
     }
 }
 
-#[async_trait]
 impl<'a> Mojang for MojangTestingApi<'a> {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError> {
         let uuids = usernames
