@@ -220,7 +220,7 @@ pub fn build_skin_head(skin_bytes: &[u8], overlay: bool) -> Result<Vec<u8>, Imag
     Ok(head_bytes)
 }
 
-#[trait_variant::make(Mojang: Send + Sync)]
+#[trait_variant::make(Mojang: Send)]
 pub trait LocalMojang {
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError>;
     async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, ApiError>;

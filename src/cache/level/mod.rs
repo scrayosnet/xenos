@@ -65,7 +65,7 @@ fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<T>) {
 /// }
 /// ```
 
-#[trait_variant::make(CacheLevel: Send + Sync)]
+#[trait_variant::make(CacheLevel: Send)]
 pub trait LocalCacheLevel {
     /// Gets some [UuidData] from the [CacheLevel] for a case-insensitive username.
     async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>>;

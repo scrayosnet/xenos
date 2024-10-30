@@ -52,9 +52,9 @@ where
 #[tonic::async_trait]
 impl<L, R, M> Profile for GrpcProfileService<L, R, M>
 where
-    L: CacheLevel + 'static,
-    R: CacheLevel + 'static,
-    M: Mojang + 'static,
+    L: CacheLevel + Sync + 'static,
+    R: CacheLevel + Sync + 'static,
+    M: Mojang + Sync + 'static,
 {
     async fn get_uuid(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
         let username = request.into_inner().username;

@@ -126,9 +126,9 @@ async fn serve_rest_server<L, R, M>(
     service: Arc<Service<L, R, M>>,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
-    L: CacheLevel + 'static,
-    R: CacheLevel + 'static,
-    M: Mojang + 'static,
+    L: CacheLevel + Sync + 'static,
+    R: CacheLevel + Sync + 'static,
+    M: Mojang + Sync + 'static,
 {
     let settings = service.settings();
     let address = settings.rest_server.address;
@@ -207,9 +207,9 @@ async fn serve_grpc_server<L, R, M>(
     service: Arc<Service<L, R, M>>,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
-    L: CacheLevel + 'static,
-    R: CacheLevel + 'static,
-    M: Mojang + 'static,
+    L: CacheLevel + Sync + 'static,
+    R: CacheLevel + Sync + 'static,
+    M: Mojang + Sync + 'static,
 {
     let settings = service.settings();
     let address = settings.grpc_server.address;
