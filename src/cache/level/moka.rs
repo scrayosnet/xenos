@@ -56,7 +56,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "moka", request_type = "uuid"),
+        labels(cache_variant = "moka", request_type = "uuid"),
         handler = metrics_get_handler
     )]
     async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>> {
@@ -66,7 +66,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "moka", request_type = "uuid"),
+        labels(cache_variant = "moka", request_type = "uuid"),
         handler = metrics_set_handler
     )]
     async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
@@ -76,7 +76,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "moka", request_type = "profile"),
+        labels(cache_variant = "moka", request_type = "profile"),
         handler = metrics_get_handler
     )]
     async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>> {
@@ -86,7 +86,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "moka", request_type = "profile"),
+        labels(cache_variant = "moka", request_type = "profile"),
         handler = metrics_set_handler
     )]
     async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
@@ -96,7 +96,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "moka", request_type = "skin"),
+        labels(cache_variant = "moka", request_type = "skin"),
         handler = metrics_get_handler
     )]
     async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>> {
@@ -106,7 +106,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "moka", request_type = "skin"),
+        labels(cache_variant = "moka", request_type = "skin"),
         handler = metrics_set_handler
     )]
     async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
@@ -116,7 +116,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "moka", request_type = "cape"),
+        labels(cache_variant = "moka", request_type = "cape"),
         handler = metrics_get_handler
     )]
     async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>> {
@@ -126,7 +126,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "moka", request_type = "cape"),
+        labels(cache_variant = "moka", request_type = "cape"),
         handler = metrics_set_handler
     )]
     async fn set_cape(&self, uuid: &Uuid, entry: Entry<CapeData>) {
@@ -136,7 +136,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_get",
-        labels(cache_type = "moka", request_type = "head"),
+        labels(cache_variant = "moka", request_type = "head"),
         handler = metrics_get_handler
     )]
     async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>> {
@@ -146,7 +146,7 @@ impl CacheLevel for MokaCache {
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "cache_set",
-        labels(cache_type = "moka", request_type = "head"),
+        labels(cache_variant = "moka", request_type = "head"),
         handler = metrics_set_handler
     )]
     async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {

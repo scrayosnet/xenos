@@ -45,7 +45,7 @@ lazy_static! {
 }
 
 fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Cached<T>>) {
-    let label = match event.result {
+    let cache_result = match event.result {
         Cached::Hit(_) => "hit",
         Cached::Expired(_) => "expired",
         Cached::Miss => "miss",
@@ -54,14 +54,15 @@ fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Cached<T>>) {
         warn!("Failed to retrieve label 'request_type' for metric!");
         return;
     };
+    let cache_variant = "cache";
     CACHE_GET_HISTOGRAM
-        .with_label_values(&["main", request_type, label])
+        .with_label_values(&[cache_variant, request_type, cache_result])
         .observe(event.time);
 
     match event.result {
         Cached::Hit(entry) | Cached::Expired(entry) => {
             CACHE_AGE_HISTOGRAM
-                .with_label_values(&["main", request_type])
+                .with_label_values(&[cache_variant, request_type])
                 .observe(entry.current_age() as f64);
         }
         _ => {}
@@ -73,8 +74,9 @@ fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Entry<T>>) {
         warn!("Failed to retrieve label 'request_type' for metric!");
         return;
     };
+    let cache_variant = "cache";
     CACHE_SET_HISTOGRAM
-        .with_label_values(&["main", request_type])
+        .with_label_values(&[cache_variant, request_type])
         .observe(event.time);
 }
 

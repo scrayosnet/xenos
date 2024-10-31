@@ -24,7 +24,7 @@ lazy_static! {
 }
 
 fn metrics_handler<T>(event: MetricsEvent<Result<T, ApiError>>) {
-    let label = match event.result {
+    let status = match event.result {
         Ok(_) => "ok",
         Err(Unavailable) => "unavailable",
         Err(NotFound) => "not_found",
@@ -34,7 +34,7 @@ fn metrics_handler<T>(event: MetricsEvent<Result<T, ApiError>>) {
         return;
     };
     MOJANG_REQ_HISTOGRAM
-        .with_label_values(&[request_type, label])
+        .with_label_values(&[request_type, status])
         .observe(event.time);
 }
 

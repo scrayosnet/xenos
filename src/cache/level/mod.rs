@@ -14,7 +14,7 @@ pub mod no;
 pub mod redis;
 
 fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Option<Entry<T>>>) {
-    let label = match event.result {
+    let cache_result = match event.result {
         None => "miss",
         Some(Dated { data: Some(_), .. }) => "filled",
         Some(Dated { data: None, .. }) => "empty",
@@ -28,12 +28,12 @@ fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Option<Entry<T
         return;
     };
     CACHE_GET_HISTOGRAM
-        .with_label_values(&[cache_variant, request_type, label])
+        .with_label_values(&[cache_variant, request_type, cache_result])
         .observe(event.time);
 
     if let Some(dated) = event.result {
         CACHE_AGE_HISTOGRAM
-            .with_label_values(&[request_type])
+            .with_label_values(&[cache_variant, request_type])
             .observe(dated.current_age() as f64);
     }
 }

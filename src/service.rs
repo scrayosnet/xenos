@@ -70,7 +70,7 @@ fn metrics_age_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<Dated<T
 }
 
 fn metrics_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<T, ServiceError>>) {
-    let label = match event.result {
+    let status = match event.result {
         Ok(_) => "ok",
         Err(Unavailable) => "unavailable",
         Err(NotFound) => "not_found",
@@ -81,7 +81,7 @@ fn metrics_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<T, ServiceE
         return;
     };
     PROFILE_REQ_LAT_HISTOGRAM
-        .with_label_values(&[request_type, label])
+        .with_label_values(&[request_type, status])
         .observe(event.time);
 }
 
