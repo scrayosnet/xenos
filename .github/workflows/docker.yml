@@ -5,7 +5,7 @@ on:
     branches:
     - main
     tags:
-    - *
+    - '*'
   pull_request:
     branches:
     - main
@@ -15,23 +15,23 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  strategy:
-    matrix:
-      platform:
-      - name: 'minimal'
-        tag: 'minimal'
-        description: 'Minimal Production Image (without external cache)'
-        feature: 'default'
-      - name: 'testing'
-        tag: 'testing'
-        description: 'Static Integration Test Image'
-        feature: 'static-testing'
-      - name: 'redis'
-        tag: 'redis'
-        description: 'Production Image (with redis cache)'
-        feature: 'redis'
-    fail-fast: false
   build:
+    strategy:
+      matrix:
+        platform:
+        - name: 'minimal'
+          tag: 'minimal'
+          description: 'Minimal Production Image (without external cache)'
+          feature: 'default'
+        - name: 'testing'
+          tag: 'testing'
+          description: 'Static Integration Test Image'
+          feature: 'static-testing'
+        - name: 'redis'
+          tag: 'redis'
+          description: 'Production Image (with redis cache)'
+          feature: 'redis'
+      fail-fast: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
