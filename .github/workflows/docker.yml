@@ -15,6 +15,22 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  strategy:
+    matrix:
+      platform:
+      - name: 'minimal'
+        tag: 'minimal'
+        description: 'Minimal Production Image (without external cache)'
+        feature: 'default'
+      - name: 'testing'
+        tag: 'testing'
+        description: 'Static Integration Test Image'
+        feature: 'static-testing'
+      - name: 'redis'
+        tag: 'redis'
+        description: 'Production Image (with redis cache)'
+        feature: 'redis'
+    fail-fast: false
   build:
     runs-on: ubuntu-latest
     permissions:
@@ -45,9 +61,14 @@ jobs:
       with:
         images: |
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=tag
+        flavor: |
+          latest=false
+          suffix=-${{ matrix.variant.tag }}
         labels: |
-          org.opencontainers.image.title=xenos
-          org.opencontainers.image.description=Production Image
+          org.opencontainers.image.title=xenos (${{ matrix.variant.name }})
+          org.opencontainers.image.description=${{ matrix.variant.description }}
           org.opencontainers.image.vendor=Scrayos UG (haftungsbeschränkt)
           org.opencontainers.image.authors=Joshua Dean Küpper <admin@joshua-kuepper.de>, Paul Wagner <github@paulwagner.dev>
           org.opencontainers.image.url=https://github.com/scrayosnet/xenos
@@ -57,9 +78,11 @@ jobs:
 
     - name: Build and push Docker image
       id: build-and-push
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
+        build-args:
+          FEATURES: ${{ matrix.variant.feature }}
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         annotations: ${{ steps.meta.outputs.annotations }}

@@ -50,8 +50,8 @@ while minimizing security risks arising from their dependencies.
 
 Currently, the supported remote caches are:
 
-- None (default)
-- Redis
+* None (`minimal`)
+* Redis (`redis`)
 
 ## Getting started
 
