@@ -81,8 +81,8 @@ jobs:
       uses: docker/build-push-action@v6
       with:
         context: .
-        build-args:
-          FEATURES: ${{ matrix.variant.feature }}
+        build-args: |
+          "FEATURES=${{ matrix.variant.feature }}"
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         annotations: ${{ steps.meta.outputs.annotations }}
