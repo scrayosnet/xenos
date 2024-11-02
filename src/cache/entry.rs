@@ -145,6 +145,19 @@ where
     }
 }
 
+impl<D> From<Option<Entry<D>>> for Cached<D>
+where
+    D: Clone + Debug + Eq + PartialEq,
+{
+    fn from(opt: Option<Entry<D>>) -> Self {
+        match opt {
+            None => Miss,
+            Some(entry) if entry.timestamp < now_seconds() => Hit(entry),
+            Some(entry) => Expired(entry),
+        }
+    }
+}
+
 /// A [UuidData] is a resolved username (case-sensitive).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UuidData {

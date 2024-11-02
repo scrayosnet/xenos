@@ -1,5 +1,7 @@
+use crate::cache::level::CacheLevel;
 use crate::error::ServiceError;
 use crate::error::ServiceError::{NotFound, Unavailable, UuidError};
+use crate::mojang::Mojang;
 use crate::proto::{
     profile_server::Profile, CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest,
     ProfileResponse, SkinRequest, SkinResponse, UuidRequest, UuidResponse, UuidsRequest,
@@ -26,19 +28,34 @@ impl From<ServiceError> for Status {
 }
 
 /// A [GrpcProfileService] wraps [Service] and implements the grpc [Profile] service.
-pub struct GrpcProfileService {
-    service: Arc<Service>,
+pub struct GrpcProfileService<L, R, M>
+where
+    L: CacheLevel,
+    R: CacheLevel,
+    M: Mojang,
+{
+    service: Arc<Service<L, R, M>>,
 }
 
-impl GrpcProfileService {
+impl<L, R, M> GrpcProfileService<L, R, M>
+where
+    L: CacheLevel,
+    R: CacheLevel,
+    M: Mojang,
+{
     /// Creates a new [GrpcProfileService] wrapping the provided [Service] reference.
-    pub fn new(service: Arc<Service>) -> Self {
+    pub fn new(service: Arc<Service<L, R, M>>) -> Self {
         Self { service }
     }
 }
 
 #[tonic::async_trait]
-impl Profile for GrpcProfileService {
+impl<L, R, M> Profile for GrpcProfileService<L, R, M>
+where
+    L: CacheLevel + Sync + 'static,
+    R: CacheLevel + Sync + 'static,
+    M: Mojang + Sync + 'static,
+{
     async fn get_uuid(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
         let username = request.into_inner().username;
         let uuid = self.service.get_uuid(&username).await?;

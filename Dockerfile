@@ -1,4 +1,7 @@
-FROM rust:alpine@sha256:ec93a9ad3065df593645171a3aa6c47b55578914d2c232860260dbd27bb0cbc0 AS builder
+FROM rust:alpine@sha256:466dc9924d265455aa73e72fd9cdac9db69ce6a988e6f0e6baf852db3485d97d AS builder
+
+# specify rust features
+ARG FEATURES="default"
 
 # specify our build directory
 WORKDIR /usr/src/xenos
@@ -8,8 +11,8 @@ COPY . .
 
 # install dev dependencies and perform build process
 RUN set -eux \
- && apk add --no-cache musl-dev protoc protobuf-dev libressl-dev \
- && cargo build --release
+ && apk add --no-cache libressl-dev musl-dev protobuf-dev protoc \
+ && cargo build --release --features "${FEATURES}"
 
 
 FROM scratch

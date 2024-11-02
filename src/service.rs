@@ -1,6 +1,7 @@
 use crate::cache::entry::Cached::{Expired, Hit, Miss};
 use crate::cache::entry::{CapeData, HeadData, SkinData, UuidData};
 use crate::cache::entry::{Dated, Entry, ProfileData};
+use crate::cache::level::CacheLevel;
 use crate::cache::Cache;
 use crate::error::ServiceError;
 use crate::error::ServiceError::{NotFound, Unavailable};
@@ -11,16 +12,15 @@ use crate::mojang::{
 };
 use crate::settings::Settings;
 use lazy_static::lazy_static;
+use metrics::MetricsEvent;
 use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::future::Future;
 use std::sync::Arc;
-use std::time::Instant;
+use tracing::warn;
 use uuid::Uuid;
 
-// TODO update buckets
 lazy_static! {
     /// The username regex is used to check if a given username could be a valid username.
     /// If a string does not match the regex, the mojang API will never find a matching user id.
@@ -47,62 +47,68 @@ lazy_static! {
     .unwrap();
 }
 
-/// A utility that wraps a [Service] call, monitoring its runtime, response status and [Entry]
-/// age for [prometheus]. The age of a [Entry] is the relative time from which the cache entry
-/// was created until now.
-async fn monitor_service_call_with_age<F, Fut, D>(
-    request_type: &str,
-    f: F,
-) -> Result<Dated<D>, ServiceError>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = Result<Dated<D>, ServiceError>>,
-    D: Clone + Debug + Eq + PartialEq,
-{
-    let result = monitor_service_call(request_type, f).await;
-    if let Ok(dated) = &result {
-        PROFILE_REQ_AGE_HISTOGRAM
-            .with_label_values(&[request_type])
-            .observe(dated.current_age() as f64);
-    }
-    result
-}
-
-/// A utility that wraps a [Service] call, monitoring its runtime and response status.
-async fn monitor_service_call<F, Fut, D>(request_type: &str, f: F) -> Result<D, ServiceError>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = Result<D, ServiceError>>,
-    D: Clone + Debug + Eq + PartialEq,
-{
-    let start = Instant::now();
-    let result = f().await;
-    let status = match &result {
+fn metrics_age_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<Dated<T>, ServiceError>>) {
+    let status = match event.result {
         Ok(_) => "ok",
         Err(Unavailable) => "unavailable",
         Err(NotFound) => "not_found",
         Err(_) => "error",
     };
+    let Some(request_type) = event.labels.get("request_type") else {
+        warn!("Failed to retrieve label 'request_type' for metric!");
+        return;
+    };
     PROFILE_REQ_LAT_HISTOGRAM
         .with_label_values(&[request_type, status])
-        .observe(start.elapsed().as_secs_f64());
-    result
+        .observe(event.time);
+
+    if let Ok(dated) = event.result {
+        PROFILE_REQ_AGE_HISTOGRAM
+            .with_label_values(&[request_type])
+            .observe(dated.current_age() as f64);
+    }
+}
+
+fn metrics_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<T, ServiceError>>) {
+    let status = match event.result {
+        Ok(_) => "ok",
+        Err(Unavailable) => "unavailable",
+        Err(NotFound) => "not_found",
+        Err(_) => "error",
+    };
+    let Some(request_type) = event.labels.get("request_type") else {
+        warn!("Failed to retrieve label 'request_type' for metric!");
+        return;
+    };
+    PROFILE_REQ_LAT_HISTOGRAM
+        .with_label_values(&[request_type, status])
+        .observe(event.time);
 }
 
 /// The [Service] is the backbone of Xenos. All exposed services (gRPC/REST) use a shared instance of
 /// this service. The [Service] incorporates a [Cache] and [Mojang] implementations
 /// as well as a clone of the [application settings](Settings). It is expected, that the settings
 /// match the settings used to construct the cache and api.
-pub struct Service {
+pub struct Service<L, R, M>
+where
+    L: CacheLevel,
+    R: CacheLevel,
+    M: Mojang,
+{
     settings: Arc<Settings>,
-    cache: Cache,
-    mojang: Box<dyn Mojang>,
+    cache: Cache<L, R>,
+    mojang: M,
 }
 
-impl Service {
+impl<L, R, M> Service<L, R, M>
+where
+    L: CacheLevel,
+    R: CacheLevel,
+    M: Mojang,
+{
     /// Builds a new [Service] with provided cache and mojang api implementation. It is expected, that
     /// the provided settings match the settings used to construct the cache and api.
-    pub fn new(settings: Arc<Settings>, cache: Cache, mojang: Box<dyn Mojang>) -> Self {
+    pub fn new(settings: Arc<Settings>, cache: Cache<L, R>, mojang: M) -> Self {
         Self {
             settings,
             cache,
@@ -118,28 +124,20 @@ impl Service {
     /// Resolves the provided (case-insensitive) username to its (case-sensitive) username and uuid
     /// from cache or mojang.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(metric = "service", labels(request_type = "uuid"), handler = metrics_age_handler)]
     pub async fn get_uuid(&self, username: &str) -> Result<Dated<UuidData>, ServiceError> {
-        monitor_service_call("uuid", || async {
-            let mut uuids = self._get_uuids(&[username.to_string()]).await?;
-            match uuids.remove(&username.to_lowercase()) {
-                Some(uuid) => uuid.some_or(NotFound),
-                None => Err(NotFound),
-            }
-        })
-        .await
+        let mut uuids = self.get_uuids(&[username.to_string()]).await?;
+        match uuids.remove(&username.to_lowercase()) {
+            Some(uuid) => uuid.some_or(NotFound),
+            None => Err(NotFound),
+        }
     }
 
     /// Resolves the provided (case-insensitive) usernames to their (case-sensitive) username and uuid
     /// from cache or mojang.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(metric = "service", labels(request_type = "uuids"), handler = metrics_handler)]
     pub async fn get_uuids(
-        &self,
-        usernames: &[String],
-    ) -> Result<HashMap<String, Entry<UuidData>>, ServiceError> {
-        monitor_service_call("uuids", || self._get_uuids(usernames)).await
-    }
-
-    pub async fn _get_uuids(
         &self,
         usernames: &[String],
     ) -> Result<HashMap<String, Entry<UuidData>>, ServiceError> {
@@ -190,7 +188,7 @@ impl Service {
             for username in cache_misses {
                 // build new cache entry
                 let data = found.remove(&username).map(|res| UuidData {
-                    username: res.name,
+                    username: res.name.to_string(),
                     uuid: res.id,
                 });
                 // update response and cache
@@ -204,11 +202,8 @@ impl Service {
 
     /// Gets the profile for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(metric = "service", labels(request_type = "profile"), handler = metrics_age_handler)]
     pub async fn get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, ServiceError> {
-        monitor_service_call_with_age("profile", || self._get_profile(uuid)).await
-    }
-
-    async fn _get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, ServiceError> {
         // try to get from cache
         let cached = self.cache.get_profile(uuid).await;
         let fallback = match cached {
@@ -224,11 +219,11 @@ impl Service {
             .await
         {
             Ok(profile) => {
-                let dated = self.cache.set_profile(*uuid, Some(profile)).await.unwrap();
+                let dated = self.cache.set_profile(uuid, Some(profile)).await.unwrap();
                 Ok(dated)
             }
             Err(ApiError::NotFound) => {
-                self.cache.set_profile(*uuid, None).await;
+                self.cache.set_profile(uuid, None).await;
                 Err(NotFound)
             }
             Err(ApiError::Unavailable) => fallback
@@ -239,11 +234,8 @@ impl Service {
 
     /// Gets the profile skin for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(metric = "service", labels(request_type = "skin"), handler = metrics_age_handler)]
     pub async fn get_skin(&self, uuid: &Uuid) -> Result<Dated<SkinData>, ServiceError> {
-        monitor_service_call_with_age("skin", || self._get_skin(uuid)).await
-    }
-
-    async fn _get_skin(&self, uuid: &Uuid) -> Result<Dated<SkinData>, ServiceError> {
         // try to get from cache
         let cached = self.cache.get_skin(uuid).await;
         let fallback = match cached {
@@ -261,7 +253,7 @@ impl Service {
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
-                self.cache.set_skin(*uuid, None).await;
+                self.cache.set_skin(uuid, None).await;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
@@ -278,14 +270,14 @@ impl Service {
             .unwrap_or(CLASSIC_MODEL.to_string());
 
         // try to fetch from mojang and update cache
-        match self.mojang.fetch_bytes(textures.url, "skin").await {
+        match self.mojang.fetch_bytes(textures.url).await {
             Ok(skin_bytes) => {
                 let skin = SkinData {
                     bytes: skin_bytes.to_vec(),
                     model: skin_model,
                     default: false,
                 };
-                let dated = self.cache.set_skin(*uuid, Some(skin)).await.unwrap();
+                let dated = self.cache.set_skin(uuid, Some(skin)).await.unwrap();
                 Ok(dated)
             }
             // handle NotFound as Unavailable as the profile (and therefore the skin) should exist
@@ -297,11 +289,8 @@ impl Service {
 
     /// Gets the profile cape for an uuid from cache or mojang.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(metric = "service", labels(request_type = "cape"), handler = metrics_age_handler)]
     pub async fn get_cape(&self, uuid: &Uuid) -> Result<Dated<CapeData>, ServiceError> {
-        monitor_service_call_with_age("cape", || self._get_cape(uuid)).await
-    }
-
-    async fn _get_cape(&self, uuid: &Uuid) -> Result<Dated<CapeData>, ServiceError> {
         // try to get from cache
         let cached = self.cache.get_cape(uuid).await;
         let fallback = match cached {
@@ -319,7 +308,7 @@ impl Service {
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
-                self.cache.set_cape(*uuid, None).await;
+                self.cache.set_cape(uuid, None).await;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
@@ -331,12 +320,12 @@ impl Service {
         };
 
         // try to fetch from mojang and update cache
-        match self.mojang.fetch_bytes(textures.url, "cape").await {
+        match self.mojang.fetch_bytes(textures.url).await {
             Ok(cape_bytes) => {
                 let cape = CapeData {
                     bytes: cape_bytes.to_vec(),
                 };
-                let dated = self.cache.set_cape(*uuid, Some(cape)).await.unwrap();
+                let dated = self.cache.set_cape(uuid, Some(cape)).await.unwrap();
                 Ok(dated)
             }
             // handle NotFound as Unavailable as the profile (and therefore the cape) should exist
@@ -348,17 +337,14 @@ impl Service {
 
     /// Gets the profile head for an uuid from cache or mojang. The head may include the head overlay.
     #[tracing::instrument(skip(self))]
+    #[metrics::metrics(metric = "service", labels(request_type = "head"), handler = metrics_age_handler)]
     pub async fn get_head(
         &self,
         uuid: &Uuid,
         overlay: bool,
     ) -> Result<Dated<HeadData>, ServiceError> {
-        monitor_service_call_with_age("head", || self._get_head(uuid, overlay)).await
-    }
-
-    async fn _get_head(&self, uuid: &Uuid, overlay: bool) -> Result<Dated<HeadData>, ServiceError> {
         // try to get from cache
-        let cached = self.cache.get_head(uuid, overlay).await;
+        let cached = self.cache.get_head(&(*uuid, overlay)).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
             Expired(entry) => Some(entry),
@@ -374,8 +360,8 @@ impl Service {
                     .and_then(|entry| entry.some_or(NotFound))
             }
             Err(NotFound) => {
-                self.cache.set_head(*uuid, false, None).await;
-                self.cache.set_head(*uuid, true, None).await;
+                self.cache.set_head(&(*uuid, false), None).await;
+                self.cache.set_head(&(*uuid, true), None).await;
                 return Err(NotFound);
             }
             Err(err) => return Err(err),
@@ -394,7 +380,7 @@ impl Service {
         };
         let dated = self
             .cache
-            .set_head(*uuid, overlay, Some(head))
+            .set_head(&(*uuid, overlay), Some(head))
             .await
             .unwrap();
         Ok(dated)

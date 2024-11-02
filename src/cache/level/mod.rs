@@ -1,71 +1,55 @@
-use crate::cache::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
-use async_trait::async_trait;
-use lazy_static::lazy_static;
-use prometheus::{register_histogram_vec, HistogramVec};
+use crate::cache::entry::Dated;
+use crate::cache::{
+    CapeData, Entry, HeadData, ProfileData, SkinData, UuidData, CACHE_AGE_HISTOGRAM,
+    CACHE_GET_HISTOGRAM, CACHE_SET_HISTOGRAM,
+};
+use metrics::MetricsEvent;
 use std::fmt::Debug;
-use std::future::Future;
-use std::time::Instant;
+use tracing::warn;
 use uuid::Uuid;
 
 pub mod moka;
+pub mod no;
+#[cfg(feature = "redis")]
 pub mod redis;
 
-lazy_static! {
-    /// A histogram for the cache get request latencies in seconds. It is intended to be used by all
-    /// caches (`cache_variant`) and cache requests (`request_type`). Use the [monitor_get]
-    /// utility for ease of use.
-    pub static ref CACHE_GET_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_cache_level_get_duration_seconds",
-        "The cache get request latencies in seconds.",
-        &["cache_variant", "request_type", "cache_result"],
-        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
-    )
-    .unwrap();
-
-    /// A histogram for the cache set request latencies in seconds. It is intended to be used by all
-    /// caches (`cache_variant`) and cache requests (`request_type`). Use the [monitor_set]
-    /// utility for ease of use.
-    pub static ref CACHE_SET_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_cache_level_set_duration_seconds",
-        "The cache set request latencies in seconds.",
-        &["cache_variant", "request_type"],
-        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
-    )
-    .unwrap();
-}
-
-/// Monitors a cache get operation, tracking its runtime and response.
-async fn monitor_set<F, Fut>(cache_variant: &str, request_type: &str, f: F)
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let start = Instant::now();
-    let result = f().await;
-    CACHE_SET_HISTOGRAM
-        .with_label_values(&[cache_variant, request_type])
-        .observe(start.elapsed().as_secs_f64());
-    result
-}
-
-/// Monitors a cache set operation, tracking its runtime and response.
-async fn monitor_get<F, Fut, D>(cache_variant: &str, request_type: &str, f: F) -> Option<Entry<D>>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = Option<Entry<D>>>,
-    D: Clone + Debug + Eq + PartialEq,
-{
-    let start = Instant::now();
-    let result = f().await;
-    let cache_result = match &result {
-        Some(entry) if entry.data.is_some() => "found",
-        Some(_) => "not_found",
+fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Option<Entry<T>>>) {
+    let cache_result = match event.result {
         None => "miss",
+        Some(Dated { data: Some(_), .. }) => "filled",
+        Some(Dated { data: None, .. }) => "empty",
+    };
+    let Some(request_type) = event.labels.get("request_type") else {
+        warn!("Failed to retrieve label 'request_type' for metric!");
+        return;
+    };
+    let Some(cache_variant) = event.labels.get("cache_variant") else {
+        warn!("Failed to retrieve label 'cache_variant' for metric!");
+        return;
     };
     CACHE_GET_HISTOGRAM
         .with_label_values(&[cache_variant, request_type, cache_result])
-        .observe(start.elapsed().as_secs_f64());
-    result
+        .observe(event.time);
+
+    if let Some(dated) = event.result {
+        CACHE_AGE_HISTOGRAM
+            .with_label_values(&[cache_variant, request_type])
+            .observe(dated.current_age() as f64);
+    }
+}
+
+fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<T>) {
+    let Some(request_type) = event.labels.get("request_type") else {
+        warn!("Failed to retrieve label 'request_type' for metric!");
+        return;
+    };
+    let Some(cache_variant) = event.labels.get("cache_variant") else {
+        warn!("Failed to retrieve label 'cache_variant' for metric!");
+        return;
+    };
+    CACHE_SET_HISTOGRAM
+        .with_label_values(&[cache_variant, request_type])
+        .observe(event.time);
 }
 
 /// A [CacheLevel] is a thread-safe cache level of a multi-level cache.
@@ -80,35 +64,36 @@ where
 ///   None => { ... }
 /// }
 /// ```
-#[async_trait]
-pub trait CacheLevel: Debug + Send + Sync {
+
+#[trait_variant::make(CacheLevel: Send)]
+pub trait LocalCacheLevel {
     /// Gets some [UuidData] from the [CacheLevel] for a case-insensitive username.
-    async fn get_uuid(&self, username: &str) -> Option<Entry<UuidData>>;
+    async fn get_uuid(&self, key: &str) -> Option<Entry<UuidData>>;
 
     /// Sets some optional [UuidData] to the [CacheLevel] for a case-insensitive username.
-    async fn set_uuid(&self, username: String, entry: Entry<UuidData>);
+    async fn set_uuid(&self, key: &str, entry: Entry<UuidData>);
 
     /// Gets some [ProfileData] from the [CacheLevel] for a profile [Uuid].
-    async fn get_profile(&self, uuid: &Uuid) -> Option<Entry<ProfileData>>;
+    async fn get_profile(&self, key: &Uuid) -> Option<Entry<ProfileData>>;
 
     /// Sets some optional [ProfileData] to the [CacheLevel] for a profile [Uuid].
-    async fn set_profile(&self, uuid: Uuid, entry: Entry<ProfileData>);
+    async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>);
 
     /// Gets some [SkinData] from the [CacheLevel] for a profile [Uuid].
-    async fn get_skin(&self, uuid: &Uuid) -> Option<Entry<SkinData>>;
+    async fn get_skin(&self, key: &Uuid) -> Option<Entry<SkinData>>;
 
     /// Sets some optional [SkinData] to the [CacheLevel] for a profile [Uuid].
-    async fn set_skin(&self, uuid: Uuid, entry: Entry<SkinData>);
+    async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>);
 
     /// Gets some [CapeData] from the [CacheLevel] for a profile [Uuid].
-    async fn get_cape(&self, uuid: &Uuid) -> Option<Entry<CapeData>>;
+    async fn get_cape(&self, key: &Uuid) -> Option<Entry<CapeData>>;
 
     /// Sets some optional [CapeData] to the [CacheLevel] for a profile [Uuid].
-    async fn set_cape(&self, uuid: Uuid, entry: Entry<CapeData>);
+    async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>);
 
     /// Gets some [HeadData] from the [CacheLevel] for a profile [Uuid] with or without its overlay.
-    async fn get_head(&self, uuid: &Uuid, overlay: bool) -> Option<Entry<HeadData>>;
+    async fn get_head(&self, key: &(Uuid, bool)) -> Option<Entry<HeadData>>;
 
     /// Sets some optional [HeadData] to the [CacheLevel] for a profile [Uuid] with or without its overlay.
-    async fn set_head(&self, uuid: Uuid, overlay: bool, entry: Entry<HeadData>);
+    async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>);
 }
