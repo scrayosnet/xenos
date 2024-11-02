@@ -144,13 +144,15 @@ where
         // 1. initialize with uuid not found
         // contrary to the mojang api, we want all requested usernames to map to something instead of
         // being omitted in case the username is invalid/unused
-        let mut uuids: HashMap<String, Entry<UuidData>> = HashMap::from_iter(
+        let mut uuids: HashMap<String, Option<Entry<UuidData>>> = HashMap::from_iter(
             usernames
                 .iter()
-                .map(|username| (username.to_lowercase(), Dated::from(None))),
+                .map(|username| (username.to_lowercase(), None)),
         );
 
+        // append cache expired onto cache misses to that the misses are fetched first
         let mut cache_misses = vec![];
+        let mut cache_expired = vec![];
         for (username, uuid) in uuids.iter_mut() {
             // 2. filter invalid usernames (regex)
             // evidently unused (invalid) usernames should not clutter the cache nor should they fill
@@ -158,28 +160,40 @@ where
             if !USERNAME_REGEX.is_match(username.as_str()) {
                 continue;
             }
-            // 3. get from cache; if cache result is expired, try to refresh cache
+            // 3. get from cache; if cache result is expired, try to fetch and refresh
             let cached = self.cache.get_uuid(username).await;
             match cached {
                 Hit(entry) => {
-                    *uuid = entry;
+                    *uuid = Some(entry);
                 }
                 Expired(entry) => {
-                    *uuid = entry;
-                    cache_misses.push(username.clone());
+                    *uuid = Some(entry);
+                    cache_expired.push(username.clone());
                 }
                 Miss => {
                     cache_misses.push(username.clone());
                 }
             }
         }
+        cache_misses.extend(cache_expired);
 
         // 4. all others get from mojang in one request
         if !cache_misses.is_empty() {
             let response = match self.mojang.fetch_uuids(&cache_misses).await {
                 Ok(r) => r,
-                // currently, partial responses are not supported
-                Err(err) => return Err(err.into()),
+                Err(err) => {
+                    // 4a. if all values are cached, use cached instead
+                    if uuids.iter().all(|(_, uuid)| uuid.is_some()) {
+                        let uuids = uuids
+                            .into_iter()
+                            .map(|(username, uuid)| {
+                                (username, uuid.expect("expected all resolved"))
+                            })
+                            .collect();
+                        return Ok(uuids);
+                    }
+                    return Err(err.into());
+                }
             };
             let mut found: HashMap<_, _> = response
                 .into_iter()
@@ -193,10 +207,14 @@ where
                 });
                 // update response and cache
                 let entry = self.cache.set_uuid(&username, data).await;
-                uuids.insert(username.clone(), entry);
+                uuids.insert(username.clone(), Some(entry));
             }
         }
 
+        let uuids = uuids
+            .into_iter()
+            .map(|(username, uuid)| (username, uuid.expect("expected all resolved")))
+            .collect();
         Ok(uuids)
     }
 
