@@ -154,6 +154,7 @@ where
         // if cache misses are only expired values, then it forms a valid response
         let mut cache_misses = vec![];
         let mut cache_expired = vec![];
+        let mut has_misses = false;
         for (username, uuid) in uuids.iter_mut() {
             // 2. filter invalid usernames (regex)
             // evidently unused (invalid) usernames should not clutter the cache nor should they fill
@@ -172,6 +173,7 @@ where
                     cache_expired.push(username.clone());
                 }
                 Miss => {
+                    has_misses = true;
                     cache_misses.push(username.clone());
                 }
             }
@@ -183,8 +185,8 @@ where
             let response = match self.mojang.fetch_uuids(&cache_misses).await {
                 Ok(r) => r,
                 Err(err) => {
-                    // 4a. if all values are cached, use cached instead
-                    if cache_expired.len() == cache_misses.len() {
+                    // 4a. if it has no misses, use (expired) cached entries instead
+                    if !has_misses {
                         return Ok(uuids);
                     }
                     return Err(err.into());
