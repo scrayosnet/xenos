@@ -69,9 +69,6 @@ pub struct Cache {
 /// supports [MokaCacheEntry] `ttl` and `tti` and `cap` per cache entry type.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MokaCache {
-    /// Whether the cache level should be used.
-    pub enabled: bool,
-
     /// The configuration for the cache entries.
     pub entries: CacheEntries<MokaCacheEntry>,
 }
@@ -80,9 +77,6 @@ pub struct MokaCache {
 /// [RedisCacheEntry] `ttl` per cache entry type but not `tti` and `cap`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisCache {
-    /// Whether the cache level should be used.
-    pub enabled: bool,
-
     /// The address of the redis instance (e.g. `redis://username:password@example.com/0`). Only used
     /// if redis is enabled.
     pub address: String,

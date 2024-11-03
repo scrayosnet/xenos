@@ -144,15 +144,17 @@ where
         // 1. initialize with uuid not found
         // contrary to the mojang api, we want all requested usernames to map to something instead of
         // being omitted in case the username is invalid/unused
-        let mut uuids: HashMap<String, Option<Entry<UuidData>>> = HashMap::from_iter(
+        let mut uuids: HashMap<String, Entry<UuidData>> = HashMap::from_iter(
             usernames
                 .iter()
-                .map(|username| (username.to_lowercase(), None)),
+                .map(|username| (username.to_lowercase(), Dated::from(None))),
         );
 
-        // append cache expired onto cache misses to that the misses are fetched first
+        // append cache expired onto cache misses so that the misses are fetched first
+        // if cache misses are only expired values, then it forms a valid response
         let mut cache_misses = vec![];
         let mut cache_expired = vec![];
+        let mut has_misses = false;
         for (username, uuid) in uuids.iter_mut() {
             // 2. filter invalid usernames (regex)
             // evidently unused (invalid) usernames should not clutter the cache nor should they fill
@@ -164,13 +166,14 @@ where
             let cached = self.cache.get_uuid(username).await;
             match cached {
                 Hit(entry) => {
-                    *uuid = Some(entry);
+                    *uuid = entry;
                 }
                 Expired(entry) => {
-                    *uuid = Some(entry);
+                    *uuid = entry;
                     cache_expired.push(username.clone());
                 }
                 Miss => {
+                    has_misses = true;
                     cache_misses.push(username.clone());
                 }
             }
@@ -182,14 +185,8 @@ where
             let response = match self.mojang.fetch_uuids(&cache_misses).await {
                 Ok(r) => r,
                 Err(err) => {
-                    // 4a. if all values are cached, use cached instead
-                    if uuids.iter().all(|(_, uuid)| uuid.is_some()) {
-                        let uuids = uuids
-                            .into_iter()
-                            .map(|(username, uuid)| {
-                                (username, uuid.expect("expected all resolved"))
-                            })
-                            .collect();
+                    // 4a. if it has no misses, use (expired) cached entries instead
+                    if !has_misses {
                         return Ok(uuids);
                     }
                     return Err(err.into());
@@ -207,14 +204,10 @@ where
                 });
                 // update response and cache
                 let entry = self.cache.set_uuid(&username, data).await;
-                uuids.insert(username.clone(), Some(entry));
+                uuids.insert(username.clone(), entry);
             }
         }
 
-        let uuids = uuids
-            .into_iter()
-            .map(|(username, uuid)| (username, uuid.expect("expected all resolved")))
-            .collect();
         Ok(uuids)
     }
 
