@@ -361,7 +361,6 @@ mod test {
             tti_empty: Duration::from_secs(100),
         };
         settings::MokaCache {
-            enabled: false,
             entries: CacheEntries {
                 uuid: entry.clone(),
                 profile: entry.clone(),

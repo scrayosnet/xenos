@@ -10,7 +10,6 @@ cape = { exp = "PT10M", exp_empty = "PT5M" }
 head = { exp = "PT10M", exp_empty = "PT5M" }
 
 [cache.redis]
-enabled = false
 address = "redis://username:password@example.com/0" # update if enabled
 
 [cache.redis.entries]
@@ -19,9 +18,6 @@ profile = { ttl = "P3D", ttl_empty = "P1D" }
 skin = { ttl = "P3D", ttl_empty = "P1D" }
 cape = { ttl = "P3D", ttl_empty = "P1D" }
 head = { ttl = "P3D", ttl_empty = "P1D" }
-
-[cache.moka]
-enabled = false
 
 [cache.moka.entries]
 uuid = { cap = 500, ttl = "PT1H", ttl_empty = "PT30M", tti = "PT1H", tti_empty = "PT30M" }
