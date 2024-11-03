@@ -18,17 +18,17 @@ jobs:
   build:
     strategy:
       matrix:
-        platform:
+        variant:
         - name: 'minimal'
-          tag: 'minimal'
+          suffix: ''
           description: 'Minimal Production Image (without external cache)'
           feature: 'default'
         - name: 'testing'
-          tag: 'testing'
+          suffix: '-testing'
           description: 'Static Integration Test Image'
           feature: 'static-testing'
         - name: 'redis'
-          tag: 'redis'
+          suffix: '-redis'
           description: 'Production Image (with redis cache)'
           feature: 'redis'
       fail-fast: false
@@ -62,10 +62,12 @@ jobs:
         images: |
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
         flavor: |
-          latest=false
-          suffix=-${{ matrix.variant.tag }}
+          latest=${{ matrix.variant.name == 'minimal' }}
+          suffix=${{ matrix.variant.suffix }}
         labels: |
           org.opencontainers.image.title=xenos (${{ matrix.variant.name }})
           org.opencontainers.image.description=${{ matrix.variant.description }}
@@ -83,7 +85,7 @@ jobs:
         context: .
         build-args: |
           "FEATURES=${{ matrix.variant.feature }}"
-        push: ${{ github.event_name != 'pull_request' }}
+        push: ${{ github.ref_type == 'tag' }}
         tags: ${{ steps.meta.outputs.tags }}
         annotations: ${{ steps.meta.outputs.annotations }}
         labels: ${{ steps.meta.outputs.labels }}
