@@ -183,7 +183,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn with_profiles() {
+    async fn new_with_profiles() {
         // given
         let api = MojangTestingApi::with_profiles();
 
@@ -196,7 +196,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn resolve_hydrofin_uuid() {
+    async fn fetch_uuids_full() {
         // given
         let api = MojangTestingApi::with_profiles();
 
@@ -211,7 +211,74 @@ mod test {
                 assert_eq!(1, resolved.len());
                 assert_eq!(&HYDROFIN.profile.id, &resolved[0].id);
             }
-            Err(_) => panic!("failed to resolve hydrofin uuid"),
+            Err(_) => panic!("failed to resolve uuids"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_uuids_partial() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuids(&[
+                HYDROFIN.profile.name.to_lowercase(),
+                "xXSlayer42Xx".to_string(),
+            ])
+            .await;
+
+        // then
+        match resolved {
+            Ok(resolved) => {
+                assert_eq!(1, resolved.len());
+                assert_eq!(&HYDROFIN.profile.id, &resolved[0].id);
+            }
+            Err(_) => panic!("failed to resolve uuids"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_uuids_invalid() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuids(&[
+                "##ase".to_string(),
+            ])
+            .await;
+
+        // then
+        match resolved {
+            Ok(resolved) => {
+                assert_eq!(0, resolved.len());
+            }
+            Err(_) => panic!("failed to resolve uuids"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_uuids_partial_invalid() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuids(&[
+                HYDROFIN.profile.name.to_lowercase(),
+                "##asd".to_string(),
+            ])
+            .await;
+
+        // then
+        match resolved {
+            Ok(resolved) => {
+                assert_eq!(1, resolved.len());
+                assert_eq!(&HYDROFIN.profile.id, &resolved[0].id);
+            }
+            Err(_) => panic!("failed to resolve uuids"),
         }
     }
 }

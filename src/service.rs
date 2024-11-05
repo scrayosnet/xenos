@@ -427,3 +427,315 @@ fn get_default_head(uuid: &Uuid) -> HeadData {
         },
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::NoCache;
+    use crate::MojangTestingApi;
+    use uuid::uuid;
+
+    #[tokio::test]
+    async fn new_nocache() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+
+        // when
+        let _ = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+    }
+
+    #[tokio::test]
+    async fn get_uuid_found() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuid("Hydrofin").await;
+
+        // then
+        let expected_hydrofin = UuidData { username: "Hydrofin".to_string(), uuid: uuid!("09879557e47945a9b434a56377674627") };
+        assert!(matches!(result, Ok(Dated{ data, .. }) if data == expected_hydrofin));
+    }
+
+    #[tokio::test]
+    async fn get_uuid_not_found() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuid("xXSlayer42Xx").await;
+
+        // then
+        assert!(matches!(result, Err(NotFound)));
+    }
+
+    #[tokio::test]
+    async fn get_uuid_invalid() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuid("56789äas#").await;
+
+        // then
+        assert!(matches!(result, Err(NotFound)));
+    }
+
+    #[tokio::test]
+    async fn get_uuid_empty_not_found() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::new();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuid("Hydrofin").await;
+
+        // then
+        assert!(matches!(result, Err(NotFound)));
+    }
+
+    #[tokio::test]
+    async fn get_uuids_found() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuids(&vec!["Hydrofin".to_string()]).await;
+
+        // then
+        match result {
+            Ok(resolved) => {
+                assert_eq!(1, resolved.len());
+
+                // User 'Hydrofin' is found
+                let Some(hydrofin) = resolved.get("hydrofin") else {
+                    panic!("failed to resolve user 'Hydrofin'")
+                };
+                assert_eq!(
+                    hydrofin.data,
+                    Some(UuidData{
+                        username: "Hydrofin".to_string(),
+                        uuid: uuid!("09879557e47945a9b434a56377674627")
+                    }),
+                );
+            }
+            Err(err) => panic!("failed to resolve uuid: {}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_uuids_not_found() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuids(&vec!["xXSlayer42Xx".to_string()]).await;
+
+        // then
+        match result {
+            Ok(resolved) => {
+                assert_eq!(1, resolved.len());
+
+                // User 'xXSlayer42Xx' not found
+                let other = resolved.get("xxslayer42xx");
+                assert!(matches!(other, Some(Dated{ data: None, .. })));
+            }
+            Err(err) => panic!("failed to resolve uuid: {}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_uuids_invalid() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuids(&vec!["#+".to_string()]).await;
+
+        // then
+        match result {
+            Ok(resolved) => {
+                assert_eq!(1, resolved.len());
+
+                // User '#+' not found
+                let other = resolved.get("#+");
+                assert!(matches!(other, Some(Dated{ data: None, .. })));
+            }
+            Err(err) => panic!("failed to resolve uuid: {}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_uuids_partial_found() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuids(&vec!["Hydrofin".to_string(), "xXSlayer42Xx".to_string()]).await;
+
+        // then
+        match result {
+            Ok(resolved) => {
+                assert_eq!(2, resolved.len());
+
+                // User 'xXSlayer42Xx' not found
+                let other = resolved.get("xxslayer42xx");
+                assert!(matches!(other, Some(Dated{ data: None, .. })));
+
+                // User 'Hydrofin' is found
+                let Some(hydrofin) = resolved.get("hydrofin") else {
+                    panic!("failed to resolve user 'Hydrofin'")
+                };
+                assert_eq!(
+                    hydrofin.data,
+                    Some(UuidData{
+                        username: "Hydrofin".to_string(),
+                        uuid: uuid!("09879557e47945a9b434a56377674627")
+                    }),
+                );
+            }
+            Err(err) => panic!("failed to resolve uuid: {}", err),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_uuids_partial_invalid() {
+        // given
+        let settings = Settings::default();
+        let cache = Cache::new(
+            settings.cache.entries.clone(),
+            NoCache,
+            NoCache,
+        );
+        let mojang = MojangTestingApi::with_profiles();
+        let service = Service::new(
+            Arc::new(settings),
+            cache,
+            mojang,
+        );
+
+        // when
+        let result = service.get_uuids(&vec!["Hydrofin".to_string(), "i<ia9".to_string()]).await;
+
+        // then
+        match result {
+            Ok(resolved) => {
+                assert_eq!(2, resolved.len());
+
+                // User 'i<ia9' not found
+                let other = resolved.get("i<ia9");
+                assert!(matches!(other, Some(Dated{ data: None, .. })));
+
+                // User 'Hydrofin' is found
+                let Some(hydrofin) = resolved.get("hydrofin") else {
+                    panic!("failed to resolve user 'Hydrofin'")
+                };
+                assert_eq!(
+                    hydrofin.data,
+                    Some(UuidData{
+                        username: "Hydrofin".to_string(),
+                        uuid: uuid!("09879557e47945a9b434a56377674627")
+                    }),
+                );
+            }
+            Err(err) => panic!("failed to resolve uuid: {}", err),
+        }
+    }
+}

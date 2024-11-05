@@ -284,3 +284,19 @@ impl Settings {
         s.try_deserialize()
     }
 }
+
+impl Default for Settings {
+    fn default() -> Self {
+        let s = Config::builder()
+            // load default configuration (embedded at compile time)
+            .add_source(File::from_str(
+                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/config/default.toml")),
+                FileFormat::Toml,
+            ))
+            .build()
+            .expect("expected default configuration to be available");
+
+        // you can deserialize (and thus freeze) the entire configuration as
+        s.try_deserialize().expect("expected default configuration to be deserializable")
+    }
+}
