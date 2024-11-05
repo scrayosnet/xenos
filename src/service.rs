@@ -473,8 +473,6 @@ mod test {
         );
     }
 
-    // TODO test caching callbacks
-
     #[tokio::test]
     async fn get_uuid_found() {
         // given

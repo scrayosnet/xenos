@@ -200,6 +200,57 @@ mod test {
     }
 
     #[tokio::test]
+    async fn fetch_uuid_found() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuid("Hydrofin")
+            .await;
+
+        // then
+        let Ok(data) = resolved else {
+            panic!("failed to resolve uuid")
+        };
+        assert_eq!(
+            UsernameResolved{
+                id: uuid!("09879557e47945a9b434a56377674627"),
+                name: "Hydrofin".to_string()
+            },
+            data,
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_uuid_not_found() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuid("xXSlayer42Xx")
+            .await;
+
+        // then
+        assert!(matches!(resolved, Err(NotFound)));
+    }
+
+    #[tokio::test]
+    async fn fetch_uuid_not_found_invalid() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuid("#12jsa#")
+            .await;
+
+        // then
+        assert!(matches!(resolved, Err(NotFound)));
+    }
+
+    #[tokio::test]
     async fn fetch_uuids_full() {
         // given
         let api = MojangTestingApi::with_profiles();
