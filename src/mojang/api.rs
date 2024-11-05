@@ -107,6 +107,41 @@ impl MojangApi {
 }
 
 impl Mojang for MojangApi {
+
+    #[tracing::instrument(skip(self))]
+    #[metrics::metrics(
+        metric = "mojang_api",
+        labels(request_type = "uuid"),
+        handler = metrics_handler,
+    )]
+    async fn fetch_uuid(&self, username: &str) -> Result<UsernameResolved, ApiError> {
+        let response = HTTP_CLIENT
+            .get(format!("https://api.mojang.com/users/profiles/minecraft/{}", username))
+            .send()
+            .await
+            .map_err(|err| {
+                warn!(error = %err, cause = err.source(), "failed to fetch uuid");
+                Unavailable
+            })?;
+
+        match response.status() {
+            StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
+            StatusCode::OK => response.json().await.map_err(|err| {
+                error!(error = %err, "failed to parse uuid body");
+                Unavailable
+            }),
+            code => {
+                let body = response.text().await.unwrap_or(String::new());
+                warn!(
+                    status = code.as_str(),
+                    body = body,
+                    "failed to read uuid: invalid status code"
+                );
+                Err(Unavailable)
+            }
+        }
+    }
+
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "mojang_api",

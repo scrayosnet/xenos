@@ -6,10 +6,7 @@ use crate::cache::Cache;
 use crate::error::ServiceError;
 use crate::error::ServiceError::{NotFound, Unavailable};
 use crate::mojang;
-use crate::mojang::{
-    build_skin_head, ApiError, Mojang, ALEX_HEAD, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_HEAD,
-    STEVE_SKIN,
-};
+use crate::mojang::{build_skin_head, ApiError, Mojang, ALEX_HEAD, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_HEAD, STEVE_SKIN};
 use crate::settings::Settings;
 use lazy_static::lazy_static;
 use metrics::MetricsEvent;
@@ -126,10 +123,32 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "uuid"), handler = metrics_age_handler)]
     pub async fn get_uuid(&self, username: &str) -> Result<Dated<UuidData>, ServiceError> {
-        let mut uuids = self.get_uuids(&[username.to_string()]).await?;
-        match uuids.remove(&username.to_lowercase()) {
-            Some(uuid) => uuid.some_or(NotFound),
-            None => Err(NotFound),
+        // try to get from cache
+        let cached = self.cache.get_uuid(username).await;
+        let fallback = match cached {
+            Hit(entry) => return entry.some_or(NotFound),
+            Expired(entry) => Some(entry),
+            Miss => None,
+        };
+
+        // try to fetch from mojang and update cache
+        match self
+            .mojang
+            .fetch_uuid(username)
+            .await
+        {
+            Ok(uuid) => {
+                let data = UuidData{username: uuid.name, uuid: uuid.id};
+                let dated = self.cache.set_uuid(username, Some(data)).await.unwrap();
+                Ok(dated)
+            }
+            Err(ApiError::NotFound) => {
+                self.cache.set_uuid(username, None).await;
+                Err(NotFound)
+            }
+            Err(ApiError::Unavailable) => fallback
+                .ok_or(Unavailable)
+                .and_then(|entry| entry.some_or(NotFound)),
         }
     }
 
@@ -453,6 +472,8 @@ mod test {
             mojang,
         );
     }
+
+    // TODO test caching callbacks
 
     #[tokio::test]
     async fn get_uuid_found() {

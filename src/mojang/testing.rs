@@ -136,6 +136,10 @@ impl<'a> MojangTestingApi<'a> {
 }
 
 impl<'a> Mojang for MojangTestingApi<'a> {
+    async fn fetch_uuid(&self, username: &str) -> Result<UsernameResolved, ApiError> {
+        self.uuids.get(&username.to_lowercase()).cloned().ok_or(NotFound)
+    }
+
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError> {
         let uuids = usernames
             .iter()
