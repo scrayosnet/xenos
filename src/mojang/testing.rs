@@ -136,6 +136,13 @@ impl<'a> MojangTestingApi<'a> {
 }
 
 impl<'a> Mojang for MojangTestingApi<'a> {
+    async fn fetch_uuid(&self, username: &str) -> Result<UsernameResolved, ApiError> {
+        self.uuids
+            .get(&username.to_lowercase())
+            .cloned()
+            .ok_or(NotFound)
+    }
+
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError> {
         let uuids = usernames
             .iter()
@@ -183,7 +190,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn with_profiles() {
+    async fn new_with_profiles() {
         // given
         let api = MojangTestingApi::with_profiles();
 
@@ -196,7 +203,52 @@ mod test {
     }
 
     #[tokio::test]
-    async fn resolve_hydrofin_uuid() {
+    async fn fetch_uuid_found() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api.fetch_uuid("Hydrofin").await;
+
+        // then
+        let Ok(data) = resolved else {
+            panic!("failed to resolve uuid")
+        };
+        assert_eq!(
+            UsernameResolved {
+                id: uuid!("09879557e47945a9b434a56377674627"),
+                name: "Hydrofin".to_string()
+            },
+            data,
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_uuid_not_found() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api.fetch_uuid("xXSlayer42Xx").await;
+
+        // then
+        assert!(matches!(resolved, Err(NotFound)));
+    }
+
+    #[tokio::test]
+    async fn fetch_uuid_not_found_invalid() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api.fetch_uuid("#12jsa#").await;
+
+        // then
+        assert!(matches!(resolved, Err(NotFound)));
+    }
+
+    #[tokio::test]
+    async fn fetch_uuids_full() {
         // given
         let api = MojangTestingApi::with_profiles();
 
@@ -211,7 +263,67 @@ mod test {
                 assert_eq!(1, resolved.len());
                 assert_eq!(&HYDROFIN.profile.id, &resolved[0].id);
             }
-            Err(_) => panic!("failed to resolve hydrofin uuid"),
+            Err(_) => panic!("failed to resolve uuids"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_uuids_partial() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuids(&[
+                HYDROFIN.profile.name.to_lowercase(),
+                "xXSlayer42Xx".to_string(),
+            ])
+            .await;
+
+        // then
+        match resolved {
+            Ok(resolved) => {
+                assert_eq!(1, resolved.len());
+                assert_eq!(&HYDROFIN.profile.id, &resolved[0].id);
+            }
+            Err(_) => panic!("failed to resolve uuids"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_uuids_invalid() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api.fetch_uuids(&["##ase".to_string()]).await;
+
+        // then
+        match resolved {
+            Ok(resolved) => {
+                assert_eq!(0, resolved.len());
+            }
+            Err(_) => panic!("failed to resolve uuids"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_uuids_partial_invalid() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let resolved = api
+            .fetch_uuids(&[HYDROFIN.profile.name.to_lowercase(), "##asd".to_string()])
+            .await;
+
+        // then
+        match resolved {
+            Ok(resolved) => {
+                assert_eq!(1, resolved.len());
+                assert_eq!(&HYDROFIN.profile.id, &resolved[0].id);
+            }
+            Err(_) => panic!("failed to resolve uuids"),
         }
     }
 }
