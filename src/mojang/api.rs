@@ -107,7 +107,6 @@ impl MojangApi {
 }
 
 impl Mojang for MojangApi {
-
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(
         metric = "mojang_api",
@@ -123,6 +122,10 @@ impl Mojang for MojangApi {
                 warn!(error = %err, cause = err.source(), "failed to fetch uuid");
                 Unavailable
             })?;
+
+        MOJANG_REQ_COUNTER
+            .with_label_values(&["uuid", response.status().as_str()])
+            .inc();
 
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
