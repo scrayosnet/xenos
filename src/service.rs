@@ -452,8 +452,8 @@ fn get_default_head(uuid: &Uuid) -> HeadData {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::MojangTestingApi;
-    use crate::NoCache;
+    use crate::cache::level::no::NoCache;
+    use crate::mojang::testing::MojangTestingApi;
     use uuid::uuid;
 
     #[tokio::test]
