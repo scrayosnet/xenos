@@ -1,6 +1,7 @@
 *
 !build.rs
 !Cargo.toml
+!Cargo.lock
 !src
 !proto
 !config
