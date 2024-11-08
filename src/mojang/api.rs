@@ -18,7 +18,7 @@ lazy_static! {
         "xenos_mojang_request_duration_seconds",
         "The mojang request latencies in seconds.",
         &["request_type", "status"],
-        vec![0.020, 0.030, 0.040, 0.050, 0.060, 0.070, 0.080, 0.090, 0.100, 0.150, 0.200]
+        vec![0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
     )
     .unwrap();
 }
