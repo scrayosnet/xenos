@@ -297,6 +297,7 @@ impl Default for Settings {
             .expect("expected default configuration to be available");
 
         // you can deserialize (and thus freeze) the entire configuration as
-        s.try_deserialize().expect("expected default configuration to be deserializable")
+        s.try_deserialize()
+            .expect("expected default configuration to be deserializable")
     }
 }

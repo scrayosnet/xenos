@@ -137,7 +137,10 @@ impl<'a> MojangTestingApi<'a> {
 
 impl<'a> Mojang for MojangTestingApi<'a> {
     async fn fetch_uuid(&self, username: &str) -> Result<UsernameResolved, ApiError> {
-        self.uuids.get(&username.to_lowercase()).cloned().ok_or(NotFound)
+        self.uuids
+            .get(&username.to_lowercase())
+            .cloned()
+            .ok_or(NotFound)
     }
 
     async fn fetch_uuids(&self, usernames: &[String]) -> Result<Vec<UsernameResolved>, ApiError> {
@@ -205,16 +208,14 @@ mod test {
         let api = MojangTestingApi::with_profiles();
 
         // when
-        let resolved = api
-            .fetch_uuid("Hydrofin")
-            .await;
+        let resolved = api.fetch_uuid("Hydrofin").await;
 
         // then
         let Ok(data) = resolved else {
             panic!("failed to resolve uuid")
         };
         assert_eq!(
-            UsernameResolved{
+            UsernameResolved {
                 id: uuid!("09879557e47945a9b434a56377674627"),
                 name: "Hydrofin".to_string()
             },
@@ -228,9 +229,7 @@ mod test {
         let api = MojangTestingApi::with_profiles();
 
         // when
-        let resolved = api
-            .fetch_uuid("xXSlayer42Xx")
-            .await;
+        let resolved = api.fetch_uuid("xXSlayer42Xx").await;
 
         // then
         assert!(matches!(resolved, Err(NotFound)));
@@ -242,9 +241,7 @@ mod test {
         let api = MojangTestingApi::with_profiles();
 
         // when
-        let resolved = api
-            .fetch_uuid("#12jsa#")
-            .await;
+        let resolved = api.fetch_uuid("#12jsa#").await;
 
         // then
         assert!(matches!(resolved, Err(NotFound)));
@@ -299,11 +296,7 @@ mod test {
         let api = MojangTestingApi::with_profiles();
 
         // when
-        let resolved = api
-            .fetch_uuids(&[
-                "##ase".to_string(),
-            ])
-            .await;
+        let resolved = api.fetch_uuids(&["##ase".to_string()]).await;
 
         // then
         match resolved {
@@ -321,10 +314,7 @@ mod test {
 
         // when
         let resolved = api
-            .fetch_uuids(&[
-                HYDROFIN.profile.name.to_lowercase(),
-                "##asd".to_string(),
-            ])
+            .fetch_uuids(&[HYDROFIN.profile.name.to_lowercase(), "##asd".to_string()])
             .await;
 
         // then

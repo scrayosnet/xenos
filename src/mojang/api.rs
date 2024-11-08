@@ -115,7 +115,10 @@ impl Mojang for MojangApi {
     )]
     async fn fetch_uuid(&self, username: &str) -> Result<UsernameResolved, ApiError> {
         let response = HTTP_CLIENT
-            .get(format!("https://api.mojang.com/users/profiles/minecraft/{}", username))
+            .get(format!(
+                "https://api.mojang.com/users/profiles/minecraft/{}",
+                username
+            ))
             .send()
             .await
             .map_err(|err| {
