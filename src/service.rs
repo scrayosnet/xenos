@@ -32,7 +32,7 @@ lazy_static! {
         "xenos_profile_age_seconds",
         "The grpc profile response age in seconds.",
         &["request_type"],
-        vec![0.003, 0.005, 0.010, 0.015, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200]
+        vec![5.0, 10.0, 60.0, 600.0, 3600.0, 86400.0, 604800.0, 2419200.0]
     )
     .unwrap();
 

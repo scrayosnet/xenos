@@ -2,7 +2,7 @@ use crate::mojang::ApiError::{NotFound, Unavailable};
 use crate::mojang::{ApiError, Mojang, Profile, TextureBytes, UsernameResolved};
 use lazy_static::lazy_static;
 use metrics::MetricsEvent;
-use prometheus::{register_histogram_vec, HistogramVec};
+use prometheus::{register_counter_vec, register_histogram_vec, CounterVec, HistogramVec};
 use reqwest::StatusCode;
 use std::error::Error;
 use tracing::{error, warn};
@@ -18,7 +18,15 @@ lazy_static! {
         "xenos_mojang_request_duration_seconds",
         "The mojang request latencies in seconds.",
         &["request_type", "status"],
-        vec![0.020, 0.030, 0.040, 0.050, 0.060, 0.070, 0.080, 0.090, 0.100, 0.150, 0.200]
+        vec![0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+    )
+    .unwrap();
+
+    /// A counter for the mojang request status.
+    static ref MOJANG_REQ_COUNTER: CounterVec = register_counter_vec!(
+        "xenos_mojang_request_status_total",
+        "The mojang request status.",
+        &["request_type", "status"]
     )
     .unwrap();
 }
@@ -74,6 +82,10 @@ impl MojangApi {
                 warn!(error = %err, cause = err.source(), "failed to fetch uuids");
                 Unavailable
             })?;
+
+        MOJANG_REQ_COUNTER
+            .with_label_values(&["uuids_chunk", response.status().as_str()])
+            .inc();
 
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Ok(vec![]),
@@ -131,6 +143,10 @@ impl Mojang for MojangApi {
                 Unavailable
             })?;
 
+        MOJANG_REQ_COUNTER
+            .with_label_values(&["profile", response.status().as_str()])
+            .inc();
+
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
             StatusCode::OK => response.json().await.map_err(|err| {
@@ -160,6 +176,10 @@ impl Mojang for MojangApi {
             warn!(error = %err, cause = err.source(), "failed to fetch bytes");
             Unavailable
         })?;
+
+        MOJANG_REQ_COUNTER
+            .with_label_values(&["bytes", response.status().as_str()])
+            .inc();
 
         match response.status() {
             StatusCode::NOT_FOUND | StatusCode::NO_CONTENT => Err(NotFound),
