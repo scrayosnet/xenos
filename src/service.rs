@@ -42,7 +42,7 @@ lazy_static! {
         "xenos_profile_latency_seconds",
         "The grpc profile request latency in seconds.",
         &["request_type", "status"],
-        vec![0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+        vec![0.075 0.010 0.025 0.005, 0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
     )
     .unwrap();
 }

@@ -19,7 +19,7 @@ lazy_static! {
         "xenos_cache_get_duration_seconds",
         "The cache get request latencies in seconds.",
         &["cache_variant", "request_type", "cache_result"],
-        vec![0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+        vec![0.075 0.010 0.025 0.005, 0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
     )
     .unwrap();
 
@@ -39,7 +39,7 @@ lazy_static! {
         "xenos_cache_set_duration_seconds",
         "The cache set request latencies in seconds.",
         &["cache_variant", "request_type"],
-        vec![0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+        vec![0.075 0.010 0.025 0.005, 0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
     )
     .unwrap();
 }
