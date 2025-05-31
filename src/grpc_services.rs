@@ -1,6 +1,7 @@
 use crate::cache::level::CacheLevel;
 use crate::error::ServiceError;
 use crate::error::ServiceError::{NotFound, Unavailable, UuidError};
+use crate::metrics::{RequestsLabels, REQUEST};
 use crate::mojang::Mojang;
 use crate::proto::{
     profile_server::Profile, CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest,
@@ -15,7 +16,6 @@ use uuid::Uuid;
 /// [GrpcResult] is an alias for grpc result [Response] and [Status].
 type GrpcResult<T> = Result<Response<T>, Status>;
 
-// utility that allows the usage of ServiceError in result with auto conversion to (tonic) response status
 impl From<ServiceError> for Status {
     fn from(value: ServiceError) -> Self {
         match value {
@@ -57,24 +57,48 @@ where
     M: Mojang + Sync + 'static,
 {
     async fn get_uuid(&self, request: Request<UuidRequest>) -> GrpcResult<UuidResponse> {
+        REQUEST
+            .get_or_create(&RequestsLabels {
+                request_type: "uuid",
+                handler: "grpc",
+            })
+            .inc();
         let username = request.into_inner().username;
         let uuid = self.service.get_uuid(&username).await?;
         Ok(Response::new(uuid.into()))
     }
 
     async fn get_uuids(&self, request: Request<UuidsRequest>) -> GrpcResult<UuidsResponse> {
+        REQUEST
+            .get_or_create(&RequestsLabels {
+                request_type: "uuids",
+                handler: "grpc",
+            })
+            .inc();
         let usernames = request.into_inner().usernames;
         let uuids = self.service.get_uuids(&usernames).await?;
         Ok(Response::new(uuids.into()))
     }
 
     async fn get_profile(&self, request: Request<ProfileRequest>) -> GrpcResult<ProfileResponse> {
+        REQUEST
+            .get_or_create(&RequestsLabels {
+                request_type: "profile",
+                handler: "grpc",
+            })
+            .inc();
         let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
         let profile = self.service.get_profile(&uuid).await?;
         Ok(Response::new(profile.into()))
     }
 
     async fn get_skin(&self, request: Request<SkinRequest>) -> GrpcResult<SkinResponse> {
+        REQUEST
+            .get_or_create(&RequestsLabels {
+                request_type: "skin",
+                handler: "grpc",
+            })
+            .inc();
         let req = request.into_inner();
         let uuid = Uuid::try_parse(&req.uuid).map_err(UuidError)?;
         let skin = self.service.get_skin(&uuid).await?;
@@ -82,12 +106,24 @@ where
     }
 
     async fn get_cape(&self, request: Request<CapeRequest>) -> GrpcResult<CapeResponse> {
+        REQUEST
+            .get_or_create(&RequestsLabels {
+                request_type: "cape",
+                handler: "grpc",
+            })
+            .inc();
         let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
         let cape = self.service.get_cape(&uuid).await?;
         Ok(Response::new(cape.into()))
     }
 
     async fn get_head(&self, request: Request<HeadRequest>) -> GrpcResult<HeadResponse> {
+        REQUEST
+            .get_or_create(&RequestsLabels {
+                request_type: "head",
+                handler: "grpc",
+            })
+            .inc();
         let req = request.into_inner();
         let overlay = req.overlay;
         let uuid = Uuid::try_parse(&req.uuid).map_err(UuidError)?;

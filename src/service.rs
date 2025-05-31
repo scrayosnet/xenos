@@ -5,47 +5,25 @@ use crate::cache::level::CacheLevel;
 use crate::cache::Cache;
 use crate::error::ServiceError;
 use crate::error::ServiceError::{NotFound, Unavailable};
+use crate::metrics::{ProfileAgeLabels, ProfileLatLabels, PROFILE_REQ_AGE, PROFILE_REQ_LAT};
 use crate::mojang;
 use crate::mojang::{
     build_skin_head, ApiError, Mojang, ALEX_HEAD, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_HEAD,
     STEVE_SKIN,
 };
 use crate::settings::Settings;
-use lazy_static::lazy_static;
 use metrics::MetricsEvent;
-use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tracing::warn;
 use uuid::Uuid;
 
-lazy_static! {
-    /// The username regex is used to check if a given username could be a valid username.
-    /// If a string does not match the regex, the mojang API will never find a matching user id.
-    static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
-
-    /// A histogram for the age in seconds of cache results. Use the [monitor_service_call_with_age]
-    /// utility for ease of use.
-    pub static ref PROFILE_REQ_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_profile_age_seconds",
-        "The grpc profile response age in seconds.",
-        &["request_type"],
-        vec![5.0, 10.0, 60.0, 600.0, 3600.0, 86400.0, 604800.0, 2419200.0]
-    )
-    .unwrap();
-
-    /// A histogram for the service call latency in seconds with response status. Use the
-    /// [monitor_service_call] utility for ease of use.
-    pub static ref PROFILE_REQ_LAT_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_profile_latency_seconds",
-        "The grpc profile request latency in seconds.",
-        &["request_type", "status"],
-        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
-    )
-    .unwrap();
-}
+/// The username regex is used to check if a given username could be a valid username.
+/// If a string does not match the regex, the mojang API will never find a matching user id.
+static USERNAME_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^[a-zA-Z0-9_]{2,16}$").expect("failed to compile username regex"));
 
 fn metrics_age_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<Dated<T>, ServiceError>>) {
     let status = match event.result {
@@ -58,13 +36,16 @@ fn metrics_age_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<Dated<T
         warn!("Failed to retrieve label 'request_type' for metric!");
         return;
     };
-    PROFILE_REQ_LAT_HISTOGRAM
-        .with_label_values(&[request_type, status])
+    PROFILE_REQ_LAT
+        .get_or_create(&ProfileLatLabels {
+            request_type,
+            status,
+        })
         .observe(event.time);
 
     if let Ok(dated) = event.result {
-        PROFILE_REQ_AGE_HISTOGRAM
-            .with_label_values(&[request_type])
+        PROFILE_REQ_AGE
+            .get_or_create(&ProfileAgeLabels { request_type })
             .observe(dated.current_age() as f64);
     }
 }
@@ -80,8 +61,11 @@ fn metrics_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<T, ServiceE
         warn!("Failed to retrieve label 'request_type' for metric!");
         return;
     };
-    PROFILE_REQ_LAT_HISTOGRAM
-        .with_label_values(&[request_type, status])
+    PROFILE_REQ_LAT
+        .get_or_create(&ProfileLatLabels {
+            request_type,
+            status,
+        })
         .observe(event.time);
 }
 
@@ -134,7 +118,7 @@ where
             Miss => None,
         };
 
-        // try to fetch from mojang and update cache
+        // try to fetch from mojang and update the cache
         match self.mojang.fetch_uuid(username).await {
             Ok(uuid) => {
                 let data = UuidData {
@@ -178,7 +162,7 @@ where
         let mut has_misses = false;
         for (username, uuid) in uuids.iter_mut() {
             // 2. filter invalid usernames (regex)
-            // evidently unused (invalid) usernames should not clutter the cache nor should they fill
+            // evidently unused (invalid) usernames should not clutter the cache, nor should they fill
             // to the mojang request rate limit. As such, they are excluded beforehand
             if !USERNAME_REGEX.is_match(username.as_str()) {
                 continue;
@@ -236,7 +220,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "profile"), handler = metrics_age_handler)]
     pub async fn get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, ServiceError> {
-        // try to get from cache
+        // try to get from the cache
         let cached = self.cache.get_profile(uuid).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
@@ -244,7 +228,7 @@ where
             Miss => None,
         };
 
-        // try to fetch from mojang and update cache
+        // try to fetch from mojang and update the cache
         match self
             .mojang
             .fetch_profile(uuid, self.settings.signed_profiles)
@@ -268,7 +252,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "skin"), handler = metrics_age_handler)]
     pub async fn get_skin(&self, uuid: &Uuid) -> Result<Dated<SkinData>, ServiceError> {
-        // try to get from cache
+        // try to get from the cache
         let cached = self.cache.get_skin(uuid).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
@@ -276,7 +260,7 @@ where
             Miss => None,
         };
 
-        // try to get profile
+        // try to get a profile
         let profile = match self.get_profile(uuid).await {
             Ok(profile) => profile.data,
             Err(Unavailable) => {
@@ -298,10 +282,10 @@ where
         let skin_model = textures
             .metadata
             .map(|md| md.model)
-            // fallback to classic model (I didn't check that this is the correct default behavior)
+            // fallback to the classic model (I didn't check that this is the correct default behavior)
             .unwrap_or(CLASSIC_MODEL.to_string());
 
-        // try to fetch from mojang and update cache
+        // try to fetch from mojang and update the cache
         match self.mojang.fetch_bytes(textures.url).await {
             Ok(skin_bytes) => {
                 let skin = SkinData {
@@ -323,7 +307,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "cape"), handler = metrics_age_handler)]
     pub async fn get_cape(&self, uuid: &Uuid) -> Result<Dated<CapeData>, ServiceError> {
-        // try to get from cache
+        // try to get from the cache
         let cached = self.cache.get_cape(uuid).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
@@ -331,7 +315,7 @@ where
             Miss => None,
         };
 
-        // try to get profile
+        // try to get the profile
         let profile = match self.get_profile(uuid).await {
             Ok(profile) => profile.data,
             Err(Unavailable) => {
@@ -351,7 +335,7 @@ where
             return Err(NotFound);
         };
 
-        // try to fetch from mojang and update cache
+        // try to fetch from mojang and update the cache
         match self.mojang.fetch_bytes(textures.url).await {
             Ok(cape_bytes) => {
                 let cape = CapeData {
@@ -375,7 +359,7 @@ where
         uuid: &Uuid,
         overlay: bool,
     ) -> Result<Dated<HeadData>, ServiceError> {
-        // try to get from cache
+        // try to get from the cache
         let cached = self.cache.get_head(&(*uuid, overlay)).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),

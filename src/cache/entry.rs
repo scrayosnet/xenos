@@ -25,6 +25,8 @@ where
     /// The creation time in seconds.
     pub timestamp: u64,
 
+    /// TODO offset factor (from 0.0 to 1.0) with serde default of 0.0
+
     /// The created data.
     pub data: D,
 }

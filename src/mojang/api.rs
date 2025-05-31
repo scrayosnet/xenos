@@ -1,35 +1,19 @@
+use crate::metrics::{MojangLatLabels, MojangReqLabels, MOJANG_REQ, MOJANG_REQ_LAT};
 use crate::mojang::ApiError::{NotFound, Unavailable};
 use crate::mojang::{ApiError, Mojang, Profile, TextureBytes, UsernameResolved};
-use lazy_static::lazy_static;
 use metrics::MetricsEvent;
-use prometheus::{register_counter_vec, register_histogram_vec, CounterVec, HistogramVec};
 use reqwest::StatusCode;
 use std::error::Error;
+use std::sync::LazyLock;
 use tracing::{error, warn};
 use uuid::Uuid;
 
-lazy_static! {
-    /// The shared http client with connection pool, uses arc internally
-    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder().build().unwrap();
-
-    /// A histogram for the mojang request status and request latencies in seconds. Use the
-    /// [monitor_reqwest] utility for ease of use.
-    static ref MOJANG_REQ_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_mojang_request_duration_seconds",
-        "The mojang request latencies in seconds.",
-        &["request_type", "status"],
-        vec![0.05, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
-    )
-    .unwrap();
-
-    /// A counter for the mojang request status.
-    static ref MOJANG_REQ_COUNTER: CounterVec = register_counter_vec!(
-        "xenos_mojang_request_status_total",
-        "The mojang request status.",
-        &["request_type", "status"]
-    )
-    .unwrap();
-}
+/// The shared http client with connection pool, uses arc internally
+static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .build()
+        .expect("failed to build http client")
+});
 
 fn metrics_handler<T>(event: MetricsEvent<Result<T, ApiError>>) {
     let status = match event.result {
@@ -41,8 +25,11 @@ fn metrics_handler<T>(event: MetricsEvent<Result<T, ApiError>>) {
         warn!("Failed to retrieve label 'request_type' for metric!");
         return;
     };
-    MOJANG_REQ_HISTOGRAM
-        .with_label_values(&[request_type, status])
+    MOJANG_REQ_LAT
+        .get_or_create(&MojangLatLabels {
+            request_type,
+            status,
+        })
         .observe(event.time);
 }
 
@@ -83,8 +70,11 @@ impl MojangApi {
                 Unavailable
             })?;
 
-        MOJANG_REQ_COUNTER
-            .with_label_values(&["uuids_chunk", response.status().as_str()])
+        MOJANG_REQ
+            .get_or_create(&MojangReqLabels {
+                request_type: "uuids_chunk",
+                status: response.status().to_string(),
+            })
             .inc();
 
         match response.status() {
@@ -126,8 +116,11 @@ impl Mojang for MojangApi {
                 Unavailable
             })?;
 
-        MOJANG_REQ_COUNTER
-            .with_label_values(&["uuid", response.status().as_str()])
+        MOJANG_REQ
+            .get_or_create(&MojangReqLabels {
+                request_type: "uuid",
+                status: response.status().to_string(),
+            })
             .inc();
 
         match response.status() {
@@ -184,8 +177,11 @@ impl Mojang for MojangApi {
                 Unavailable
             })?;
 
-        MOJANG_REQ_COUNTER
-            .with_label_values(&["profile", response.status().as_str()])
+        MOJANG_REQ
+            .get_or_create(&MojangReqLabels {
+                request_type: "profile",
+                status: response.status().to_string(),
+            })
             .inc();
 
         match response.status() {
@@ -218,8 +214,11 @@ impl Mojang for MojangApi {
             Unavailable
         })?;
 
-        MOJANG_REQ_COUNTER
-            .with_label_values(&["bytes", response.status().as_str()])
+        MOJANG_REQ
+            .get_or_create(&MojangReqLabels {
+                request_type: "bytes",
+                status: response.status().to_string(),
+            })
             .inc();
 
         match response.status() {

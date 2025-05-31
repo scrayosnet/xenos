@@ -1,7 +1,7 @@
 use crate::cache::entry::Dated;
-use crate::cache::{
-    CapeData, Entry, HeadData, ProfileData, SkinData, UuidData, CACHE_AGE_HISTOGRAM,
-    CACHE_GET_HISTOGRAM, CACHE_SET_HISTOGRAM,
+use crate::cache::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
+use crate::metrics::{
+    CacheAgeLabels, CacheGetLabels, CacheSetLabels, CACHE_AGE, CACHE_GET, CACHE_SET,
 };
 use metrics::MetricsEvent;
 use std::fmt::Debug;
@@ -27,14 +27,21 @@ fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Option<Entry<T
         warn!("Failed to retrieve label 'cache_variant' for metric!");
         return;
     };
-    CACHE_GET_HISTOGRAM
-        .with_label_values(&[cache_variant, request_type, cache_result])
+    CACHE_GET
+        .get_or_create(&CacheGetLabels {
+            cache_variant,
+            request_type,
+            cache_result,
+        })
         .observe(event.time);
 
-    if let Some(dated) = event.result {
-        CACHE_AGE_HISTOGRAM
-            .with_label_values(&[cache_variant, request_type])
-            .observe(dated.current_age() as f64);
+    if let Some(entry) = event.result {
+        CACHE_AGE
+            .get_or_create(&CacheAgeLabels {
+                cache_variant,
+                request_type,
+            })
+            .observe(entry.current_age() as f64);
     }
 }
 
@@ -47,8 +54,11 @@ fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<T>) {
         warn!("Failed to retrieve label 'cache_variant' for metric!");
         return;
     };
-    CACHE_SET_HISTOGRAM
-        .with_label_values(&[cache_variant, request_type])
+    CACHE_SET
+        .get_or_create(&CacheSetLabels {
+            cache_variant,
+            request_type,
+        })
         .observe(event.time);
 }
 

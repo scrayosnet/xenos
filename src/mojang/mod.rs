@@ -6,10 +6,10 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bytes::Bytes;
 use image::{imageops, ColorType, GenericImageView, ImageError, ImageFormat};
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::ops::Deref;
+use std::sync::LazyLock;
 use uuid::Uuid;
 
 /// The model key for the classic skin (e.g. "Steve")
@@ -28,17 +28,19 @@ pub const STEVE_SKIN: Bytes =
 pub const ALEX_SKIN: Bytes =
     Bytes::from_static(include_bytes!("../../resources/profiles/alex_skin.png"));
 
-lazy_static! {
-    /// The head bytes of the official mojang Steve skin.
-    pub static ref STEVE_HEAD: Bytes = Bytes::from(
+/// The head bytes of the official mojang Steve skin.
+pub static STEVE_HEAD: LazyLock<Bytes> = LazyLock::new(|| {
+    Bytes::from(
         build_skin_head(&STEVE_SKIN, false).expect("expect Steve head to be build successfully"),
-    );
+    )
+});
 
-    /// The head bytes of the official mojang Alex skin.
-    pub static ref ALEX_HEAD: Bytes = Bytes::from(
+/// The head bytes of the official mojang Alex skin.
+pub static ALEX_HEAD: LazyLock<Bytes> = LazyLock::new(|| {
+    Bytes::from(
         build_skin_head(&ALEX_SKIN, false).expect("expect Alex head to be build successfully"),
-    );
-}
+    )
+});
 
 /// [ApiError] is the error definition for the Mojang api. It maps the inconsistent error responses
 /// from Mojang into a consistent format.

@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     ));
 
-    // initialize logging with sentry hook
+    // initialize logging with the sentry hook
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()

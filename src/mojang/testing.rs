@@ -4,35 +4,43 @@ use crate::mojang::{
     Textures, TexturesProperty, UsernameResolved,
 };
 use bytes::Bytes;
-use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use uuid::{uuid, Uuid};
 
-lazy_static! {
-    /// The mojang profile of Hydrofin.
-    pub static ref HYDROFIN: TestingProfile = TestingProfile::new(
+/// The mojang profile of Hydrofin.
+pub static HYDROFIN: LazyLock<TestingProfile> = LazyLock::new(|| {
+    TestingProfile::new(
         uuid!("09879557e47945a9b434a56377674627"),
         "Hydrofin",
-        Some(Bytes::from_static(include_bytes!("../../resources/profiles/hydrofin_skin.png"))),
+        Some(Bytes::from_static(include_bytes!(
+            "../../resources/profiles/hydrofin_skin.png"
+        ))),
         None,
-    );
+    )
+});
 
-    /// The mojang profile of Scrayos.
-    pub static ref SCRAYOS: TestingProfile = TestingProfile::new(
+/// The mojang profile of Hydrofin.
+pub static SCRAYOS: LazyLock<TestingProfile> = LazyLock::new(|| {
+    TestingProfile::new(
         uuid!("9c09eef4f68d4387975172bbff53d5a0"),
         "Scrayos",
-        Some(Bytes::from_static(include_bytes!("../../resources/profiles/scrayos_skin.png"))),
+        Some(Bytes::from_static(include_bytes!(
+            "../../resources/profiles/scrayos_skin.png"
+        ))),
         None,
-    );
+    )
+});
 
-    /// The mojang profile of Herbert. He is oldschool and has no custom skin.
-    pub static ref HERBERT: TestingProfile = TestingProfile::new(
+/// The mojang profile of Hydrofin.
+pub static HERBERT: LazyLock<TestingProfile> = LazyLock::new(|| {
+    TestingProfile::new(
         uuid!("1119fff4f68d4388875172bbff53d5a0"),
         "Herbert",
         None,
         None,
-    );
-}
+    )
+});
 
 /// A [TestingProfile] represents a mojang profile to be used for testing Xenos. It is used to fill
 /// the [MojangTestingApi] with valid data.

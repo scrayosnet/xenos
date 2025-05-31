@@ -1,5 +1,6 @@
 use crate::cache::level::CacheLevel;
 use crate::error::ServiceError;
+use crate::metrics::{RequestsLabels, REGISTRY, REQUEST};
 use crate::mojang::Mojang;
 use crate::proto::{
     CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
@@ -7,21 +8,20 @@ use crate::proto::{
 };
 use crate::service::Service;
 use axum::{
-    http,
     http::StatusCode,
     response::{IntoResponse, Response},
     Extension, Json,
 };
-use axum_auth::AuthBasic;
-use prometheus::{Encoder, TextEncoder};
+use axum_extra::headers::authorization::Basic;
+use axum_extra::headers::Authorization;
+use axum_extra::TypedHeader;
+use prometheus_client::encoding::text::encode;
 use std::sync::Arc;
 use uuid::Uuid;
 
 /// [RestResult] is an alias for a rest [Json] result with [ServiceError]
 type RestResult<T> = Result<Json<T>, ServiceError>;
 
-// implement automatic ServiceError to response conversion
-// with that, ServiceError can be returned in a result
 impl IntoResponse for ServiceError {
     fn into_response(self) -> Response {
         match self {
@@ -39,7 +39,7 @@ impl IntoResponse for ServiceError {
 /// An [axum] handler for providing [prometheus] metrics. If enabled by the service, it validates
 /// basic auth.
 pub async fn metrics<L, R, M>(
-    auth: Option<AuthBasic>,
+    auth: Option<TypedHeader<Authorization<Basic>>>,
     Extension(service): Extension<Arc<Service<L, R, M>>>,
 ) -> Response
 where
@@ -50,8 +50,8 @@ where
     // check basic auth
     let ms = &service.settings().metrics;
     if ms.auth_enabled {
-        if let Some(AuthBasic((username, password))) = auth {
-            if username != ms.username || password != Some(ms.password.clone()) {
+        if let Some(TypedHeader(Authorization(creds))) = auth {
+            if creds.username() != ms.username || creds.password() != ms.password {
                 return (StatusCode::UNAUTHORIZED, "invalid auth").into_response();
             }
         } else {
@@ -60,15 +60,15 @@ where
     }
 
     // get metrics
-    let encoder = TextEncoder::new();
-    let metric_families = prometheus::gather();
-    let mut buffer = vec![];
-    encoder.encode(&metric_families, &mut buffer).unwrap();
+    let mut buf = String::new();
+    encode(&mut buf, &REGISTRY).expect("failed to encode metrics");
     Response::builder()
-        .status(StatusCode::OK)
-        .header(http::header::CONTENT_TYPE, encoder.format_type())
-        .body(buffer.into())
-        .expect("failed to build metrics response")
+        .header(
+            hyper::header::CONTENT_TYPE,
+            "application/openmetrics-text; version=1.0.0; charset=utf-8",
+        )
+        .body(buf.into())
+        .expect("failed to build response")
 }
 
 /// An [axum] handler for [UuidRequest] rest gateway.
@@ -81,6 +81,12 @@ where
     R: CacheLevel,
     M: Mojang,
 {
+    REQUEST
+        .get_or_create(&RequestsLabels {
+            request_type: "uuid",
+            handler: "rest",
+        })
+        .inc();
     let username = &payload.username;
     Ok(Json(service.get_uuid(username).await?.into()))
 }
@@ -95,6 +101,12 @@ where
     R: CacheLevel,
     M: Mojang,
 {
+    REQUEST
+        .get_or_create(&RequestsLabels {
+            request_type: "uuids",
+            handler: "rest",
+        })
+        .inc();
     let usernames = &payload.usernames;
     Ok(Json(service.get_uuids(usernames).await?.into()))
 }
@@ -109,6 +121,12 @@ where
     R: CacheLevel,
     M: Mojang,
 {
+    REQUEST
+        .get_or_create(&RequestsLabels {
+            request_type: "profile",
+            handler: "rest",
+        })
+        .inc();
     let uuid = Uuid::try_parse(&payload.uuid)?;
     Ok(Json(service.get_profile(&uuid).await?.into()))
 }
@@ -123,6 +141,12 @@ where
     R: CacheLevel,
     M: Mojang,
 {
+    REQUEST
+        .get_or_create(&RequestsLabels {
+            request_type: "skin",
+            handler: "rest",
+        })
+        .inc();
     let uuid = Uuid::try_parse(&payload.uuid)?;
     Ok(Json(service.get_skin(&uuid).await?.into()))
 }
@@ -137,6 +161,12 @@ where
     R: CacheLevel,
     M: Mojang,
 {
+    REQUEST
+        .get_or_create(&RequestsLabels {
+            request_type: "cape",
+            handler: "rest",
+        })
+        .inc();
     let uuid = Uuid::try_parse(&payload.uuid)?;
     Ok(Json(service.get_cape(&uuid).await?.into()))
 }
@@ -151,6 +181,12 @@ where
     R: CacheLevel,
     M: Mojang,
 {
+    REQUEST
+        .get_or_create(&RequestsLabels {
+            request_type: "head",
+            handler: "rest",
+        })
+        .inc();
     let uuid = Uuid::try_parse(&payload.uuid)?;
     let overlay = payload.overlay;
     Ok(Json(service.get_head(&uuid, overlay).await?.into()))
