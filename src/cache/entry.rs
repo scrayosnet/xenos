@@ -6,6 +6,11 @@ use std::fmt::Debug;
 use std::time::SystemTime;
 use uuid::Uuid;
 
+/// The time anchor for tests. Allows for `tokio::time::pause()` to be used.
+#[cfg(test)]
+static TIME_ANCHOR: std::sync::LazyLock<tokio::time::Instant> =
+    std::sync::LazyLock::new(|| tokio::time::Instant::now());
+
 /// [Dated] associates some data to its creation time. It provides a measure of relevancy of the
 /// data by how up-to-date the data is. In general, the time at which the data is fetched from the
 /// mojang api is used as its creation time.
@@ -121,8 +126,8 @@ where
             Some(_) => expiry.exp,
         };
         let offset = (self.offset as f32) / (i8::MAX as f32);
-        let exp_secs = exp.as_secs() + ((expiry.offset.as_secs_f32() * offset) as u64);
-        self.current_age() >= exp_secs
+        let exp_secs = exp.as_secs_f32() + (expiry.offset.as_secs_f32() * offset);
+        self.current_age() >= exp_secs.round() as u64
     }
 }
 
@@ -205,10 +210,76 @@ pub struct HeadData {
     pub default: bool,
 }
 
+/// Gets the current time in seconds. When running tests, it uses `tokio::time` with a fixed anchor
+/// so that `tokio::time::pause()` can be used.
+#[cfg(test)]
+pub fn now_seconds() -> u64 {
+    TIME_ANCHOR.elapsed().as_secs()
+}
+
 /// Gets the current time in seconds.
+#[cfg(not(test))]
 pub fn now_seconds() -> u64 {
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
         Ok(n) => n.as_secs(),
         Err(_) => panic!("SystemTime before UNIX EPOCH!"),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn call_now_seconds() {
+        _ = now_seconds();
+        _ = now_seconds();
+        _ = now_seconds();
+    }
+
+    #[tokio::test]
+    async fn check_is_expired_no_offset() {
+        tokio::time::pause();
+
+        let entry = Entry::from(Some(()));
+
+        tokio::time::advance(Duration::from_secs(9)).await;
+
+        assert!(!entry.is_expired(&config::CacheEntry {
+            exp: Duration::from_secs(10),
+            exp_empty: Duration::from_secs(10),
+            offset: Duration::from_secs(0),
+        }));
+    }
+
+    #[tokio::test]
+    async fn check_is_expired_below_offset() {
+        tokio::time::pause();
+
+        let entry = Entry::from(Some(()));
+
+        tokio::time::advance(Duration::from_secs(7)).await;
+
+        assert!(!entry.is_expired(&config::CacheEntry {
+            exp: Duration::from_secs(10),
+            exp_empty: Duration::from_secs(10),
+            offset: Duration::from_secs(2),
+        }));
+    }
+
+    #[tokio::test]
+    async fn check_is_expired_over_offset() {
+        tokio::time::pause();
+
+        let entry = Entry::from(Some(()));
+
+        tokio::time::advance(Duration::from_secs(13)).await;
+
+        assert!(entry.is_expired(&config::CacheEntry {
+            exp: Duration::from_secs(10),
+            exp_empty: Duration::from_secs(10),
+            offset: Duration::from_secs(2),
+        }));
     }
 }
