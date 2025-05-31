@@ -9,9 +9,9 @@
 //! ## Layer 1 (Environment variables) \[optional\]
 //!
 //! The environment variables are the top most layer. They can be used to overwrite any previous configuration.
-//! Environment variables have the format `[ENV_PREFIX]__[field]__[sub_field]` where `ENV_PREFIX` is
+//! Environment variables have the format `[ENV_PREFIX]_[field]_[sub_field]` where `ENV_PREFIX` is
 //! an environment variable defaulting to `XENOS`. That means the nested config field `cache.redis.enabled`
-//! can be overwritten by the environment variable `XENOS__CACHE__REDIS__ENABLED`.
+//! can be overwritten by the environment variable `XENOS_CACHE_REDIS_ENABLED`.
 //!
 //! ## Layer 2 (Custom configuration) \[optional\]
 //!
@@ -264,9 +264,9 @@ impl Config {
             // load custom configuration from file (at runtime)
             .add_source(File::with_name(&config_file).required(false))
             // add in config from the environment (with a prefix of APP)
-            // e.g. `XENOS__DEBUG=1` would set the `debug` key, on the other hand,
-            // `XENOS__CACHE__REDIS__ENABLED=1` would enable the redis cache.
-            .add_source(Environment::with_prefix(&env_prefix).separator("__"))
+            // e.g. `XENOS_DEBUG=1` would set the `debug` key, on the other hand,
+            // `XENOS_CACHE_REDIS_ENABLED=1` would enable the redis cache.
+            .add_source(Environment::with_prefix(&env_prefix).separator("_"))
             .build()?;
 
         // you can deserialize (and thus freeze) the entire configuration as
