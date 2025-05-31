@@ -3,46 +3,15 @@ pub mod level;
 
 use crate::cache::entry::{Cached, CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::cache::level::CacheLevel;
-use crate::settings;
-use crate::settings::CacheEntry;
-use lazy_static::lazy_static;
+use crate::config;
+use crate::config::CacheEntry;
+use crate::metrics::{
+    CACHE_AGE, CACHE_GET, CACHE_SET, CacheAgeLabels, CacheGetLabels, CacheSetLabels,
+};
 use metrics::MetricsEvent;
-use prometheus::{register_histogram_vec, HistogramVec};
 use std::fmt::Debug;
 use tracing::warn;
 use uuid::Uuid;
-
-lazy_static! {
-    /// A histogram for the cache get request latencies in seconds. It is intended to be used by all
-    /// cache requests (`request_type`). Use the [monitor_get] utility for ease of use.
-    pub(crate) static ref CACHE_GET_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_cache_get_duration_seconds",
-        "The cache get request latencies in seconds.",
-        &["cache_variant", "request_type", "cache_result"],
-        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
-    )
-    .unwrap();
-
-    /// A histogram for the cache get request result age in seconds. It is intended to be used by all
-    /// cache requests (`request_type`). Use the [monitor_get] utility for ease of use.
-    pub(crate) static ref CACHE_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_cache_age_duration_seconds",
-        "The cache get request latencies in seconds.",
-        &["cache_variant", "request_type"],
-        vec![5.0, 10.0, 60.0, 600.0, 3600.0, 86400.0, 604800.0, 2419200.0]
-    )
-    .unwrap();
-
-    /// A histogram for the cache set request latencies in seconds. It is intended to be used by all
-    ///  cache requests (`request_type`). Use the [monitor_set] utility for ease of use.
-    pub(crate) static ref CACHE_SET_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_cache_set_duration_seconds",
-        "The cache set request latencies in seconds.",
-        &["cache_variant", "request_type"],
-        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
-    )
-    .unwrap();
-}
 
 fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Cached<T>>) {
     let cache_result = match event.result {
@@ -55,14 +24,21 @@ fn metrics_get_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Cached<T>>) {
         return;
     };
     let cache_variant = "cache";
-    CACHE_GET_HISTOGRAM
-        .with_label_values(&[cache_variant, request_type, cache_result])
+    CACHE_GET
+        .get_or_create(&CacheGetLabels {
+            cache_variant,
+            request_type,
+            cache_result,
+        })
         .observe(event.time);
 
     match event.result {
         Cached::Hit(entry) | Cached::Expired(entry) => {
-            CACHE_AGE_HISTOGRAM
-                .with_label_values(&[cache_variant, request_type])
+            CACHE_AGE
+                .get_or_create(&CacheAgeLabels {
+                    cache_variant,
+                    request_type,
+                })
                 .observe(entry.current_age() as f64);
         }
         _ => {}
@@ -75,8 +51,11 @@ fn metrics_set_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Entry<T>>) {
         return;
     };
     let cache_variant = "cache";
-    CACHE_SET_HISTOGRAM
-        .with_label_values(&[cache_variant, request_type])
+    CACHE_SET
+        .get_or_create(&CacheSetLabels {
+            cache_variant,
+            request_type,
+        })
         .observe(event.time);
 }
 
@@ -104,7 +83,7 @@ where
     L: CacheLevel,
     R: CacheLevel,
 {
-    expiry: settings::CacheEntries<CacheEntry>,
+    expiry: config::CacheEntries<CacheEntry>,
     local_cache: L,
     remote_cache: R,
 }
@@ -115,11 +94,7 @@ where
     R: CacheLevel,
 {
     /// Creates a new [Cache] with no inner caches.
-    pub fn new(
-        expiry: settings::CacheEntries<CacheEntry>,
-        local_cache: L,
-        remote_cache: R,
-    ) -> Self {
+    pub fn new(expiry: config::CacheEntries<CacheEntry>, local_cache: L, remote_cache: R) -> Self {
         Cache {
             expiry,
             local_cache,
@@ -347,12 +322,12 @@ where
 mod test {
     use super::*;
     use crate::cache::level::moka::MokaCache;
-    use crate::settings::{CacheEntries, MokaCacheEntry};
+    use crate::config::{CacheEntries, MokaCacheEntry};
+    use Cached::*;
     use std::time::Duration;
     use uuid::uuid;
-    use Cached::*;
 
-    fn new_moka_settings() -> settings::MokaCache {
+    fn new_moka_config() -> config::MokaCache {
         let entry = MokaCacheEntry {
             cap: 10,
             ttl: Duration::from_secs(100),
@@ -360,7 +335,7 @@ mod test {
             tti: Duration::from_secs(100),
             tti_empty: Duration::from_secs(100),
         };
-        settings::MokaCache {
+        config::MokaCache {
             entries: CacheEntries {
                 uuid: entry.clone(),
                 profile: entry.clone(),
@@ -375,6 +350,7 @@ mod test {
         let expiry = CacheEntry {
             exp: dur,
             exp_empty: dur,
+            offset: Duration::from_secs(0),
         };
         CacheEntries {
             uuid: expiry.clone(),
@@ -389,8 +365,8 @@ mod test {
     async fn new_cache_2l(dur: Duration) -> Cache<MokaCache, MokaCache> {
         Cache::new(
             new_expiry(dur),
-            MokaCache::new(new_moka_settings()),
-            MokaCache::new(new_moka_settings()),
+            MokaCache::new(new_moka_config()),
+            MokaCache::new(new_moka_config()),
         )
     }
 

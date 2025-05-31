@@ -1,51 +1,29 @@
+use crate::cache::Cache;
 use crate::cache::entry::Cached::{Expired, Hit, Miss};
 use crate::cache::entry::{CapeData, HeadData, SkinData, UuidData};
 use crate::cache::entry::{Dated, Entry, ProfileData};
 use crate::cache::level::CacheLevel;
-use crate::cache::Cache;
+use crate::config::Config;
 use crate::error::ServiceError;
 use crate::error::ServiceError::{NotFound, Unavailable};
+use crate::metrics::{PROFILE_REQ_AGE, PROFILE_REQ_LAT, ProfileAgeLabels, ProfileLatLabels};
 use crate::mojang;
 use crate::mojang::{
-    build_skin_head, ApiError, Mojang, ALEX_HEAD, ALEX_SKIN, CLASSIC_MODEL, SLIM_MODEL, STEVE_HEAD,
-    STEVE_SKIN,
+    ALEX_HEAD, ALEX_SKIN, ApiError, CLASSIC_MODEL, Mojang, SLIM_MODEL, STEVE_HEAD, STEVE_SKIN,
+    build_skin_head,
 };
-use crate::settings::Settings;
-use lazy_static::lazy_static;
 use metrics::MetricsEvent;
-use prometheus::{register_histogram_vec, HistogramVec};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tracing::warn;
 use uuid::Uuid;
 
-lazy_static! {
-    /// The username regex is used to check if a given username could be a valid username.
-    /// If a string does not match the regex, the mojang API will never find a matching user id.
-    static ref USERNAME_REGEX: Regex = Regex::new("^[a-zA-Z0-9_]{2,16}$").unwrap();
-
-    /// A histogram for the age in seconds of cache results. Use the [monitor_service_call_with_age]
-    /// utility for ease of use.
-    pub static ref PROFILE_REQ_AGE_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_profile_age_seconds",
-        "The grpc profile response age in seconds.",
-        &["request_type"],
-        vec![5.0, 10.0, 60.0, 600.0, 3600.0, 86400.0, 604800.0, 2419200.0]
-    )
-    .unwrap();
-
-    /// A histogram for the service call latency in seconds with response status. Use the
-    /// [monitor_service_call] utility for ease of use.
-    pub static ref PROFILE_REQ_LAT_HISTOGRAM: HistogramVec = register_histogram_vec!(
-        "xenos_profile_latency_seconds",
-        "The grpc profile request latency in seconds.",
-        &["request_type", "status"],
-        vec![0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.175, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
-    )
-    .unwrap();
-}
+/// The username regex is used to check if a given username could be a valid username.
+/// If a string does not match the regex, the mojang API will never find a matching user id.
+static USERNAME_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("^[a-zA-Z0-9_]{2,16}$").expect("failed to compile username regex"));
 
 fn metrics_age_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<Dated<T>, ServiceError>>) {
     let status = match event.result {
@@ -58,13 +36,16 @@ fn metrics_age_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<Dated<T
         warn!("Failed to retrieve label 'request_type' for metric!");
         return;
     };
-    PROFILE_REQ_LAT_HISTOGRAM
-        .with_label_values(&[request_type, status])
+    PROFILE_REQ_LAT
+        .get_or_create(&ProfileLatLabels {
+            request_type,
+            status,
+        })
         .observe(event.time);
 
     if let Ok(dated) = event.result {
-        PROFILE_REQ_AGE_HISTOGRAM
-            .with_label_values(&[request_type])
+        PROFILE_REQ_AGE
+            .get_or_create(&ProfileAgeLabels { request_type })
             .observe(dated.current_age() as f64);
     }
 }
@@ -80,22 +61,25 @@ fn metrics_handler<T: Clone + Debug + Eq>(event: MetricsEvent<Result<T, ServiceE
         warn!("Failed to retrieve label 'request_type' for metric!");
         return;
     };
-    PROFILE_REQ_LAT_HISTOGRAM
-        .with_label_values(&[request_type, status])
+    PROFILE_REQ_LAT
+        .get_or_create(&ProfileLatLabels {
+            request_type,
+            status,
+        })
         .observe(event.time);
 }
 
 /// The [Service] is the backbone of Xenos. All exposed services (gRPC/REST) use a shared instance of
 /// this service. The [Service] incorporates a [Cache] and [Mojang] implementations
-/// as well as a clone of the [application settings](Settings). It is expected, that the settings
-/// match the settings used to construct the cache and api.
+/// as well as a clone of the [application config](Config). It is expected, that the config
+/// match the config used to construct the cache and api.
 pub struct Service<L, R, M>
 where
     L: CacheLevel,
     R: CacheLevel,
     M: Mojang,
 {
-    settings: Arc<Settings>,
+    config: Arc<Config>,
     cache: Cache<L, R>,
     mojang: M,
 }
@@ -107,18 +91,18 @@ where
     M: Mojang,
 {
     /// Builds a new [Service] with provided cache and mojang api implementation. It is expected, that
-    /// the provided settings match the settings used to construct the cache and api.
-    pub fn new(settings: Arc<Settings>, cache: Cache<L, R>, mojang: M) -> Self {
+    /// the provided config match the config used to construct the cache and api.
+    pub fn new(config: Arc<Config>, cache: Cache<L, R>, mojang: M) -> Self {
         Self {
-            settings,
+            config,
             cache,
             mojang,
         }
     }
 
-    /// Returns the [application settings](Settings) that were used to construct the [Service].
-    pub fn settings(&self) -> &Settings {
-        &self.settings
+    /// Returns the [application config](Config) that were used to construct the [Service].
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     /// Resolves the provided (case-insensitive) username to its (case-sensitive) username and uuid
@@ -134,7 +118,7 @@ where
             Miss => None,
         };
 
-        // try to fetch from mojang and update cache
+        // try to fetch from mojang and update the cache
         match self.mojang.fetch_uuid(username).await {
             Ok(uuid) => {
                 let data = UuidData {
@@ -178,7 +162,7 @@ where
         let mut has_misses = false;
         for (username, uuid) in uuids.iter_mut() {
             // 2. filter invalid usernames (regex)
-            // evidently unused (invalid) usernames should not clutter the cache nor should they fill
+            // evidently unused (invalid) usernames should not clutter the cache, nor should they fill
             // to the mojang request rate limit. As such, they are excluded beforehand
             if !USERNAME_REGEX.is_match(username.as_str()) {
                 continue;
@@ -236,7 +220,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "profile"), handler = metrics_age_handler)]
     pub async fn get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, ServiceError> {
-        // try to get from cache
+        // try to get from the cache
         let cached = self.cache.get_profile(uuid).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
@@ -244,10 +228,10 @@ where
             Miss => None,
         };
 
-        // try to fetch from mojang and update cache
+        // try to fetch from mojang and update the cache
         match self
             .mojang
-            .fetch_profile(uuid, self.settings.signed_profiles)
+            .fetch_profile(uuid, self.config.signed_profiles)
             .await
         {
             Ok(profile) => {
@@ -268,7 +252,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "skin"), handler = metrics_age_handler)]
     pub async fn get_skin(&self, uuid: &Uuid) -> Result<Dated<SkinData>, ServiceError> {
-        // try to get from cache
+        // try to get from the cache
         let cached = self.cache.get_skin(uuid).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
@@ -276,13 +260,13 @@ where
             Miss => None,
         };
 
-        // try to get profile
+        // try to get a profile
         let profile = match self.get_profile(uuid).await {
             Ok(profile) => profile.data,
             Err(Unavailable) => {
                 return fallback
                     .ok_or(Unavailable)
-                    .and_then(|entry| entry.some_or(NotFound))
+                    .and_then(|entry| entry.some_or(NotFound));
             }
             Err(NotFound) => {
                 self.cache.set_skin(uuid, None).await;
@@ -298,10 +282,10 @@ where
         let skin_model = textures
             .metadata
             .map(|md| md.model)
-            // fallback to classic model (I didn't check that this is the correct default behavior)
+            // fallback to the classic model (I didn't check that this is the correct default behavior)
             .unwrap_or(CLASSIC_MODEL.to_string());
 
-        // try to fetch from mojang and update cache
+        // try to fetch from mojang and update the cache
         match self.mojang.fetch_bytes(textures.url).await {
             Ok(skin_bytes) => {
                 let skin = SkinData {
@@ -323,7 +307,7 @@ where
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "cape"), handler = metrics_age_handler)]
     pub async fn get_cape(&self, uuid: &Uuid) -> Result<Dated<CapeData>, ServiceError> {
-        // try to get from cache
+        // try to get from the cache
         let cached = self.cache.get_cape(uuid).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
@@ -331,13 +315,13 @@ where
             Miss => None,
         };
 
-        // try to get profile
+        // try to get the profile
         let profile = match self.get_profile(uuid).await {
             Ok(profile) => profile.data,
             Err(Unavailable) => {
                 return fallback
                     .ok_or(Unavailable)
-                    .and_then(|entry| entry.some_or(NotFound))
+                    .and_then(|entry| entry.some_or(NotFound));
             }
             Err(NotFound) => {
                 self.cache.set_cape(uuid, None).await;
@@ -351,7 +335,7 @@ where
             return Err(NotFound);
         };
 
-        // try to fetch from mojang and update cache
+        // try to fetch from mojang and update the cache
         match self.mojang.fetch_bytes(textures.url).await {
             Ok(cape_bytes) => {
                 let cape = CapeData {
@@ -375,7 +359,7 @@ where
         uuid: &Uuid,
         overlay: bool,
     ) -> Result<Dated<HeadData>, ServiceError> {
-        // try to get from cache
+        // try to get from the cache
         let cached = self.cache.get_head(&(*uuid, overlay)).await;
         let fallback = match cached {
             Hit(entry) => return entry.some_or(NotFound),
@@ -389,7 +373,7 @@ where
             Err(Unavailable) => {
                 return fallback
                     .ok_or(Unavailable)
-                    .and_then(|entry| entry.some_or(NotFound))
+                    .and_then(|entry| entry.some_or(NotFound));
             }
             Err(NotFound) => {
                 self.cache.set_head(&(*uuid, false), None).await;
@@ -459,21 +443,21 @@ mod test {
     #[tokio::test]
     async fn new_nocache() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
 
         // when
-        let _ = Service::new(Arc::new(settings), cache, mojang);
+        let _ = Service::new(Arc::new(config), cache, mojang);
     }
 
     #[tokio::test]
     async fn get_uuid_found() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service.get_uuid("Hydrofin").await;
@@ -489,10 +473,10 @@ mod test {
     #[tokio::test]
     async fn get_uuid_not_found() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service.get_uuid("xXSlayer42Xx").await;
@@ -504,10 +488,10 @@ mod test {
     #[tokio::test]
     async fn get_uuid_invalid() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service.get_uuid("56789äas#").await;
@@ -519,10 +503,10 @@ mod test {
     #[tokio::test]
     async fn get_uuid_empty_not_found() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::new();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service.get_uuid("Hydrofin").await;
@@ -534,10 +518,10 @@ mod test {
     #[tokio::test]
     async fn get_uuids_found() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service.get_uuids(&vec!["Hydrofin".to_string()]).await;
@@ -566,10 +550,10 @@ mod test {
     #[tokio::test]
     async fn get_uuids_not_found() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service.get_uuids(&vec!["xXSlayer42Xx".to_string()]).await;
@@ -590,10 +574,10 @@ mod test {
     #[tokio::test]
     async fn get_uuids_invalid() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service.get_uuids(&vec!["#+".to_string()]).await;
@@ -614,10 +598,10 @@ mod test {
     #[tokio::test]
     async fn get_uuids_partial_found() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service
@@ -652,10 +636,10 @@ mod test {
     #[tokio::test]
     async fn get_uuids_partial_invalid() {
         // given
-        let settings = Settings::default();
-        let cache = Cache::new(settings.cache.entries.clone(), NoCache, NoCache);
+        let config = Config::default();
+        let cache = Cache::new(config.cache.entries.clone(), NoCache, NoCache);
         let mojang = MojangTestingApi::with_profiles();
-        let service = Service::new(Arc::new(settings), cache, mojang);
+        let service = Service::new(Arc::new(config), cache, mojang);
 
         // when
         let result = service

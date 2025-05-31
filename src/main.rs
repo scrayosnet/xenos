@@ -1,36 +1,36 @@
 use std::borrow::Cow::Owned;
 use std::sync::Arc;
 use tracing::info;
-
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
-use xenos::settings::Settings;
+use xenos::config::Config;
 
-/// Starts the Xenos application. It reads the application [Settings], initializes [sentry] and [tracing]
+/// Starts the Xenos application. It reads the application [Config], initializes [sentry] and [tracing]
 /// and starts the Xenos service.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // read settings from config files and environment variables
-    let settings = Arc::new(Settings::new()?);
+    // read config from config files and environment variables
+    let config = Arc::new(Config::new()?);
 
     // initialize sentry
     let _sentry = sentry::init((
-        settings
+        config
             .sentry
             .enabled
-            .then_some(settings.sentry.address.clone()),
+            .then_some(config.sentry.address.clone()),
         sentry::ClientOptions {
-            debug: settings.sentry.debug,
+            debug: config.sentry.debug,
             release: sentry::release_name!(),
-            environment: Some(Owned(settings.sentry.environment.clone())),
+            environment: Some(Owned(config.sentry.environment.clone())),
             ..sentry::ClientOptions::default()
         },
     ));
 
-    // initialize logging with sentry hook
+    // initialize logging with the sentry hook
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
-                .json()
-                .with_filter(settings.logging.level),
+                .compact()
+                .with_filter(EnvFilter::from_default_env()),
         )
         .with(sentry_tracing::layer())
         .init();
@@ -43,5 +43,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async { xenos::start(settings).await })
+        .block_on(async { xenos::start(config).await })
 }

@@ -1,6 +1,6 @@
 use crate::cache::entry::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
-use crate::cache::level::{metrics_get_handler, metrics_set_handler, CacheLevel};
-use crate::settings;
+use crate::cache::level::{CacheLevel, metrics_get_handler, metrics_set_handler};
+use crate::config;
 use moka::future::Cache;
 use uuid::Uuid;
 
@@ -10,7 +10,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct MokaCache {
     #[allow(dead_code)] // will be used in the future for per-element ttl/tti
-    settings: settings::MokaCache,
+    config: config::MokaCache,
     // caches
     uuids: Cache<String, Entry<UuidData>>,
     profiles: Cache<Uuid, Entry<ProfileData>>,
@@ -20,33 +20,33 @@ pub struct MokaCache {
 }
 
 impl MokaCache {
-    pub fn new(settings: settings::MokaCache) -> Self {
+    pub fn new(config: config::MokaCache) -> Self {
         Self {
-            settings: settings.clone(),
+            config: config.clone(),
             uuids: Cache::builder()
-                .max_capacity(settings.entries.uuid.cap)
-                .time_to_live(settings.entries.uuid.ttl)
-                .time_to_idle(settings.entries.uuid.tti)
+                .max_capacity(config.entries.uuid.cap)
+                .time_to_live(config.entries.uuid.ttl)
+                .time_to_idle(config.entries.uuid.tti)
                 .build(),
             profiles: Cache::builder()
-                .max_capacity(settings.entries.profile.cap)
-                .time_to_live(settings.entries.profile.ttl)
-                .time_to_idle(settings.entries.profile.tti)
+                .max_capacity(config.entries.profile.cap)
+                .time_to_live(config.entries.profile.ttl)
+                .time_to_idle(config.entries.profile.tti)
                 .build(),
             skins: Cache::builder()
-                .max_capacity(settings.entries.skin.cap)
-                .time_to_live(settings.entries.skin.ttl)
-                .time_to_idle(settings.entries.skin.tti)
+                .max_capacity(config.entries.skin.cap)
+                .time_to_live(config.entries.skin.ttl)
+                .time_to_idle(config.entries.skin.tti)
                 .build(),
             capes: Cache::builder()
-                .max_capacity(settings.entries.cape.cap)
-                .time_to_live(settings.entries.cape.ttl)
-                .time_to_idle(settings.entries.cape.tti)
+                .max_capacity(config.entries.cape.cap)
+                .time_to_live(config.entries.cape.ttl)
+                .time_to_idle(config.entries.cape.tti)
                 .build(),
             heads: Cache::builder()
-                .max_capacity(settings.entries.head.cap)
-                .time_to_live(settings.entries.head.ttl)
-                .time_to_idle(settings.entries.head.tti)
+                .max_capacity(config.entries.head.cap)
+                .time_to_live(config.entries.head.ttl)
+                .time_to_idle(config.entries.head.tti)
                 .build(),
         }
     }

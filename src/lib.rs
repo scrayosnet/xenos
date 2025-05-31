@@ -3,30 +3,30 @@
 //! # Usage
 //!
 //! Start the application by first initializing [sentry] and [tracing] and then calling [start] with
-//! the [application configuration](settings).
+//! the [application configuration](config).
 //!
 //! # Configuration
 //!
-//! See [settings] for a description on how to create the application configuration.
+//! See [config] for a description on how to create the application configuration.
 
+use crate::cache::Cache;
+use crate::cache::level::CacheLevel;
 use crate::cache::level::moka::MokaCache;
 #[cfg(not(feature = "redis"))]
 use crate::cache::level::no::NoCache;
 #[cfg(feature = "redis")]
 use crate::cache::level::redis::RedisCache;
-use crate::cache::level::CacheLevel;
-use crate::cache::Cache;
+use crate::config::Config;
 use crate::grpc_services::GrpcProfileService;
+use crate::mojang::Mojang;
 #[cfg(not(feature = "static-testing"))]
 use crate::mojang::api::MojangApi;
 #[cfg(feature = "static-testing")]
 use crate::mojang::testing::MojangTestingApi;
-use crate::mojang::Mojang;
 use crate::proto::profile_server::ProfileServer;
 use crate::service::Service;
-use crate::settings::Settings;
-use axum::routing::{post, MethodRouter};
-use axum::{routing::get, Extension, Router};
+use axum::routing::post;
+use axum::{Extension, Router, routing::get};
 use futures_util::FutureExt;
 use std::sync::Arc;
 use tokio::try_join;
@@ -35,60 +35,38 @@ use tonic_health::server::health_reporter;
 use tracing::info;
 
 pub mod cache;
+pub mod config;
 pub mod error;
 mod grpc_services;
+mod metrics;
 pub mod mojang;
 pub mod proto;
 mod rest_services;
 pub mod service;
-pub mod settings;
 
-/// [OptionalRoute] is a utility used to add optional routers to a [Router]. Routes can be disabled
-/// on construction based on application settings.
-trait OptionalRoute<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    /// Adds a [route](MethodRouter) with a path to the [Router] if enabled. See [Router::route].
-    fn optional_route(self, enabled: bool, path: &str, method_router: MethodRouter<S>) -> Self;
-}
-
-impl<S> OptionalRoute<S> for Router<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    fn optional_route(self, enabled: bool, path: &str, method_router: MethodRouter<S>) -> Self {
-        if enabled {
-            self.route(path, method_router)
-        } else {
-            self
-        }
-    }
-}
-
-/// Starts Xenos with the provided [application configuration](settings). It expects that [sentry] and
-/// [tracing] was configured beforehand. It blocks until a shutdown signal is received (graceful shutdown).
-#[tracing::instrument(skip(settings))]
-pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
+/// Starts Xenos with the provided [application configuration](config). It expects that [sentry] and
+/// [tracing] have been configured beforehand. It blocks until a shutdown signal is received (graceful shutdown).
+#[tracing::instrument(skip(config))]
+pub async fn start(config: Arc<Config>) -> Result<(), Box<dyn std::error::Error>> {
     info!("starting xenos …");
 
-    // build cache with selected cache levels
+    // built cache with selected cache levels
     info!("building multi-level cache");
     let cache = Cache::new(
-        settings.cache.entries.clone(),
+        config.cache.entries.clone(),
         {
             info!("building moka cache");
-            MokaCache::new(settings.cache.moka.clone())
+            MokaCache::new(config.cache.moka.clone())
         },
         // the remote cache should be selected using feature flags
         {
             #[cfg(feature = "redis")]
             {
                 info!("building redis cache");
-                let cs = &settings.cache;
+                let cs = &config.cache;
                 let redis_client = redis::Client::open(cs.redis.address.clone())?;
                 let redis_manager = redis_client.get_connection_manager().await?;
-                RedisCache::new(redis_manager, &settings.cache.redis)
+                RedisCache::new(redis_manager, &config.cache.redis)
             }
             #[cfg(not(feature = "redis"))]
             {
@@ -98,7 +76,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
         },
     );
 
-    // build mojang api
+    // built the mojang api
     // it is either the actual mojang api or a testing api for integration tests
     info!("building mojang api");
     #[cfg(not(feature = "static-testing"))]
@@ -109,7 +87,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
     // build xenos service from cache and mojang api
     // the service is then shared by the grpc and rest servers
     info!("building shared xenos service");
-    let service = Arc::new(Service::new(settings.clone(), cache, mojang));
+    let service = Arc::new(Service::new(config.clone(), cache, mojang));
 
     try_join!(
         serve_rest_server(Arc::clone(&service)),
@@ -130,58 +108,41 @@ where
     R: CacheLevel + Sync + 'static,
     M: Mojang + Sync + 'static,
 {
-    let settings = service.settings();
-    let address = settings.rest_server.address;
-    let metrics_enabled = settings.metrics.enabled;
-    let gateway_enabled = settings.rest_server.rest_gateway;
+    let config = service.config();
+    let address = config.rest_server.address;
+    let metrics_enabled = config.metrics.enabled;
+    let gateway_enabled = config.rest_server.rest_gateway;
 
-    // check if rest server should be started
+    // check if the rest server should be started
     if !metrics_enabled && !gateway_enabled {
         info!("rest server is disabled (enable either metrics or rest gateway)");
         return Ok(());
     }
 
+    let mut rest_app = Router::new();
+
+    // add auth route if enabled
+    if metrics_enabled {
+        rest_app = rest_app.route("/metrics", get(rest_services::metrics::<L, R, M>))
+    }
+
+    // add profile routes if enabled
+    if gateway_enabled {
+        rest_app = rest_app
+            .route("/uuid", post(rest_services::uuid::<L, R, M>))
+            .route("/uuids", post(rest_services::uuids::<L, R, M>))
+            .route("/profile", post(rest_services::profile::<L, R, M>))
+            .route("/skin", post(rest_services::skin::<L, R, M>))
+            .route("/cape", post(rest_services::cape::<L, R, M>))
+            .route("/head", post(rest_services::head::<L, R, M>))
+    }
+
     // build rest server
-    let rest_app = Router::new()
-        .optional_route(
-            metrics_enabled,
-            "/metrics",
-            get(rest_services::metrics::<L, R, M>),
-        )
-        .optional_route(
-            gateway_enabled,
-            "/uuid",
-            post(rest_services::uuid::<L, R, M>),
-        )
-        .optional_route(
-            gateway_enabled,
-            "/uuids",
-            post(rest_services::uuids::<L, R, M>),
-        )
-        .optional_route(
-            gateway_enabled,
-            "/profile",
-            post(rest_services::profile::<L, R, M>),
-        )
-        .optional_route(
-            gateway_enabled,
-            "/skin",
-            post(rest_services::skin::<L, R, M>),
-        )
-        .optional_route(
-            gateway_enabled,
-            "/cape",
-            post(rest_services::cape::<L, R, M>),
-        )
-        .optional_route(
-            gateway_enabled,
-            "/head",
-            post(rest_services::head::<L, R, M>),
-        )
+    let rest_app = rest_app
         .layer(Extension(Arc::clone(&service)))
         .with_state(());
 
-    // register shutdown signal (as future)
+    // register the shutdown signal (as future)
     let shutdown = tokio::signal::ctrl_c().map(|_| ());
 
     info!(
@@ -211,10 +172,10 @@ where
     R: CacheLevel + Sync + 'static,
     M: Mojang + Sync + 'static,
 {
-    let settings = service.settings();
-    let address = settings.grpc_server.address;
-    let health_enabled = settings.grpc_server.health_enabled;
-    let profile_enabled = settings.grpc_server.profile_enabled;
+    let config = service.config();
+    let address = config.grpc_server.address;
+    let health_enabled = config.grpc_server.health_enabled;
+    let profile_enabled = config.grpc_server.profile_enabled;
 
     // check if grpc server should be started
     if !profile_enabled && !health_enabled {
@@ -232,14 +193,14 @@ where
     // build health server
     let mut health_server = None;
     if health_enabled {
-        let (mut reporter, server) = health_reporter();
+        let (reporter, server) = health_reporter();
         reporter
             .set_serving::<ProfileServer<GrpcProfileService<L, R, M>>>()
             .await;
         health_server = Some(server)
     }
 
-    // register shutdown signal (as future)
+    // register the shutdown signal (as future)
     let shutdown = tokio::signal::ctrl_c().map(|_| ());
 
     info!(
@@ -247,12 +208,12 @@ where
         health = health_enabled,
         profile = profile_enabled,
         "gRPC server listening on {}",
-        settings.grpc_server.address
+        config.grpc_server.address
     );
     Server::builder()
         .add_optional_service(health_server)
         .add_optional_service(profile_server)
-        .serve_with_shutdown(settings.grpc_server.address, shutdown)
+        .serve_with_shutdown(config.grpc_server.address, shutdown)
         .await?;
     info!("gRPC server stopped successfully");
     Ok(())

@@ -1,6 +1,6 @@
 use crate::cache::entry::Cached::{Expired, Hit, Miss};
+use crate::config;
 use crate::mojang::Profile;
-use crate::settings;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::time::SystemTime;
@@ -25,6 +25,10 @@ where
     /// The creation time in seconds.
     pub timestamp: u64,
 
+    /// The expiry offset time factor (maps to -0.5-0.5).
+    #[serde(default)]
+    pub offset: i8,
+
     /// The created data.
     pub data: D,
 }
@@ -48,8 +52,17 @@ where
     fn from(value: D) -> Self {
         Dated {
             timestamp: now_seconds(),
+            offset: generate_offset(),
             data: value,
         }
+    }
+}
+
+pub fn generate_offset() -> i8 {
+    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        // take the last byte of timestamp as pseudo-random
+        Ok(n) => n.as_nanos() as i8,
+        Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     }
 }
 
@@ -94,6 +107,7 @@ where
             None => Err(err),
             Some(data) => Ok(Dated {
                 timestamp: self.timestamp,
+                offset: self.offset,
                 data,
             }),
         }
@@ -101,12 +115,14 @@ where
 
     /// Checks whether the [Entry] has **now** expired. An [Entry] is expired if its [Entry::current_age]
     /// is **greater or equal** the provided expiry.
-    pub fn is_expired(&self, expiry: &settings::CacheEntry) -> bool {
+    pub fn is_expired(&self, expiry: &config::CacheEntry) -> bool {
         let exp = match &self.data {
             None => expiry.exp_empty,
             Some(_) => expiry.exp,
         };
-        self.current_age() >= exp.as_secs()
+        let offset = (self.offset as f32) / (i8::MAX as f32);
+        let exp_secs = exp.as_secs() + ((expiry.offset.as_secs_f32() * offset) as u64);
+        self.current_age() >= exp_secs
     }
 }
 
@@ -136,7 +152,7 @@ where
 {
     /// Creates a new [Cached] from an [Entry] using some expiry. It uses [Entry::is_expired] to decide
     /// whether an [Entry] has expired.
-    pub fn with_expiry(opt: Option<Entry<D>>, expiry: &settings::CacheEntry) -> Cached<D> {
+    pub fn with_expiry(opt: Option<Entry<D>>, expiry: &config::CacheEntry) -> Cached<D> {
         match opt {
             None => Miss,
             Some(entry) if entry.is_expired(expiry) => Expired(entry),
