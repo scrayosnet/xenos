@@ -46,6 +46,3 @@ address = "0.0.0.0:9990"
 profile_enabled = true
 health_enabled = true
 address = "0.0.0.0:50051"
-
-[logging]
-level = "info"
