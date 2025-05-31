@@ -113,6 +113,10 @@ pub struct CacheEntry {
     /// elapsed, then the cache entry is marked as expired but not deleted.
     #[serde(deserialize_with = "parse_duration")]
     pub exp_empty: Duration,
+
+    /// The cache entry expiration duration offset for randomness.
+    #[serde(deserialize_with = "parse_duration", default)]
+    pub offset: Duration,
 }
 
 #[derive(Debug, Clone, Deserialize)]

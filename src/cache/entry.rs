@@ -25,7 +25,9 @@ where
     /// The creation time in seconds.
     pub timestamp: u64,
 
-    /// TODO offset factor (from 0.0 to 1.0) with serde default of 0.0
+    /// The expiry offset time factor (maps to -0.5-0.5).
+    #[serde(default)]
+    pub offset: i8,
 
     /// The created data.
     pub data: D,
@@ -50,8 +52,17 @@ where
     fn from(value: D) -> Self {
         Dated {
             timestamp: now_seconds(),
+            offset: generate_offset(),
             data: value,
         }
+    }
+}
+
+pub fn generate_offset() -> i8 {
+    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        // take the last byte of timestamp as pseudo-random
+        Ok(n) => n.as_nanos() as i8,
+        Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     }
 }
 
@@ -96,6 +107,7 @@ where
             None => Err(err),
             Some(data) => Ok(Dated {
                 timestamp: self.timestamp,
+                offset: self.offset,
                 data,
             }),
         }
@@ -108,7 +120,9 @@ where
             None => expiry.exp_empty,
             Some(_) => expiry.exp,
         };
-        self.current_age() >= exp.as_secs()
+        let offset = (self.offset as f32) / (i8::MAX as f32);
+        let exp_secs = exp.as_secs() + ((expiry.offset.as_secs_f32() * offset) as u64);
+        self.current_age() >= exp_secs
     }
 }
 

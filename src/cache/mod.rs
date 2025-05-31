@@ -350,6 +350,7 @@ mod test {
         let expiry = CacheEntry {
             exp: dur,
             exp_empty: dur,
+            offset: Duration::from_secs(0),
         };
         CacheEntries {
             uuid: expiry.clone(),
