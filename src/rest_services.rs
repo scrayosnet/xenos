@@ -1,6 +1,6 @@
 use crate::cache::level::CacheLevel;
 use crate::error::ServiceError;
-use crate::metrics::{RequestsLabels, REGISTRY, REQUEST};
+use crate::metrics::{REGISTRY, REQUEST, RequestsLabels};
 use crate::mojang::Mojang;
 use crate::proto::{
     CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
@@ -8,13 +8,13 @@ use crate::proto::{
 };
 use crate::service::Service;
 use axum::{
+    Extension, Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Extension, Json,
 };
-use axum_extra::headers::authorization::Basic;
-use axum_extra::headers::Authorization;
 use axum_extra::TypedHeader;
+use axum_extra::headers::Authorization;
+use axum_extra::headers::authorization::Basic;
 use prometheus_client::encoding::text::encode;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -48,7 +48,7 @@ where
     M: Mojang,
 {
     // check basic auth
-    let ms = &service.settings().metrics;
+    let ms = &service.config().metrics;
     if ms.auth_enabled {
         if let Some(TypedHeader(Authorization(creds))) = auth {
             if creds.username() != ms.username || creds.password() != ms.password {

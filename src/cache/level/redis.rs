@@ -1,13 +1,13 @@
 use crate::cache::entry::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
-use crate::cache::level::{metrics_get_handler, metrics_set_handler, CacheLevel};
-use crate::settings;
+use crate::cache::level::{CacheLevel, metrics_get_handler, metrics_set_handler};
+use crate::config;
 use redis::aio::ConnectionManager;
 use redis::{
-    from_redis_value, AsyncCommands, FromRedisValue, RedisResult, RedisWrite, SetExpiry,
-    SetOptions, ToRedisArgs, Value,
+    AsyncCommands, FromRedisValue, RedisResult, RedisWrite, SetExpiry, SetOptions, ToRedisArgs,
+    Value, from_redis_value,
 };
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -36,15 +36,15 @@ macro_rules! key {
 /// values are returned. This is done to prevent the application from "crashing" as soon as redis is,
 /// for example, temporarily unavailable.
 pub struct RedisCache {
-    settings: settings::RedisCache,
+    config: config::RedisCache,
     redis_manager: Arc<Mutex<ConnectionManager>>,
 }
 
 impl RedisCache {
     /// Created a new [Redis Cache](RedisCache).
-    pub fn new(con: ConnectionManager, settings: &settings::RedisCache) -> Self {
+    pub fn new(con: ConnectionManager, config: &config::RedisCache) -> Self {
         Self {
-            settings: settings.clone(),
+            config: config.clone(),
             redis_manager: Arc::new(Mutex::new(con)),
         }
     }
@@ -91,7 +91,7 @@ impl Debug for RedisCache {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // prints all fields except the redis connection
         f.debug_struct("RedisCache")
-            .field("settings", &self.settings)
+            .field("config", &self.config)
             .finish()
     }
 }
@@ -116,7 +116,7 @@ impl CacheLevel for RedisCache {
     )]
     async fn set_uuid(&self, key: &str, entry: Entry<UuidData>) {
         let key = key!("uuid", key.to_lowercase());
-        self.set(key, entry, &self.settings.entries.uuid.ttl).await
+        self.set(key, entry, &self.config.entries.uuid.ttl).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -138,8 +138,7 @@ impl CacheLevel for RedisCache {
     )]
     async fn set_profile(&self, key: &Uuid, entry: Entry<ProfileData>) {
         let key = key!("profile", key.simple());
-        self.set(key, entry, &self.settings.entries.profile.ttl)
-            .await
+        self.set(key, entry, &self.config.entries.profile.ttl).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -161,7 +160,7 @@ impl CacheLevel for RedisCache {
     )]
     async fn set_skin(&self, key: &Uuid, entry: Entry<SkinData>) {
         let key = key!("skin", key.simple());
-        self.set(key, entry, &self.settings.entries.skin.ttl).await
+        self.set(key, entry, &self.config.entries.skin.ttl).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -183,7 +182,7 @@ impl CacheLevel for RedisCache {
     )]
     async fn set_cape(&self, key: &Uuid, entry: Entry<CapeData>) {
         let key = key!("cape", key.simple());
-        self.set(key, entry, &self.settings.entries.cape.ttl).await
+        self.set(key, entry, &self.config.entries.cape.ttl).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -205,7 +204,7 @@ impl CacheLevel for RedisCache {
     )]
     async fn set_head(&self, key: &(Uuid, bool), entry: Entry<HeadData>) {
         let key = key!("head", key.0.simple(), key.1);
-        self.set(key, entry, &self.settings.entries.head.ttl).await
+        self.set(key, entry, &self.config.entries.head.ttl).await
     }
 }
 

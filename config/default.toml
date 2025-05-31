@@ -1,4 +1,4 @@
-# See settings documantation at src/settings.rs.
+# See config documantation at src/config.rs.
 
 signed_profiles = false
 

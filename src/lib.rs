@@ -3,30 +3,30 @@
 //! # Usage
 //!
 //! Start the application by first initializing [sentry] and [tracing] and then calling [start] with
-//! the [application configuration](settings).
+//! the [application configuration](config).
 //!
 //! # Configuration
 //!
-//! See [settings] for a description on how to create the application configuration.
+//! See [config] for a description on how to create the application configuration.
 
+use crate::cache::Cache;
+use crate::cache::level::CacheLevel;
 use crate::cache::level::moka::MokaCache;
 #[cfg(not(feature = "redis"))]
 use crate::cache::level::no::NoCache;
 #[cfg(feature = "redis")]
 use crate::cache::level::redis::RedisCache;
-use crate::cache::level::CacheLevel;
-use crate::cache::Cache;
+use crate::config::Config;
 use crate::grpc_services::GrpcProfileService;
+use crate::mojang::Mojang;
 #[cfg(not(feature = "static-testing"))]
 use crate::mojang::api::MojangApi;
 #[cfg(feature = "static-testing")]
 use crate::mojang::testing::MojangTestingApi;
-use crate::mojang::Mojang;
 use crate::proto::profile_server::ProfileServer;
 use crate::service::Service;
-use crate::settings::Settings;
 use axum::routing::post;
-use axum::{routing::get, Extension, Router};
+use axum::{Extension, Router, routing::get};
 use futures_util::FutureExt;
 use std::sync::Arc;
 use tokio::try_join;
@@ -35,6 +35,7 @@ use tonic_health::server::health_reporter;
 use tracing::info;
 
 pub mod cache;
+pub mod config;
 pub mod error;
 mod grpc_services;
 mod metrics;
@@ -42,31 +43,30 @@ pub mod mojang;
 pub mod proto;
 mod rest_services;
 pub mod service;
-pub mod settings;
 
-/// Starts Xenos with the provided [application configuration](settings). It expects that [sentry] and
+/// Starts Xenos with the provided [application configuration](config). It expects that [sentry] and
 /// [tracing] have been configured beforehand. It blocks until a shutdown signal is received (graceful shutdown).
-#[tracing::instrument(skip(settings))]
-pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error>> {
+#[tracing::instrument(skip(config))]
+pub async fn start(config: Arc<Config>) -> Result<(), Box<dyn std::error::Error>> {
     info!("starting xenos …");
 
     // built cache with selected cache levels
     info!("building multi-level cache");
     let cache = Cache::new(
-        settings.cache.entries.clone(),
+        config.cache.entries.clone(),
         {
             info!("building moka cache");
-            MokaCache::new(settings.cache.moka.clone())
+            MokaCache::new(config.cache.moka.clone())
         },
         // the remote cache should be selected using feature flags
         {
             #[cfg(feature = "redis")]
             {
                 info!("building redis cache");
-                let cs = &settings.cache;
+                let cs = &config.cache;
                 let redis_client = redis::Client::open(cs.redis.address.clone())?;
                 let redis_manager = redis_client.get_connection_manager().await?;
-                RedisCache::new(redis_manager, &settings.cache.redis)
+                RedisCache::new(redis_manager, &config.cache.redis)
             }
             #[cfg(not(feature = "redis"))]
             {
@@ -87,7 +87,7 @@ pub async fn start(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Er
     // build xenos service from cache and mojang api
     // the service is then shared by the grpc and rest servers
     info!("building shared xenos service");
-    let service = Arc::new(Service::new(settings.clone(), cache, mojang));
+    let service = Arc::new(Service::new(config.clone(), cache, mojang));
 
     try_join!(
         serve_rest_server(Arc::clone(&service)),
@@ -108,10 +108,10 @@ where
     R: CacheLevel + Sync + 'static,
     M: Mojang + Sync + 'static,
 {
-    let settings = service.settings();
-    let address = settings.rest_server.address;
-    let metrics_enabled = settings.metrics.enabled;
-    let gateway_enabled = settings.rest_server.rest_gateway;
+    let config = service.config();
+    let address = config.rest_server.address;
+    let metrics_enabled = config.metrics.enabled;
+    let gateway_enabled = config.rest_server.rest_gateway;
 
     // check if the rest server should be started
     if !metrics_enabled && !gateway_enabled {
@@ -172,10 +172,10 @@ where
     R: CacheLevel + Sync + 'static,
     M: Mojang + Sync + 'static,
 {
-    let settings = service.settings();
-    let address = settings.grpc_server.address;
-    let health_enabled = settings.grpc_server.health_enabled;
-    let profile_enabled = settings.grpc_server.profile_enabled;
+    let config = service.config();
+    let address = config.grpc_server.address;
+    let health_enabled = config.grpc_server.health_enabled;
+    let profile_enabled = config.grpc_server.profile_enabled;
 
     // check if grpc server should be started
     if !profile_enabled && !health_enabled {
@@ -208,12 +208,12 @@ where
         health = health_enabled,
         profile = profile_enabled,
         "gRPC server listening on {}",
-        settings.grpc_server.address
+        config.grpc_server.address
     );
     Server::builder()
         .add_optional_service(health_server)
         .add_optional_service(profile_server)
-        .serve_with_shutdown(settings.grpc_server.address, shutdown)
+        .serve_with_shutdown(config.grpc_server.address, shutdown)
         .await?;
     info!("gRPC server stopped successfully");
     Ok(())

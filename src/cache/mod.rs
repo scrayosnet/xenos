@@ -3,11 +3,11 @@ pub mod level;
 
 use crate::cache::entry::{Cached, CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::cache::level::CacheLevel;
+use crate::config;
+use crate::config::CacheEntry;
 use crate::metrics::{
-    CacheAgeLabels, CacheGetLabels, CacheSetLabels, CACHE_AGE, CACHE_GET, CACHE_SET,
+    CACHE_AGE, CACHE_GET, CACHE_SET, CacheAgeLabels, CacheGetLabels, CacheSetLabels,
 };
-use crate::settings;
-use crate::settings::CacheEntry;
 use metrics::MetricsEvent;
 use std::fmt::Debug;
 use tracing::warn;
@@ -83,7 +83,7 @@ where
     L: CacheLevel,
     R: CacheLevel,
 {
-    expiry: settings::CacheEntries<CacheEntry>,
+    expiry: config::CacheEntries<CacheEntry>,
     local_cache: L,
     remote_cache: R,
 }
@@ -94,11 +94,7 @@ where
     R: CacheLevel,
 {
     /// Creates a new [Cache] with no inner caches.
-    pub fn new(
-        expiry: settings::CacheEntries<CacheEntry>,
-        local_cache: L,
-        remote_cache: R,
-    ) -> Self {
+    pub fn new(expiry: config::CacheEntries<CacheEntry>, local_cache: L, remote_cache: R) -> Self {
         Cache {
             expiry,
             local_cache,
@@ -326,12 +322,12 @@ where
 mod test {
     use super::*;
     use crate::cache::level::moka::MokaCache;
-    use crate::settings::{CacheEntries, MokaCacheEntry};
+    use crate::config::{CacheEntries, MokaCacheEntry};
+    use Cached::*;
     use std::time::Duration;
     use uuid::uuid;
-    use Cached::*;
 
-    fn new_moka_settings() -> settings::MokaCache {
+    fn new_moka_config() -> config::MokaCache {
         let entry = MokaCacheEntry {
             cap: 10,
             ttl: Duration::from_secs(100),
@@ -339,7 +335,7 @@ mod test {
             tti: Duration::from_secs(100),
             tti_empty: Duration::from_secs(100),
         };
-        settings::MokaCache {
+        config::MokaCache {
             entries: CacheEntries {
                 uuid: entry.clone(),
                 profile: entry.clone(),
@@ -368,8 +364,8 @@ mod test {
     async fn new_cache_2l(dur: Duration) -> Cache<MokaCache, MokaCache> {
         Cache::new(
             new_expiry(dur),
-            MokaCache::new(new_moka_settings()),
-            MokaCache::new(new_moka_settings()),
+            MokaCache::new(new_moka_config()),
+            MokaCache::new(new_moka_config()),
         )
     }
 

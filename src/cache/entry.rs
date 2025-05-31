@@ -1,6 +1,6 @@
 use crate::cache::entry::Cached::{Expired, Hit, Miss};
+use crate::config;
 use crate::mojang::Profile;
-use crate::settings;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::time::SystemTime;
@@ -103,7 +103,7 @@ where
 
     /// Checks whether the [Entry] has **now** expired. An [Entry] is expired if its [Entry::current_age]
     /// is **greater or equal** the provided expiry.
-    pub fn is_expired(&self, expiry: &settings::CacheEntry) -> bool {
+    pub fn is_expired(&self, expiry: &config::CacheEntry) -> bool {
         let exp = match &self.data {
             None => expiry.exp_empty,
             Some(_) => expiry.exp,
@@ -138,7 +138,7 @@ where
 {
     /// Creates a new [Cached] from an [Entry] using some expiry. It uses [Entry::is_expired] to decide
     /// whether an [Entry] has expired.
-    pub fn with_expiry(opt: Option<Entry<D>>, expiry: &settings::CacheEntry) -> Cached<D> {
+    pub fn with_expiry(opt: Option<Entry<D>>, expiry: &config::CacheEntry) -> Cached<D> {
         match opt {
             None => Miss,
             Some(entry) if entry.is_expired(expiry) => Expired(entry),
