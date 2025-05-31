@@ -1,7 +1,7 @@
 use crate::cache::entry::Dated;
 use crate::cache::{CapeData, Entry, HeadData, ProfileData, SkinData, UuidData};
 use crate::metrics::{
-    CacheAgeLabels, CacheGetLabels, CacheSetLabels, CACHE_AGE, CACHE_GET, CACHE_SET,
+    CACHE_AGE, CACHE_GET, CACHE_SET, CacheAgeLabels, CacheGetLabels, CacheSetLabels,
 };
 use metrics::MetricsEvent;
 use std::fmt::Debug;

@@ -1,4 +1,4 @@
-use crate::metrics::{MojangLatLabels, MojangReqLabels, MOJANG_REQ, MOJANG_REQ_LAT};
+use crate::metrics::{MOJANG_REQ, MOJANG_REQ_LAT, MojangLatLabels, MojangReqLabels};
 use crate::mojang::ApiError::{NotFound, Unavailable};
 use crate::mojang::{ApiError, Mojang, Profile, TextureBytes, UsernameResolved};
 use metrics::MetricsEvent;

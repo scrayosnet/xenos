@@ -1,12 +1,12 @@
 use crate::cache::level::CacheLevel;
 use crate::error::ServiceError;
 use crate::error::ServiceError::{NotFound, Unavailable, UuidError};
-use crate::metrics::{RequestsLabels, REQUEST};
+use crate::metrics::{REQUEST, RequestsLabels};
 use crate::mojang::Mojang;
 use crate::proto::{
-    profile_server::Profile, CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest,
-    ProfileResponse, SkinRequest, SkinResponse, UuidRequest, UuidResponse, UuidsRequest,
-    UuidsResponse,
+    CapeRequest, CapeResponse, HeadRequest, HeadResponse, ProfileRequest, ProfileResponse,
+    SkinRequest, SkinResponse, UuidRequest, UuidResponse, UuidsRequest, UuidsResponse,
+    profile_server::Profile,
 };
 use crate::service::Service;
 use std::sync::Arc;

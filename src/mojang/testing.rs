@@ -1,12 +1,12 @@
 use crate::mojang::ApiError::NotFound;
 use crate::mojang::{
-    encode_texture_prop, ApiError, Mojang, Profile, ProfileProperty, Texture, TextureBytes,
-    Textures, TexturesProperty, UsernameResolved,
+    ApiError, Mojang, Profile, ProfileProperty, Texture, TextureBytes, Textures, TexturesProperty,
+    UsernameResolved, encode_texture_prop,
 };
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::LazyLock;
-use uuid::{uuid, Uuid};
+use uuid::{Uuid, uuid};
 
 /// The mojang profile of Hydrofin.
 pub static HYDROFIN: LazyLock<TestingProfile> = LazyLock::new(|| {

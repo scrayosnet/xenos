@@ -2,10 +2,10 @@ pub mod api;
 #[cfg(feature = "static-testing")]
 pub mod testing;
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
-use image::{imageops, ColorType, GenericImageView, ImageError, ImageFormat};
+use image::{ColorType, GenericImageView, ImageError, ImageFormat, imageops};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::ops::Deref;
