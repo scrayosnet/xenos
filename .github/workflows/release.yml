@@ -36,7 +36,7 @@ jobs:
     - name: Upload binary
       uses: taiki-e/upload-rust-binary-action@v1
       with:
-        bin: mcexport
+        bin: xenos
         target: ${{ matrix.target }}
         tar: unix
         zip: windows
