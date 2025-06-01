@@ -1,6 +1,7 @@
 use std::borrow::Cow::Owned;
 use std::sync::Arc;
 use tracing::info;
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
 use xenos::config::Config;
@@ -28,9 +29,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // initialize logging with the sentry hook
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::fmt::layer()
-                .compact()
-                .with_filter(EnvFilter::from_default_env()),
+            tracing_subscriber::fmt::layer().compact().with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(LevelFilter::INFO.into())
+                    .from_env_lossy(),
+            ),
         )
         .with(sentry_tracing::layer())
         .init();
