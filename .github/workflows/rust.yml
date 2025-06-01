@@ -24,6 +24,9 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Install protoc
+      uses: arduino/setup-protoc@v3
+
     - name: Install toolchain
       uses: dtolnay/rust-toolchain@master
       with:
@@ -107,6 +110,9 @@ jobs:
 
     - name: Checkout sources
       uses: actions/checkout@v4
+
+    - name: Install protoc
+      uses: arduino/setup-protoc@v3
 
     - name: Install toolchain
       uses: dtolnay/rust-toolchain@master
