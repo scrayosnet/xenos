@@ -433,6 +433,23 @@ mod test {
     }
 
     #[tokio::test]
+    async fn get_expired_later() {
+        tokio::time::pause();
+
+        // given
+        let cache = new_cache_2l(Duration::from_secs(10)).await;
+        cache.set_uuid("hydrofin", None).await;
+
+        tokio::time::advance(Duration::from_secs(11)).await;
+
+        // when
+        let cached = cache.get_uuid("hydrofin").await;
+
+        // then
+        assert!(matches!(cached, Expired(entry) if entry.data.is_none()));
+    }
+
+    #[tokio::test]
     async fn get_miss() {
         // given
         let cache = new_cache_2l(Duration::from_secs(10)).await;
