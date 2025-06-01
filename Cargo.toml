@@ -59,3 +59,6 @@ xenos = { path = ".", features = ["default", "static-testing"] }
 default = []
 static-testing = []
 redis = ["dep:redis"]
+
+[package.metadata.cargo-machete]
+ignored = ["prost", "prost-types", "tonic-build"]
