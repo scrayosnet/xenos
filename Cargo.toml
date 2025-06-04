@@ -4,7 +4,7 @@ members = ["metrics", "metrics/metrics-macros"]
 [package]
 name = "xenos"
 description = "Minecraft Profile Information Proxy"
-version = "0.8.0"
+version = "0.8.1"
 authors = [
     "Joshua Dean Küpper <admin@joshua-kuepper.de>",
     "Paul Wagner <contact@paulwagner.dev>"
