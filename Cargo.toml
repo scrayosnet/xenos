@@ -21,7 +21,7 @@ rust-version = "1.85.0"
 [dependencies]
 metrics = { path = "metrics" }
 prost = "0.13"
-prost-types = { version = "0.13" }
+prost-types = { version = "0.14" }
 redis = { version = "0.31", features = ["json", "aio", "tokio-comp", "async-std-comp", "connection-manager"], optional = true }
 tokio = { version = "1.41", features = ["full", "test-util"] }
 tonic = "0.13"
