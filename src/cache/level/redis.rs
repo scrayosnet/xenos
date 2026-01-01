@@ -3,8 +3,8 @@ use crate::cache::level::{CacheLevel, metrics_get_handler, metrics_set_handler};
 use crate::config;
 use redis::aio::ConnectionManager;
 use redis::{
-    AsyncCommands, FromRedisValue, RedisResult, RedisWrite, SetExpiry, SetOptions, ToRedisArgs,
-    Value, from_redis_value,
+    AsyncCommands, FromRedisValue, ParsingError, RedisWrite, SetExpiry, SetOptions, ToRedisArgs,
+    ToSingleRedisArg, Value, from_redis_value,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -212,9 +212,9 @@ impl<D> FromRedisValue for Entry<D>
 where
     D: Clone + Debug + Eq + PartialEq + DeserializeOwned,
 {
-    fn from_redis_value(v: &Value) -> RedisResult<Self> {
+    fn from_redis_value(v: Value) -> Result<Self, ParsingError> {
         let v: String = from_redis_value(v)?;
-        Ok(serde_json::from_str(&v)?)
+        Ok(serde_json::from_str(&v).map_err(|err| ParsingError::from(err.to_string()))?)
     }
 }
 
@@ -230,3 +230,5 @@ where
         out.write_arg(str.as_ref())
     }
 }
+
+impl<D> ToSingleRedisArg for Entry<D> where D: Clone + Debug + Eq + PartialEq + Serialize {}
