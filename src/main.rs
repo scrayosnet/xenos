@@ -44,7 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // run xenos blocking
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()
-        .unwrap()
+        .build()?
         .block_on(async { xenos::start(config).await })
 }
