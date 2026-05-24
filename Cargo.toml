@@ -62,4 +62,4 @@ static-testing = []
 redis = ["dep:redis"]
 
 [package.metadata.cargo-machete]
-ignored = ["prost", "prost-types", "tonic-build"]
+ignored = ["prost", "prost-types", "tonic-prost", "tonic-prost-build"]
