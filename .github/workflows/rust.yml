@@ -18,11 +18,11 @@ jobs:
         rust:
         - 'stable'
         - 'beta'
-        - '1.85.0'
+        - '1.88.0'
     steps:
 
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install protoc
       uses: arduino/setup-protoc@v3
@@ -46,7 +46,7 @@ jobs:
     steps:
 
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install protoc
       uses: arduino/setup-protoc@v3
@@ -92,7 +92,7 @@ jobs:
       continue-on-error: true
 
     - name: Upload analysis results to GitHub
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: rust-clippy-results.sarif
         wait-for-processing: true
@@ -109,11 +109,11 @@ jobs:
         rust:
         - 'stable'
         - 'beta'
-        - '1.85.0'
+        - '1.88.0'
     steps:
 
     - name: Checkout sources
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install protoc
       uses: arduino/setup-protoc@v3

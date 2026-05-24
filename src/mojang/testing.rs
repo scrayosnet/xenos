@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use uuid::{Uuid, uuid};
 
+/// A static mock signature returned for signed profile requests in the testing API.
+/// Not cryptographically valid — only present to allow clients to test non-null signature handling.
+const MOCK_SIGNATURE: &str = "bW9ja1NpZ25hdHVyZUZvclRlc3Rpbmc=";
+
 /// The mojang profile of Hydrofin.
 pub static HYDROFIN: LazyLock<TestingProfile> = LazyLock::new(|| {
     TestingProfile::new(
@@ -160,8 +164,19 @@ impl<'a> Mojang for MojangTestingApi<'a> {
         Ok(uuids)
     }
 
-    async fn fetch_profile(&self, uuid: &Uuid, _signed: bool) -> Result<Profile, ApiError> {
-        self.profiles.get(uuid).cloned().ok_or(NotFound)
+    async fn fetch_profile(&self, uuid: &Uuid, signed: bool) -> Result<Profile, ApiError> {
+        self.profiles
+            .get(uuid)
+            .cloned()
+            .ok_or(NotFound)
+            .map(|mut profile| {
+                if signed {
+                    for prop in &mut profile.properties {
+                        prop.signature = Some(MOCK_SIGNATURE.to_string());
+                    }
+                }
+                profile
+            })
     }
 
     async fn fetch_bytes(&self, url: String) -> Result<TextureBytes, ApiError> {
@@ -177,6 +192,36 @@ impl<'a> Mojang for MojangTestingApi<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[tokio::test]
+    async fn fetch_profile_unsigned_has_no_signatures() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let profile = api.fetch_profile(&HYDROFIN.profile.id, false).await;
+
+        // then
+        let Ok(profile) = profile else {
+            panic!("failed to fetch profile")
+        };
+        assert!(profile.properties.iter().all(|p| p.signature.is_none()));
+    }
+
+    #[tokio::test]
+    async fn fetch_profile_signed_has_mock_signatures() {
+        // given
+        let api = MojangTestingApi::with_profiles();
+
+        // when
+        let profile = api.fetch_profile(&HYDROFIN.profile.id, true).await;
+
+        // then
+        let Ok(profile) = profile else {
+            panic!("failed to fetch profile")
+        };
+        assert!(profile.properties.iter().all(|p| p.signature.is_some()));
+    }
 
     #[tokio::test]
     async fn new_empty() {
