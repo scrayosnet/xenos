@@ -87,8 +87,10 @@ where
                 handler: "grpc",
             })
             .inc();
-        let uuid = Uuid::try_parse(&request.into_inner().uuid).map_err(UuidError)?;
-        let profile = self.service.get_profile(&uuid).await?;
+        let inner = request.into_inner();
+        let uuid = Uuid::try_parse(&inner.uuid).map_err(UuidError)?;
+        let unsigned = inner.unsigned.unwrap_or(true);
+        let profile = self.service.get_profile(&uuid, unsigned).await?;
         Ok(Response::new(profile.into()))
     }
 

@@ -217,34 +217,42 @@ where
     }
 
     /// Gets the profile for an uuid from cache or mojang.
+    ///
+    /// If `unsigned` is `false`, the request is always fetched live from Mojang (no cache read or write)
+    /// so that the Yggdrasil signatures are included and are guaranteed to be fresh.
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "profile"), handler = metrics_age_handler)]
-    pub async fn get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, ServiceError> {
-        // try to get from the cache
-        let cached = self.cache.get_profile(uuid).await;
-        let fallback = match cached {
-            Hit(entry) => return entry.some_or(NotFound),
-            Expired(entry) => Some(entry),
-            Miss => None,
-        };
+    pub async fn get_profile(&self, uuid: &Uuid, unsigned: bool) -> Result<Dated<ProfileData>, ServiceError> {
+        if unsigned {
+            // try to get from the cache
+            let cached = self.cache.get_profile(uuid).await;
+            let fallback = match cached {
+                Hit(entry) => return entry.some_or(NotFound),
+                Expired(entry) => Some(entry),
+                Miss => None,
+            };
 
-        // try to fetch from mojang and update the cache
-        match self
-            .mojang
-            .fetch_profile(uuid, self.config.signed_profiles)
-            .await
-        {
-            Ok(profile) => {
-                let dated = self.cache.set_profile(uuid, Some(profile)).await.unwrap();
-                Ok(dated)
+            // try to fetch from mojang and update the cache
+            match self.mojang.fetch_profile(uuid, false).await {
+                Ok(profile) => {
+                    let dated = self.cache.set_profile(uuid, Some(profile)).await.unwrap();
+                    Ok(dated)
+                }
+                Err(ApiError::NotFound) => {
+                    self.cache.set_profile(uuid, None).await;
+                    Err(NotFound)
+                }
+                Err(ApiError::Unavailable) => fallback
+                    .ok_or(Unavailable)
+                    .and_then(|entry| entry.some_or(NotFound)),
             }
-            Err(ApiError::NotFound) => {
-                self.cache.set_profile(uuid, None).await;
-                Err(NotFound)
+        } else {
+            // signed requests are always fetched live, never cached
+            match self.mojang.fetch_profile(uuid, true).await {
+                Ok(profile) => Ok(Dated::from(profile)),
+                Err(ApiError::NotFound) => Err(NotFound),
+                Err(ApiError::Unavailable) => Err(Unavailable),
             }
-            Err(ApiError::Unavailable) => fallback
-                .ok_or(Unavailable)
-                .and_then(|entry| entry.some_or(NotFound)),
         }
     }
 
@@ -261,7 +269,7 @@ where
         };
 
         // try to get a profile
-        let profile = match self.get_profile(uuid).await {
+        let profile = match self.get_profile(uuid, true).await {
             Ok(profile) => profile.data,
             Err(Unavailable) => {
                 return fallback
@@ -316,7 +324,7 @@ where
         };
 
         // try to get the profile
-        let profile = match self.get_profile(uuid).await {
+        let profile = match self.get_profile(uuid, true).await {
             Ok(profile) => profile.data,
             Err(Unavailable) => {
                 return fallback

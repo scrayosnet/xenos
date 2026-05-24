@@ -128,7 +128,8 @@ where
         })
         .inc();
     let uuid = Uuid::try_parse(&payload.uuid)?;
-    Ok(Json(service.get_profile(&uuid).await?.into()))
+    let unsigned = payload.unsigned.unwrap_or(true);
+    Ok(Json(service.get_profile(&uuid, unsigned).await?.into()))
 }
 
 /// An [axum] handler for [SkinRequest] rest gateway.

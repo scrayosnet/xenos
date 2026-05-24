@@ -57,6 +57,9 @@ message UuidsResponse {
 message ProfileRequest {
     // The UUID in simple or hyphenated form whose Minecraft Profile should be queried.
     string uuid = 1;
+    // Whether the response should omit the Yggdrasil signatures on profile properties. Defaults to true (unsigned).
+    // Signed requests are always fetched live and are not served from cache.
+    optional bool unsigned = 2;
 }
 
 // ProfileProperty is a single property of a Minecraft Profile, that is possibly signed.
