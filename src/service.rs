@@ -217,9 +217,29 @@ where
     }
 
     /// Gets the profile for an uuid from cache or mojang.
+    ///
+    /// If `unsigned` is `false`, the request is always fetched live from Mojang so that the Yggdrasil
+    /// signatures are included and guaranteed to be fresh. The result is also written to cache so that
+    /// subsequent unsigned requests benefit from it.
     #[tracing::instrument(skip(self))]
     #[metrics::metrics(metric = "service", labels(request_type = "profile"), handler = metrics_age_handler)]
-    pub async fn get_profile(&self, uuid: &Uuid) -> Result<Dated<ProfileData>, ServiceError> {
+    pub async fn get_profile(
+        &self,
+        uuid: &Uuid,
+        unsigned: bool,
+    ) -> Result<Dated<ProfileData>, ServiceError> {
+        // signed requests are always fetched live; result is also written to cache for unsigned consumers
+        if !unsigned {
+            return match self.mojang.fetch_profile(uuid, true).await {
+                Ok(profile) => {
+                    self.cache.set_profile(uuid, Some(profile.clone())).await;
+                    Ok(Dated::from(profile))
+                }
+                Err(ApiError::NotFound) => Err(NotFound),
+                Err(ApiError::Unavailable) => Err(Unavailable),
+            };
+        }
+
         // try to get from the cache
         let cached = self.cache.get_profile(uuid).await;
         let fallback = match cached {
@@ -229,11 +249,7 @@ where
         };
 
         // try to fetch from mojang and update the cache
-        match self
-            .mojang
-            .fetch_profile(uuid, self.config.signed_profiles)
-            .await
-        {
+        match self.mojang.fetch_profile(uuid, false).await {
             Ok(profile) => {
                 let dated = self.cache.set_profile(uuid, Some(profile)).await.unwrap();
                 Ok(dated)
@@ -261,7 +277,7 @@ where
         };
 
         // try to get a profile
-        let profile = match self.get_profile(uuid).await {
+        let profile = match self.get_profile(uuid, true).await {
             Ok(profile) => profile.data,
             Err(Unavailable) => {
                 return fallback
@@ -316,7 +332,7 @@ where
         };
 
         // try to get the profile
-        let profile = match self.get_profile(uuid).await {
+        let profile = match self.get_profile(uuid, true).await {
             Ok(profile) => profile.data,
             Err(Unavailable) => {
                 return fallback

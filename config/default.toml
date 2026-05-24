@@ -1,7 +1,5 @@
 # See config documantation at src/config.rs.
 
-signed_profiles = false
-
 [cache.entries]
 uuid = { exp = "PT120M", exp_empty = "PT5M" }
 profile = { exp = "PT10M", exp_empty = "PT5M" }

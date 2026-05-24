@@ -229,8 +229,6 @@ pub struct Sentry {
 /// with status ok.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    /// Whether the profiles should be requested with a signature.
-    pub signed_profiles: bool,
     /// The service cache configuration.
     pub cache: Cache,
 
