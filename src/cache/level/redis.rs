@@ -214,7 +214,7 @@ where
 {
     fn from_redis_value(v: Value) -> Result<Self, ParsingError> {
         let v: String = from_redis_value(v)?;
-        Ok(serde_json::from_str(&v).map_err(|err| ParsingError::from(err.to_string()))?)
+        serde_json::from_str(&v).map_err(|err| ParsingError::from(err.to_string()))
     }
 }
 

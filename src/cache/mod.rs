@@ -111,11 +111,10 @@ where
     )]
     pub async fn get_uuid(&self, key: &str) -> Cached<UuidData> {
         let local = self.local_cache.get_uuid(key).await;
-        if let Some(entry) = &local {
-            if !entry.is_expired(&self.expiry.uuid) {
+        if let Some(entry) = &local
+            && !entry.is_expired(&self.expiry.uuid) {
                 return Cached::with_expiry(local, &self.expiry.uuid);
             }
-        }
 
         let remote = self.remote_cache.get_uuid(key).await;
         match &remote {
@@ -154,11 +153,10 @@ where
     )]
     pub async fn get_profile(&self, uuid: &Uuid) -> Cached<ProfileData> {
         let local = self.local_cache.get_profile(uuid).await;
-        if let Some(entry) = &local {
-            if !entry.is_expired(&self.expiry.profile) {
+        if let Some(entry) = &local
+            && !entry.is_expired(&self.expiry.profile) {
                 return Cached::with_expiry(local, &self.expiry.profile);
             }
-        }
 
         let remote = self.remote_cache.get_profile(uuid).await;
         match &remote {
@@ -197,11 +195,10 @@ where
     )]
     pub async fn get_skin(&self, uuid: &Uuid) -> Cached<SkinData> {
         let local = self.local_cache.get_skin(uuid).await;
-        if let Some(entry) = &local {
-            if !entry.is_expired(&self.expiry.skin) {
+        if let Some(entry) = &local
+            && !entry.is_expired(&self.expiry.skin) {
                 return Cached::with_expiry(local, &self.expiry.skin);
             }
-        }
 
         let remote = self.remote_cache.get_skin(uuid).await;
         match &remote {
@@ -240,11 +237,10 @@ where
     )]
     pub async fn get_cape(&self, uuid: &Uuid) -> Cached<CapeData> {
         let local = self.local_cache.get_cape(uuid).await;
-        if let Some(entry) = &local {
-            if !entry.is_expired(&self.expiry.cape) {
+        if let Some(entry) = &local
+            && !entry.is_expired(&self.expiry.cape) {
                 return Cached::with_expiry(local, &self.expiry.cape);
             }
-        }
 
         let remote = self.remote_cache.get_cape(uuid).await;
         match &remote {
@@ -283,11 +279,10 @@ where
     )]
     pub async fn get_head(&self, uuid: &(Uuid, bool)) -> Cached<HeadData> {
         let local = self.local_cache.get_head(uuid).await;
-        if let Some(entry) = &local {
-            if !entry.is_expired(&self.expiry.head) {
+        if let Some(entry) = &local
+            && !entry.is_expired(&self.expiry.head) {
                 return Cached::with_expiry(local, &self.expiry.head);
             }
-        }
 
         let remote = self.remote_cache.get_head(uuid).await;
         match &remote {
