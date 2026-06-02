@@ -36,7 +36,7 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde_json = "1.0"
 bytes = "1.11"
-hyper = "1.9"
+hyper = "1.10"
 prometheus-client = { version = "0.24" }
 futures-util = "0.3"
 config = "0.15"
