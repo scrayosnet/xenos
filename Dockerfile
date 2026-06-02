@@ -27,6 +27,9 @@ COPY --from=builder "/usr/src/xenos/target/release/xenos" "/xenos"
 COPY --from=builder "/etc/passwd" "/etc/passwd"
 COPY --from=builder "/etc/group" "/etc/group"
 
+# copy CA certificates so TLS (rustls native-roots) works in the scratch image
+COPY --from=builder "/etc/ssl/certs/ca-certificates.crt" "/etc/ssl/certs/ca-certificates.crt"
+
 # we run with minimum permissions as the nobody user
 USER nobody:nobody
 
