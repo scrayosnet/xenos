@@ -37,7 +37,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 serde_json = "1.0"
 bytes = "1.11"
 hyper = "1.9"
-prometheus-client = { version = "0.24" }
+prometheus-client = { version = "0.25" }
 futures-util = "0.3"
 config = "0.15"
 tracing = "0.1"
