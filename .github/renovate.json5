@@ -2,14 +2,14 @@
 	$schema: 'https://docs.renovatebot.com/renovate-schema.json',
 	extends: ['config:recommended'],
 	timezone: 'Europe/Berlin',
+	// no lockFileMaintenance: a refresh of all locks has no release timestamp, so it would never pass this age
+	// check, and without it fresh transitive releases would land unchecked; direct updates still refresh the lock
 	minimumReleaseAge: '3 days',
 	// Renovate merges itself once CI is green, as in our other GitHub repositories
 	platformAutomerge: false,
-	lockFileMaintenance: {
-		enabled: true,
-		automerge: true,
-		// Renovate's default is before 4am on Mondays; we mostly work at weekends
-		schedule: ['at any time']
+	// security fixes must not wait out the release age
+	vulnerabilityAlerts: {
+		minimumReleaseAge: null
 	},
 	packageRules: [
 		{
