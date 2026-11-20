@@ -1,0 +1,26 @@
+{
+	$schema: 'https://docs.renovatebot.com/renovate-schema.json',
+	extends: ['config:recommended'],
+	timezone: 'Europe/Berlin',
+	minimumReleaseAge: '3 days',
+	// Renovate merges itself once CI is green, as in our other GitHub repositories
+	platformAutomerge: false,
+	lockFileMaintenance: {
+		enabled: true,
+		automerge: true,
+		// Renovate's default is before 4am on Mondays; we mostly work at weekends
+		schedule: ['at any time']
+	},
+	packageRules: [
+		{
+			matchUpdateTypes: ['minor', 'patch', 'pin', 'digest'],
+			automerge: true
+		},
+		{
+			// a minor bump below 1.0 may break
+			matchUpdateTypes: ['minor'],
+			matchCurrentVersion: '/^0\\./',
+			automerge: false
+		}
+	]
+}
