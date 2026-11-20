@@ -7,9 +7,11 @@
 	minimumReleaseAge: '3 days',
 	// Renovate merges itself once CI is green, as in our other GitHub repositories
 	platformAutomerge: false,
-	// security fixes must not wait out the release age
+	// security fixes must not wait out the release age, and go straight to the newest version: the lowest fixed one
+	// may not build against the rest of the lockfile
 	vulnerabilityAlerts: {
-		minimumReleaseAge: null
+		minimumReleaseAge: null,
+		vulnerabilityFixStrategy: 'highest'
 	},
 	packageRules: [
 		{
