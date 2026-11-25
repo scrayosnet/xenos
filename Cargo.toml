@@ -42,8 +42,8 @@ futures-util = "0.3"
 config = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-sentry = { version = "0.48", default-features = false, features = ["backtrace", "contexts", "panic", "debug-images", "reqwest", "rustls", "tower"] }
-sentry-tracing = "0.48"
+sentry = { version = "0.49", default-features = false, features = ["backtrace", "contexts", "panic", "debug-images", "reqwest", "rustls", "tower"] }
+sentry-tracing = "0.49"
 moka = { version = "0.12", features = ["future"] }
 axum = "0.8"
 axum-extra = { version = "0.12", features = ["typed-header"] }
