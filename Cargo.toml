@@ -32,7 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 uuid = { version = "1.23", features = ["v4", "serde"] }
 thiserror = "2.0"
 regex = "1.12"
-base64 = "0.22"
+base64 = "0.23"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde_json = "1.0"
 bytes = "1.11"
